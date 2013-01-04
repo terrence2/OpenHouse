@@ -1,8 +1,8 @@
 #!/usr/bin/python3
-import matrix
 import math
 import sys
 import os
+import numpy as np
 
 def in_to_mm(inches):
 	return inches * 25.4 # Note: not an approximation, this is the actual definition of an inch now
@@ -50,10 +50,63 @@ def read_map(mapfile):
 	return pos, kp, wp
 
 def dist(a, b):
-	x = a[0,0] - b[0,0]
-	y = a[0,1] - b[0,1]
-	z = a[0,2] - b[0,2]
+	x = a[0][0] - b[0][0]
+	y = a[1][0] - b[1][0]
+	z = a[2][0] - b[2][0]
 	return math.sqrt(x**2 + y**2 + z**2)
+
+
+def identity():
+	I = np.zeros((4, 4), float)
+	for i in range(4):
+		I[i][i] = 1.0
+	return I
+
+def scale(s):
+	S = np.zeros((4, 4), float)
+	for i in range(3):
+		S[i][i] = s
+	S[3][3] = 1.0
+	return np.asmatrix(S)
+
+def transform(pos):
+	T = identity()
+	T[0][3] = pos[0]
+	T[1][3] = pos[1]
+	T[2][3] = pos[2]
+	return np.asmatrix(T)
+
+def rotateX(ax):
+	Rx = identity()
+	Rx[1][1] = math.cos(ax)
+	Rx[1][2] = -math.sin(ax)
+	Rx[2][1] = math.sin(ax)
+	Rx[2][2] = math.cos(ax)
+	return np.asmatrix(Rx)
+
+def rotateY(ay):
+	Ry = identity()
+	Ry[0][0] = math.cos(ay)
+	Ry[0][2] = math.sin(ay)
+	Ry[2][0] = -math.sin(ay)
+	Ry[2][2] = math.cos(ay)
+	return np.asmatrix(Ry)
+
+def rotateZ(az):
+	Rz = identity()
+	Rz[0][0] = math.cos(az)
+	Rz[0][1] = -math.sin(az)
+	Rz[1][0] = math.sin(az)
+	Rz[1][1] = math.cos(az)
+	return np.asmatrix(Rz)
+
+def vector(inp):
+	v = np.zeros((4), float)
+	v[0] = inp[0]
+	v[1] = inp[1]
+	v[2] = inp[2]
+	v[3] = 1.0
+	return np.asmatrix(v)
 
 def get_mse(ax, ay, az, pos, kp, wp):
 	"""
@@ -89,18 +142,10 @@ def get_mse(ax, ay, az, pos, kp, wp):
 	T[3,2] = pos[2]
 	"""
 
+	"""
 	for i in range(len(kp)):
 		kpt = matrix.vector(kp[i] + [1]).transpose()
 		wpt = matrix.vector(wp[i] + [1]).transpose()
-		"""
-		print("Raw Kinect Pt")
-		print(kpt)
-		print("In Inches")
-		print(matrix.scale(1/25.4) * kpt)
-		print("Rotated up")
-		print(matrix.scale(1/25.4) * matrix.rotateX(deg_to_rad(18)) * kpt)
-		print("Rotated over")
-		"""
 		m = (9**88, -1, -1)
 		for pitch in range(-40, -20):
 			for yaw in range(360):
@@ -111,13 +156,30 @@ def get_mse(ax, ay, az, pos, kp, wp):
 						matrix.scale(1/25.4) * 
 						kpt)
 				d = dist(tpt, wpt)
+				print("pitch {}, yaw {}: dist: {}".format(pitch, yaw, d))
+				if d < m[0]:
+					m = (d, pitch, yaw)
+		print("{}: min: {}\" at pitch: {}, yaw: {}".format(i, *m))
+	"""
+	for i in range(len(kp)):
+		kpt = vector(kp[i]).transpose()
+		wpt = vector(wp[i]).transpose()
+		m = (9**88, -1, -1)
+		for pitch in range(-40, -20):
+			for yaw in range(360):
+				tpt = (
+						rotateX(deg_to_rad(pitch)) * 
+						rotateY(deg_to_rad(yaw)) * 
+						transform((-pos[0], pos[2], -pos[1])) *
+						scale(1/25.4) * 
+						kpt)
+				d = dist(tpt, wpt)
 				#print("pitch {}, yaw {}: dist: {}".format(pitch, yaw, d))
 				if d < m[0]:
 					m = (d, pitch, yaw)
 		print("{}: min: {}\" at pitch: {}, yaw: {}".format(i, *m))
 
 
-	
 
 
 
