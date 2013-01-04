@@ -7,6 +7,12 @@ import os
 def in_to_mm(inches):
 	return inches * 25.4 # Note: not an approximation, this is the actual definition of an inch now
 
+def mm_to_in(mm):
+	return mm / 25.4
+
+def deg_to_rad(deg):
+	return deg * math.pi / 180.0
+
 def read_map(mapfile):
 	# Read the map
 	with open(mapfile) as fp:
@@ -43,6 +49,12 @@ def read_map(mapfile):
 	
 	return pos, kp, wp
 
+def dist(a, b):
+	x = a[0,0] - b[0,0]
+	y = a[0,1] - b[0,1]
+	z = a[0,2] - b[0,2]
+	return math.sqrt(x**2 + y**2 + z**2)
+
 def get_mse(ax, ay, az, pos, kp, wp):
 	"""
 	Kinect's axes are reported in mm relative to:
@@ -53,7 +65,6 @@ def get_mse(ax, ay, az, pos, kp, wp):
 	Given a position and anti-clockwise rotations Rx, Ry, Rz (in degrees, not
 	radians), compute how close each transformed kp[i] is to its known
 	real-world position wp[i].
-	"""
 	Rx = matrix.identity(4)
 	Rx[1,1] = math.cos(ax)
 	Rx[2,1] = -math.sin(ax)
@@ -76,11 +87,38 @@ def get_mse(ax, ay, az, pos, kp, wp):
 	T[3,0] = pos[0]
 	T[3,1] = pos[1]
 	T[3,2] = pos[2]
+	"""
 
-	kpt = matrix.vector(kp[0] + [1])
-	kpt = kpt.transpose()
-	print(kpt)
-	return Rx * Ry * Rz * T * kpt
+	for i in range(len(kp)):
+		kpt = matrix.vector(kp[i] + [1]).transpose()
+		wpt = matrix.vector(wp[i] + [1]).transpose()
+		"""
+		print("Raw Kinect Pt")
+		print(kpt)
+		print("In Inches")
+		print(matrix.scale(1/25.4) * kpt)
+		print("Rotated up")
+		print(matrix.scale(1/25.4) * matrix.rotateX(deg_to_rad(18)) * kpt)
+		print("Rotated over")
+		"""
+		m = (9**88, -1, -1)
+		for pitch in range(-40, -20):
+			for yaw in range(360):
+				tpt = (
+						matrix.rotateX(deg_to_rad(pitch)) * 
+						matrix.rotateY(deg_to_rad(yaw)) * 
+						matrix.transform((-pos[0], pos[2], -pos[1])) *
+						matrix.scale(1/25.4) * 
+						kpt)
+				d = dist(tpt, wpt)
+				#print("pitch {}, yaw {}: dist: {}".format(pitch, yaw, d))
+				if d < m[0]:
+					m = (d, pitch, yaw)
+		print("{}: min: {}\" at pitch: {}, yaw: {}".format(i, *m))
+
+
+	
+
 
 
 def main():

@@ -24,6 +24,8 @@
 # >                       else:
 # >                           n, d = args[0], args[1]
 
+import math
+
 class matrix:
 
 	def __init__ (self, size=(3,3)):
@@ -233,6 +235,44 @@ def identity (n=3):
 	for i in range(n):
 		new[i,i] = 1
 	return new
+
+def rotateX (ax):
+	Rx = identity(4)
+	Rx[1,1] = math.cos(ax)
+	Rx[2,1] = -math.sin(ax)
+	Rx[1,2] = math.sin(ax)
+	Rx[2,2] = math.cos(ax)
+	return Rx
+
+def rotateY (ay):
+	Ry = identity(4)
+	Ry[0,0] = math.cos(ay)
+	Ry[2,0] = math.sin(ay)
+	Ry[0,2] = -math.sin(ay)
+	Ry[2,2] = math.cos(ay)
+	return Ry
+
+def rotateZ (az):
+	Rz = identity(4)
+	Rz[0,0] = math.cos(az)
+	Rz[1,0] = -math.sin(az)
+	Rz[0,1] = math.sin(az)
+	Rz[1,1] = math.cos(az)
+	return Rz
+
+def scale (s):
+	S = matrix((4,4))
+	for i in range(3):
+		S[i,i] = s
+	S[3,3] = 1
+	return S
+
+def transform (pos):
+	T = identity(4)
+	T[3,0] = pos[0]
+	T[3,1] = pos[1]
+	T[3,2] = pos[2]
+	return T
 
 def zero (r=3,c=3):
 	return matrix ((r,c))
