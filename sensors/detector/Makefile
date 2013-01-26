@@ -11,7 +11,7 @@ LIBS=$(OPENNI_LIBS) $(LIBZMQ_LIBS)
 
 OBJS=detector.o Kinect.o Network.o
 PICKER_OBJS=picker.o Kinect.o Network.o
-PROGS=detector picker tilt
+PROGS=detector picker tilt register
 
 all: $(PROGS)
 
@@ -38,3 +38,7 @@ picker: $(PICKER_OBJS)
 tilt: tilt.cpp
 	echo $@
 	g++ -W -I/usr/include/libfreenect -o $@ $< -lfreenect -lfreenect_sync 
+
+register: register.cpp
+	echo $@
+	g++ -std=c++0x $(CXXFLAGS) -O3 -W -o $@ $<  $(LIBS)
