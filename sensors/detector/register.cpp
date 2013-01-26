@@ -6,8 +6,6 @@
 #include <utility>
 #include <vector>
 
-#include "Kinect.h"
-
 #ifdef DEBUG
 #define ASSERT(c) if (!(c)) abort();
 #else
@@ -252,23 +250,29 @@ ostream& operator<<(ostream &out, const TransformT &t)
 	return out;
 }
 
-class EventReceiver
+int
+ReadPoints(Vec3T &center, PointsVector &points)
 {
-};
+    double a, b, c, x, y, z;
+    cout << "Enter the center coordinate \"x y z\"" << endl;
+    cin >> a >> b >> c;
+    center.set(0, a);
+    center.set(1, b);
+    center.set(2, c);
+    cout << "Enter point pairs input to output \"a b c x y z\"" << endl;
+    bool done = false;
+    while (!done) {
+        done = cin >> a >> b >> c >> x >> y >> z;
+        points.push_back(PointMatch(Vec3T(a,b,c), Vec3T(x,y,z)));
+    }
+}
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-	EventReceiver sink;
-	Kinect kinect(sink);
-
 	Vec3T pos(148, 151, 73); // inches
 	PointsVector points;
-#define PUT(a, b, c, x, y, z) points.push_back(PointMatch(Vec3T(a,b,c), Vec3T(x,y,z)))
-	PUT(1847.22, 834.449, 3497.81,   4, 133, 63);
-	PUT(-254.13, -275.206, 1307.69,  124, 114, 52);
-	PUT(-731.715, -46.0037, 1681.1,  124, 85, 52);
-	PUT(123.688, 486.07, 2419.5,     73, 98, 63);
-#undef PUT
+    ReadPoints(pos, points);
 
 	// Remap to inches.
 	for (PointsIter iter = points.begin(); iter != points.end(); ++iter) {
