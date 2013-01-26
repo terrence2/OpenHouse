@@ -16,7 +16,7 @@ PROGS=detector picker tilt register
 all: $(PROGS)
 
 clean:
-	rm -f $(OBJS:.o=.dep) $(OBJS) $(PROGS) picker.o tilt.o
+	rm -f $(OBJS:.o=.dep) $(OBJS) $(PROGS) picker.o picker.dep tilt.o tilt.dep
 	rm -rf __pycache__
 
 # pull in dependency info for *existing* .o files
