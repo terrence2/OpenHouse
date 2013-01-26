@@ -1,3 +1,4 @@
+#include "Network.h"
 #include "Kinect.h"
 #include <unistd.h>
 

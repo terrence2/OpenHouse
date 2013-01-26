@@ -6,16 +6,18 @@
 
 #include <zmq.hpp>
 
+#include "Kinect.h"
+
 static const char *DefaultController = "gorilla";
 static const int SensorPort = 31975;
 static const int ControlPort = 31976;
 
-class Network
+class Network : public IKinectEventSink
 {
   public:
 	Network(const std::string &name);
 
-	void maybeAddUser(int uid);
+	void detectedNewUser(int uid);
 	void addUser(int uid);
 	void removeUser(int uid);
 	void setPosition(int uid, float x, float y, float z);

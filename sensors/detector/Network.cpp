@@ -26,7 +26,7 @@ SendMessage(socket_t &sock, const string &data)
 }
 
 void
-Network::maybeAddUser(int uid)
+Network::detectedNewUser(int uid)
 {
 	string data = "{\"name\": \"" + mName + "\", \"type\": \"MAYBEADDUSER\", \"uid\": " +
 		to_string(uid) + "}";
