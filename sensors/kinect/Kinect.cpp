@@ -120,7 +120,7 @@ Kinect::~Kinect()
 void
 Kinect::loop()
 {
-    while (!xnOSWasKeyboardHit()) {
+    while (!mSink->checkExit()) {
         mContext.WaitOneUpdateAll(mUser);
         
         XnUserID userBuf[1024];
@@ -130,16 +130,12 @@ Kinect::loop()
             if (!mUser.GetSkeletonCap().IsTracking(userBuf[i]))
                 continue;
 
-            XnSkeletonJointTransformation torso;
-            mUser.GetSkeletonCap().GetSkeletonJoint(userBuf[i], XN_SKEL_TORSO, torso);
-            cout << /*"User (" << userBuf[i] << ") torso: " <<*/
-                         torso.position.position.X << " " <<
-                         torso.position.position.Y << " " <<
-                         torso.position.position.Z << endl;
+            XnSkeletonJointTransformation head;
+            mUser.GetSkeletonCap().GetSkeletonJoint(userBuf[i], XN_SKEL_HEAD, head);
 
-            mSink->setPosition(userBuf[i], torso.position.position.X,
-                                           torso.position.position.Y,
-                                           torso.position.position.Z);
+            mSink->setPosition(userBuf[i], head.position.position.X,
+                                           head.position.position.Y,
+                                           head.position.position.Z);
         }
     }
 }

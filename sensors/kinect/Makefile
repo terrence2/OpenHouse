@@ -10,13 +10,14 @@ LIBS=$(OPENNI_LIBS) $(LIBZMQ_LIBS)
 .SILENT:
 
 OBJS=detector.o Kinect.o Network.o
-PICKER_OBJS=picker.o Kinect.o Network.o
-PROGS=detector picker tilt register
+PICKER_OBJS=picker.o Kinect.o
+TRY_OBJS=Try.o Kinect.o
+PROGS=detector picker tilt register try
 
 all: $(PROGS)
 
 clean:
-	rm -f $(OBJS:.o=.dep) $(OBJS) $(PROGS) picker.o picker.dep tilt.o tilt.dep
+	rm -f $(OBJS:.o=.dep) $(OBJS) $(PROGS) picker.o picker.dep tilt.o tilt.dep Try.o Try.dep
 	rm -rf __pycache__
 
 # pull in dependency info for *existing* .o files
@@ -35,10 +36,14 @@ picker: $(PICKER_OBJS)
 	echo $@
 	g++ -o $@ $(PICKER_OBJS) $(LIBS)
 
+try: $(TRY_OBJS)
+	echo $@
+	g++ -o $@ $(TRY_OBJS) $(LIBS)
+
 tilt: tilt.cpp
 	echo $@
 	g++ -W -I/usr/include/libfreenect -o $@ $< -lfreenect -lfreenect_sync 
 
-register: register.cpp
+register: register.cpp Math.h
 	echo $@
 	g++ -std=c++0x $(CXXFLAGS) -O3 -W -o $@ $<  $(LIBS)

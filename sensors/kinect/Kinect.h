@@ -8,10 +8,11 @@
 class IKinectEventSink
 {
   public:
-	virtual void detectedNewUser(int uid) = 0;
-	virtual void addUser(int uid) = 0;
-	virtual void removeUser(int uid) = 0;
+    virtual void detectedNewUser(int uid) = 0;
+    virtual void addUser(int uid) = 0;
+    virtual void removeUser(int uid) = 0;
     virtual void setPosition(int uid, float x, float y, float z) = 0;
+    virtual bool checkExit() { return xnOSWasKeyboardHit(); }
 };
 
 class Kinect
