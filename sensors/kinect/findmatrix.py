@@ -1,6 +1,4 @@
 #!/usr/bin/python3
-from matrix import matrix
-
 import cmd
 import math
 import os
@@ -10,6 +8,22 @@ import re
 import readline
 import subprocess
 import sys
+
+def find_bindir():
+    from os.path import realpath, join, isdir
+    pwd = realpath(os.getcwd())
+    bindir = join(pwd, 'bin')
+    compilers = [name for name in os.listdir(bindir) if isdir(join(bindir, name))]
+    if len(compilers) == 0:
+        print("Did not find a compiler in ./bin")
+        return None
+    compilerdir = join(bindir, compilers[0])
+    releasedir = join(compilerdir, 'release')
+    debugdir = join(compilerdir, 'debug')
+    workdir = releasedir if isdir(releasedir) and os.listdir(releasedir) else debugdir
+    if not isdir(workdir) or not os.listdir(workdir):
+        raise Exception("Did not find binaries in: {}".format(compilerdir))
+    return workdir
 
 class Coord:
     def __init__(self, x=0, y=0, z=0, units=''):
@@ -60,6 +74,7 @@ class Interp(cmd.Cmd):
         self.sensor = Coord(0, 0, 0, '"')
         self.reference = Coord(0, 0, 0, '"')
         self.points = []
+        self.bindir = find_bindir()
         if os.path.exists('session.sav'):
             self.do_load('session.sav')
 
@@ -101,7 +116,8 @@ class Interp(cmd.Cmd):
         print(self.matrix)
 
     def do_matrix(self, line):
-        child = subprocess.Popen(['./register'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        child = subprocess.Popen([os.path.join(self.bindir, 'register')],
+                                 stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         child.stdin.write(self.sensor.raw() + b'\n')
         child.stdin.write(self.reference.raw() + b'\n')
         for i, pt in enumerate(self.points):
@@ -111,6 +127,11 @@ class Interp(cmd.Cmd):
         nums = [float(n.strip()) for n in nums]
         self.matrix = nums
         print("Matrix: ", self.matrix)
+
+    def do_try(self, line):
+        child = subprocess.Popen([os.path.join(self.bindir, 'try')] + [str(n) for n in self.matrix],
+                                 bufsize=4096)
+        child.wait()
 
     def do_add(self, line):
         "Add a point to the system - format X Y Z in inches from the reference point."
@@ -132,7 +153,8 @@ class Interp(cmd.Cmd):
         index = self.parse_index(line, 'capture i')
         if index is None:
             return
-        child = subprocess.Popen(['./picker'], stderr=subprocess.PIPE, bufsize=4096)
+        child = subprocess.Popen([os.path.join(self.bindir, 'picker')],
+                                 stderr=subprocess.PIPE, bufsize=4096)
         _, stderr = child.communicate()
         if child.returncode != 0:
             print("Picker exited with non-zero return code, probably a crash.")
