@@ -60,7 +60,7 @@ Kinect::Kinect(IKinectEventSink *sink)
 
     XnStatus ok;
     xn::EnumerationErrors errors;
-    
+
     // Initialize context object
     ok = mContext.InitFromXmlFile("config.xml", mScriptNode, &errors);
     if (ok == XN_STATUS_NO_NODE_PRESENT) {
@@ -122,7 +122,7 @@ Kinect::loop()
 {
     while (!mSink->checkExit()) {
         mContext.WaitOneUpdateAll(mUser);
-        
+
         XnUserID userBuf[1024];
         XnUInt16 numUsers = 1024;
         mUser.GetUsers(userBuf, numUsers);
