@@ -1,0 +1,13 @@
+project kinect
+    : requirements
+            <cflags>"-W -Wextra -std=c++0x"
+            <cflags>"-Wno-unknown-pragmas -Wno-reorder -Dlinux -D__x86_64__ -I/usr/include/ni"
+            <cflags>"`pkg-config --cflags libzmq`"
+            <linkflags>"-lOpenNI"
+            <linkflags>"`pkg-config --libs libzmq`"
+    ;
+
+exe detector
+    : detector.cpp Kinect.cpp Network.cpp
+    ;
+
