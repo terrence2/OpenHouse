@@ -1,6 +1,8 @@
 #include <iostream>
 #include <memory>
+
 #include <tclap/CmdLine.h>
+
 #include "Network.h"
 #include "Kinect.h"
 
