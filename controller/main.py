@@ -28,10 +28,10 @@ class HouseRules(RuleSet):
             self.floorplan.get_servo('BedLightStrip').turn_off_full()
 
     def event_BedroomKinect_POSITION(self, sensor, sensorPos):
-        for room in self.rooms_with_sensor(sensor):
-            roomPos = room.map_sensor_position_to_room_position(sensorPos)
+        for room in self.floorplan.rooms_with_sensor(sensor):
+            roomPos = room.map_sensor_position_to_room_position(sensor, sensorPos)
+            print("{}: {}".format(room.name, roomPos))
         #self.floorplan.get_servo('BedLightStrip').send_test_message()
-        pass
 
 def build_floorplan() -> FloorPlan:
     """

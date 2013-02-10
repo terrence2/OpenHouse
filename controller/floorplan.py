@@ -1,14 +1,22 @@
 from collections import defaultdict
 from sensors import Sensor
 from servos import Servo
+import numpy
 
 def registration_to_matrix(nums:[float]):
-    return None
+    A = numpy.array(nums, dtype=float, order='C')
+    return A.reshape((4,4))
+
+def position_to_vector(pos:(float, float, float)):
+    return numpy.array((pos[0], pos[1], pos[2], 1.0), dtype=float, order='C')
 
 class Portal:
+    """
+    A transition area between two rooms.
+    """
     def __init__(self, target, width, height, x, y):
         self.target = target
-        self.width = width # float in meters
+        self.width = width
         self.height = height
         self.x = x
         self.y = y
@@ -39,8 +47,11 @@ class Room:
     def add_sensor(self, sensor:Sensor, position:(float, float), registration:[float]):
         assert sensor.name not in self.sensors
         self.sensors[sensor.name] = {'position': position,
-                                     'matrix': registration_to_matrix(register),
+                                     'matrix': registration_to_matrix(registration),
                                      'sensor': sensor}
+
+    def map_sensor_position_to_room_position(self, sensor:Sensor, position:(float, float, float)):
+        return self.sensors[sensor.name]['matrix'].dot(position_to_vector(position))
 
 class FloorPlan:
     """
