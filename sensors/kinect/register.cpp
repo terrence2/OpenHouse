@@ -34,60 +34,65 @@ typedef vector<PointMatch> PointsVector;
 typedef PointsVector::iterator PointsIter;
 
 int
-ReadPoints(Vec3T &center, PointsVector &points)
+ReadPoints(Vec3T &sensor, Vec3T &reference, PointsVector &points)
 {
-    double a, b, c, x, y, z;
-    cout << "Enter the center coordinate \"x y z\"" << endl;
-    cin >> a >> b >> c;
-    center.set(a, b, c);
-    cout << "Enter point pairs input to output \"a b c x y z\"" << endl;
+    cout << "Enter the sensor location in room coordinates \"x y z\"" << endl;
+    double x, y, z;
+    cin >> x >> y >> z;
+    sensor.set(x, y, z);
+    cout << "Enter the measurement center in room coordinates \"x y z\"" << endl;
+    cin >> x >> y >> z;
+    reference.set(x, y, z);
+    cout << "Enter point pairs input to output \"sX sY sZ mX mY mZ\"" << endl;
     bool ok = true;
     do {
-        ok = cin >> a >> b >> c >> x >> y >> z;
+        double sX, sY, sZ, mX, mY, mZ;
+        ok = cin >> sX >> sY >> sZ >> mX >> mY >> mZ;
         if (ok)
-            points.push_back(PointMatch(Vec3T(a,b,c), Vec3T(x,y,z)));
+            points.push_back(PointMatch(Vec3T(sX,sY,sZ), Vec3T(mX,mY,mZ)));
     } while(ok);
 }
 
 int
 main(int argc, char **argv)
 {
-    Vec3T pos;
+    Vec3T sensor;
+    Vec3T reference;
     PointsVector points;
-    ReadPoints(pos, points);
+    ReadPoints(sensor, reference, points);
 
-    // Remap to inches.
+    PointsVector raw(points.size());
+    copy(points.begin(), points.end(), raw.begin());
+
+    cout << "Sensor at: " << sensor << endl;
+    cout << "Measurement reference at: " << reference << endl;
+
+    // Remap the kinect coordinates into the same coordinate type and
+    // orientation of the room.
     for (PointsIter iter = points.begin(); iter != points.end(); ++iter) {
-        /*
-        Kinect's axes are reported in mm relative to:
-        -> x+
-        /\ y+
-        out z+
-        */
-        Vec3T room(-iter->second.get(0),
-                   -iter->second.get(1),
-                   iter->second.get(2));
-        Vec3T kinect(iter->first.get(0),
-                     iter->first.get(2),
-                     iter->first.get(1));
-        cout << "1: " << room << " -> " << kinect << endl;
-        kinect = (Matrix44T::scale(1/25.4) * kinect); 
-        cout << "2: " << room << " -> " << kinect << endl;
-        
-        iter->first = kinect;
-        //iter->second = room;
+        // Kinect's axes are reported in mm relative to:
+        // -> x+
+        //  /\ y+
+        // out z+
+        iter->first = Matrix44T::flipYZ() * Matrix44T::scale(1/25.4) * iter->first;
     }
-    pos = Vec3T(0, 0, 73);
+
+    // Recenter the points measured position to be relative to the sensor. This
+    // lets us leave the transform out of the matrix we are computing, which
+    // saves a few cycles and makes everything easier to debug.
+    Vec3T sensorToReference = reference - sensor;
+    for (PointsIter iter = points.begin(); iter != points.end(); ++iter) {
+        iter->second = iter->second + sensorToReference;
+    }
 
     double minError = 999999999.;
     TransformT bestTrans;
     LinSpaceT rRotX(-180, 179, 360);
-    LinSpaceT rRotY(-0, 0, 1);
+    LinSpaceT rRotY(-180, 179, 180);
     LinSpaceT rRotZ(-180, 179, 360);
     LinSpaceT rX(-0, 0, 1);
     LinSpaceT rY(-0, 0, 1);
-    //LinSpaceT rZ(-0, 0, 1);
-    LinSpaceT rZ(0, 79, 80);
+    LinSpaceT rZ(-0, 0, 1);
     for (rRotX.begin(); !rRotX.done(); rRotX.next())
         for (rRotY.begin(); !rRotY.done(); rRotY.next())
             for (rRotZ.begin(); !rRotZ.done(); rRotZ.next())
@@ -123,17 +128,32 @@ main(int argc, char **argv)
                         }
 
     cout << "Best Transform: " << bestTrans << endl;
+    Number avgErr = 0;
     for (PointsIter iter = points.begin(); iter != points.end(); ++iter) {
         Vec3T &kinect = iter->first;
         Vec3T &room = iter->second;
         Vec3T transformed = bestTrans.matrix() * kinect;
         double error = (room - transformed).length();
+        avgErr += error;
         cout << "Error: " << error << " with " << room << " -> " << transformed << endl;
     }
-    cerr << bestTrans.ang().get(0) << " " <<
-            bestTrans.ang().get(1) << " " <<
-            bestTrans.ang().get(2) << " " <<
-            bestTrans.pos().get(0) << " " <<
-            bestTrans.pos().get(1) << " " <<
-            bestTrans.pos().get(2) << endl;
+    cout << "ERROR: " << (avgErr / points.size()) << endl;
+
+    // Get actual transform from sensor -> room wrt sensor -> room wrt base.
+    Matrix44T M = //Matrix44T::translate(-reference) *
+                  Matrix44T::translate(sensor) *
+                  bestTrans.matrix() *
+                  Matrix44T::scale(1/25.4) *
+                  Matrix44T::flipYZ();
+
+    // Multiply all points to check our work.
+    for (PointsIter iter = raw.begin(); iter != raw.end(); ++iter) {
+        Vec3T &sensor = iter->first;
+        Vec3T &measured = iter->second;
+        Vec3T room = measured + reference;
+        Number error = (room - (M * sensor)).length();
+        cout << "err: " << error << " : " << room << " -> " << (M * sensor) << endl;
+    }
+
+    cerr << M.serialize() << endl;
 }

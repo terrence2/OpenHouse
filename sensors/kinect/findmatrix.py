@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+from matrix import matrix
 
 import cmd
 import math
@@ -44,7 +45,7 @@ class PointMatch:
         self.sensor = Coord()
 
     def raw(self):
-        return self.sensor.raw() + b' ' + self.measured.raw() 
+        return self.sensor.raw() + b' ' + self.measured.raw()
 
     def __str__(self):
         return "({} [{}]) <-> ({})".format(str(self.actual), str(self.measured), str(self.sensor))
@@ -55,6 +56,7 @@ class Interp(cmd.Cmd):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.matrix = []
         self.sensor = Coord(0, 0, 0, '"')
         self.reference = Coord(0, 0, 0, '"')
         self.points = []
@@ -68,7 +70,7 @@ class Interp(cmd.Cmd):
             return None
         x, y, z = (int(match.group(i)) for i in range(1,4))
         return Coord(x, y, z, unit)
-        
+
     def parse_index(self, line, fmt):
         try:
             index = int(line)
@@ -95,17 +97,20 @@ class Interp(cmd.Cmd):
         print("Point list:")
         for i, pt in enumerate(self.points):
             print(i, ': ', str(pt))
-        
+        print("Current Matrix:")
+        print(self.matrix)
+
     def do_matrix(self, line):
         child = subprocess.Popen(['./register'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         child.stdin.write(self.sensor.raw() + b'\n')
+        child.stdin.write(self.reference.raw() + b'\n')
         for i, pt in enumerate(self.points):
             child.stdin.write(pt.raw() + b' ')
         _, stderr = child.communicate()
-        #print(stdout.decode('UTF-8').rstrip())
         nums = stderr.decode('ASCII').split()
         nums = [float(n.strip()) for n in nums]
-        print(nums)
+        self.matrix = nums
+        print("Matrix: ", self.matrix)
 
     def do_add(self, line):
         "Add a point to the system - format X Y Z in inches from the reference point."
@@ -171,14 +176,14 @@ class Interp(cmd.Cmd):
             data = pickle.load(fp)
         if data[0] != self.VERSION:
             print("Loaded save is from wrong version {}, current is {}".format(v, self.VERSION))
-        self.sensor, self.reference, self.points = data[1:]
+        self.sensor, self.reference, self.points, self.matrix = data[1:]
         print("Loaded: {}".format(fn))
 
     def do_save(self, line):
         "Save state to file."
         fn = os.path.realpath(line)
         with open(fn, 'wb') as fp:
-            pickle.dump((self.VERSION, self.sensor, self.reference, self.points), fp)
+            pickle.dump((self.VERSION, self.sensor, self.reference, self.points, self.matrix), fp)
 
 if __name__ == '__main__':
     Interp().cmdloop("Iterate to find the right matrix:")

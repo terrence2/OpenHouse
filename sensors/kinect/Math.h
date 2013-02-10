@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,6 +68,10 @@ class Vec3
         v[0] = x;
         v[1] = y;
         v[2] = z;
+    }
+
+    Vec3 operator-() const {
+        return Vec3(-v[0], -v[1], -v[2]);
     }
 
     Vec3 operator-(const Vec3 &other) const {
@@ -165,6 +170,15 @@ class Matrix44
         return M;
     }
 
+    static Matrix44 flipYZ() {
+        Matrix44 F = identity();
+        F.set(1, 1, 0);
+        F.set(2, 2, 0);
+        F.set(1, 2, 1);
+        F.set(2, 1, 1);
+        return F;
+    }
+
     static Matrix44 scale(T s) {
         Matrix44 S = identity();
         for (size_t i = 0; i < 3; ++i)
@@ -178,6 +192,10 @@ class Matrix44
         M.set(1, 3, y);
         M.set(2, 3, z);
         return M;
+    }
+
+    static Matrix44 translate(Vec3<T> vec) {
+        return translate(vec.get(0), vec.get(1), vec.get(2));
     }
 
     static Matrix44 rotateXd(T axDeg) {
@@ -214,6 +232,14 @@ class Matrix44
         R.set(1, 0, s);
         R.set(1, 1, c);
         return R;
+    }
+
+    std::string serialize() {
+        std::ostringstream strs;
+        for (size_t i = 0; i < 4; ++i)
+            for (size_t j = 0; j < 4; ++j)
+                strs << v[i][j] << " ";
+        return strs.str();
     }
 };
 typedef Matrix44<Number> Matrix44T;
