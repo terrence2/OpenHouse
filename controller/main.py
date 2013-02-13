@@ -10,6 +10,29 @@ from floorplan import *
 from ruleset import RuleSet
 from network import Network
 
+METERS_PER_FOOT = 0.305 # m
+METERS_PER_INCH = METERS_PER_FOOT / 12. # m
+
+def m(s):
+    feet = 0
+    inches = 0
+
+    s = s.strip()
+
+    feetmatch = re.match(r'^(-?\d+)\'', s)
+    if feetmatch:
+        feet = float(feetmatch.group(1))
+        s = s[len(feetmatch.group(0)):].strip()
+
+    inchesmatch = re.match(r'^(-?\d+)\"', s)
+    if inchesmatch:
+        inches = float(inchesmatch.group(1))
+
+    return feet * METERS_PER_FOOT + inches * METERS_PER_INCH
+
+def in2m(i):
+    return i * METERS_PER_INCH
+
 class HouseRules(RuleSet):
     def event_BedroomKinect_MAYBEADDUSER(self, sensor):
         # If we were OFF before, then turn on, otherwise, we may already be in
@@ -28,9 +51,22 @@ class HouseRules(RuleSet):
             self.floorplan.get_servo('BedLightStrip').turn_off_full()
 
     def event_BedroomKinect_POSITION(self, sensor, sensorPos):
+        zones = {
+            'Desk':
+            {'low':  (m(''' 0'93" '''), m(''' 0'59" '''), 0),
+             'high': (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'54" '''))}
+        }
+        def is_inside_zone(zone, pos):
+            for i in range(3):
+                if pos[i] < zone['low'][i] or pos[i] > zone['high'][i]:
+                    return False
+            return True
+
         for room in self.floorplan.rooms_with_sensor(sensor):
             roomPos = room.map_sensor_position_to_room_position(sensor, sensorPos)
-            print("{}: {}".format(room.name, roomPos))
+            roomPos = tuple([in2m(p) for p in roomPos])
+            inside = [name for name, zone in zones.items() if is_inside_zone(zone, roomPos)]
+            print("{}: {} -> {}".format(room.name, roomPos, inside))
         #self.floorplan.get_servo('BedLightStrip').send_test_message()
 
 def build_floorplan() -> FloorPlan:
@@ -50,14 +86,6 @@ def build_floorplan() -> FloorPlan:
         |        Entry         |------+
         +----------------------+  6'7"
     """
-    def m(s):
-        feet = 0.305 # m
-        inch = feet / 12. # m
-        matches = re.match(r'(-?\d+)\'(?:(-?\d+)")?', s.strip())
-        if matches:
-            if len(matches.groups()) == 2:
-                return int(matches.group(1)) * feet
-            return int(matches.group(1)) * feet + int(matches.group(2)) * inch
 
     flat = FloorPlan('TrainedMonkeyStudios')
     rules = HouseRules(flat)
@@ -90,7 +118,7 @@ def build_floorplan() -> FloorPlan:
 
     # Add all the sensors.
     sensors = [
-        (Kinect, 'BedroomKinect', '127.0.0.1', Network.DefaultSensorPort,
+        (Kinect, 'BedroomKinect', 'gorilla', Network.DefaultSensorPort,
                 [('Bedroom', m(''' 12'4" '''), m(''' 12'7" '''), m(''' 6'1" '''),
                              [-0.0204035, -0.0147874, -0.0302495, 144.0,
                                0.0335971, -0.0112752, -0.0171496, 147.0,

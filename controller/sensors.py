@@ -92,7 +92,7 @@ class Kinect(Sensor):
                 self.users[uid] = Kinect.User(uid)
                 self.rules.send_sensor_event(self, 'ADDUSER')
             self.users[uid].rawPosition = pos
-            print("Kinect {}: raw POSITION uid: {} @ {}".format(self.name, uid, pos)) 
+            #print("Kinect {}: raw POSITION uid: {} @ {}".format(self.name, uid, pos))
             self.rules.send_sensor_event(self, 'POSITION', pos)
 
         else:
