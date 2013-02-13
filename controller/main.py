@@ -30,9 +30,6 @@ def m(s):
 
     return feet * METERS_PER_FOOT + inches * METERS_PER_INCH
 
-def in2m(i):
-    return i * METERS_PER_INCH
-
 class HouseRules(RuleSet):
     def event_BedroomKinect_MAYBEADDUSER(self, sensor):
         # If we were OFF before, then turn on, otherwise, we may already be in
@@ -64,7 +61,6 @@ class HouseRules(RuleSet):
 
         for room in self.floorplan.rooms_with_sensor(sensor):
             roomPos = room.map_sensor_position_to_room_position(sensor, sensorPos)
-            roomPos = tuple([in2m(p) for p in roomPos])
             inside = [name for name, zone in zones.items() if is_inside_zone(zone, roomPos)]
             print("{}: {} -> {}".format(room.name, roomPos, inside))
         #self.floorplan.get_servo('BedLightStrip').send_test_message()
@@ -120,10 +116,11 @@ def build_floorplan() -> FloorPlan:
     sensors = [
         (Kinect, 'BedroomKinect', 'gorilla', Network.DefaultSensorPort,
                 [('Bedroom', m(''' 12'4" '''), m(''' 12'7" '''), m(''' 6'1" '''),
-                             [-0.0204035, -0.0147874, -0.0302495, 144.0,
-                               0.0335971, -0.0112752, -0.0171496, 147.0,
-                               0.00222178, 0.0347016, -0.0184625, 73.0,
-                               0.0, 0.0, 0.0, 1.0])])
+                     [-0.0005185897176859047, -0.0003758472848349213, -0.0007688408741131634, 3.66,
+                      0.0008539254011549632, -0.0002865791659343441, -0.0004358859454365706, 3.73625,
+                      5.647017342997122e-05, 0.0008819999810935458, -0.0004692546423619012, 1.855416666666667,
+                      0.0, 0.0, 0.0, 1.0]
+                 )])
     ]
     for cls, name, host, port, rooms in sensors:
         s = cls(rules, name, (host, port))

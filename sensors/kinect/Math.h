@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <math.h>
 #include <stdlib.h>
@@ -13,7 +14,7 @@
 #define ASSERT(c) ;
 #endif
 
-typedef float Number;
+typedef double Number;
 
 /*
  * An iterator for even subdivision of space.
@@ -92,6 +93,13 @@ class Vec3
         Vec3 out(v[0] / scale,
                  v[1] / scale,
                  v[2] / scale);
+        return out;
+    }
+
+    Vec3 operator*(const T &scale) const {
+        Vec3 out(v[0] * scale,
+                 v[1] * scale,
+                 v[2] * scale);
         return out;
     }
 
@@ -236,6 +244,7 @@ class Matrix44
 
     std::string serialize() {
         std::ostringstream strs;
+        strs << std::setprecision(16);
         for (size_t i = 0; i < 4; ++i)
             for (size_t j = 0; j < 4; ++j)
                 strs << v[i][j] << " ";

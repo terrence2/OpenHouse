@@ -53,6 +53,9 @@ ReadPoints(Vec3T &sensor, Vec3T &reference, PointsVector &points)
     } while(ok);
 }
 
+const Number METERS_PER_FOOT = 0.305;
+const Number METERS_PER_INCH = METERS_PER_FOOT / 12;
+
 int
 main(int argc, char **argv)
 {
@@ -140,7 +143,7 @@ main(int argc, char **argv)
     cout << "ERROR: " << (avgErr / points.size()) << endl;
 
     // Get actual transform from sensor -> room wrt sensor -> room wrt base.
-    Matrix44T M = //Matrix44T::translate(-reference) *
+    Matrix44T M = Matrix44T::scale(METERS_PER_INCH) *
                   Matrix44T::translate(sensor) *
                   bestTrans.matrix() *
                   Matrix44T::scale(1/25.4) *
@@ -150,7 +153,7 @@ main(int argc, char **argv)
     for (PointsIter iter = raw.begin(); iter != raw.end(); ++iter) {
         Vec3T &sensor = iter->first;
         Vec3T &measured = iter->second;
-        Vec3T room = measured + reference;
+        Vec3T room = (measured + reference) * METERS_PER_INCH;
         Number error = (room - (M * sensor)).length();
         cout << "err: " << error << " : " << room << " -> " << (M * sensor) << endl;
     }
