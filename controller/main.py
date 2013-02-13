@@ -51,7 +51,7 @@ class HouseRules(RuleSet):
         zones = {
             'Desk':
             {'low':  (m(''' 0'93" '''), m(''' 0'59" '''), 0),
-             'high': (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'54" '''))}
+             'high': (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'57" '''))}
         }
         def is_inside_zone(zone, pos):
             for i in range(3):
