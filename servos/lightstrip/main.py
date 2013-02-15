@@ -45,10 +45,14 @@ class Arduino:
             tty = serial.Serial(name, self.baud)
             if not tty:
                 continue
-        print("Waiting for arduino to reboot...")
-        time.sleep(10)
+
         if not tty:
+            print("Waiting 10s for arduino to appear in /dev")
+            time.sleep(10)
             return self.connect()
+
+        print("Waiting 3s for arduino to reboot...")
+        time.sleep(3)
         return tty
 
     def write(self, data:bytes):
@@ -63,7 +67,7 @@ class Arduino:
 def main():
     parser = argparse.ArgumentParser(description='Control a LED lightstrip attached to an Arduino.')
     parser.add_argument('name', metavar='NAME', type=str, help='The name of this LightStrip')
-    parser.add_argument('--tty', metavar='TTY', type=str, default=None, help='The TTY the arduino is connected on.')
+    parser.add_argument('--tty', metavar='TTY', type=str, default='/dev/tty????', help='The TTY the arduino is connected on.')
     parser.add_argument('--host', metavar='NAME', type=str, default=DefaultControllerHost, help='Which controller to connect to.')
     args = parser.parse_args()
 
