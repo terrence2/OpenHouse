@@ -1,59 +1,66 @@
 #!/usr/bin/python3
+from arduino import Arduino
 import argparse
-import serial
-import socket
+import cmd
+import struct
 import sys
-import time
-import zmq
 
-DefaultTTY = '/dev/ttyACM0'
-DefaultControllerHost = 'gorilla'
-DefaultServoPort = 31978
+class Interp(cmd.Cmd):
+    prompt = '> '
+
+    def __init__(self, arduino, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.arduino = arduino
+
+    def postcmd(self, stop, line):
+        return line == 'EOF'
+
+    def do_EOF(self, line):
+        "Exit the program."
+        print()
+
+    def do_color(self, line):
+        """
+        Input is: r g b time
+        With rgb in int [0,255] and time in float seconds.
+        """
+        nums = line.split()
+        r, g, b = [int(c) for c in nums[:3]]
+        t = float(nums[3])
+        tMS = int(round(t * 1000))
+        tHi = tMS >> 8
+        tLo = tMS & 0xFF
+        for name, byte in [('r', r), ('g', g), ('b', b), ('tHi', tHi), ('tLo', tLo)]:
+            if byte < 0 or byte > 255:
+                print("Invalid byte supplied for: " + name)
+                return
+        data = struct.pack('!BBBBH', ord('G'), r, g, b, tMS)
+        print(data)
+        self.arduino.write(data)
+
+CMDS = {
+    'on': '1',
+    'off': '0',
+    'fadein': 'i',
+    'fadeout': 'o',
+    'red': 'r',
+    'green': 'g',
+    'blue': 'b'
+}
+for name, cmd in CMDS.items():
+    setattr(Interp, 'do_' + name, lambda self, line, cmd=cmd: self.arduino.write(cmd.encode('ASCII')))
 
 def main():
-	parser = argparse.ArgumentParser(description='Control a LED lightstrip attached to an Arduino.')
-	parser.add_argument('command', metavar='NAME', type=str, help='The data to send.')
-	parser.add_argument('--tty', metavar='TTY', type=str, default=DefaultTTY, help='The TTY the arduino is connected on.')
-	args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='Control a LED lightstrip attached to an Arduino.')
+    parser.add_argument('--tty', metavar='TTY', type=str, default='/dev/tty???*',
+                        help='The TTY the arduino is connected on.')
+    args = parser.parse_args()
 
-	devname = args.tty
-	s = serial.Serial(devname, 9600)
-	if not s:
-		print("Failed to open serial port: {}".format(devname))
-		return 1
+    arduino = Arduino(args.tty, 9600)
+    Interp(arduino).cmdloop("Interact with the arduino:")
+    arduino.close()
 
-	time.sleep(10)
-	s.write(args.command.encode('utf-8'))
-	time.sleep(1)
-
-	s.close()
-
-	return 0
-
-	ctx = zmq.Context()
-	sock = ctx.socket(zmq.SUB)
-	addr = "tcp://" + args.host + ":" + str(DefaultServoPort)
-	print("Connecting to: {}".format(addr))
-	sock.connect(addr)
-	sock.setsockopt(zmq.SUBSCRIBE, b'')
-
-	try:
-		while True:
-			json = sock.recv_json()
-			assert json['name'] == args.name
-			op = json['type']
-			if op == 'ON':
-				s.write(b'i')
-				print("TURN ON")
-			elif op == 'OFF':
-				s.write(b'o')
-				print("TURN OFF")
-			else:
-				print("UNKNOWN MESSAGE: {}".format(op))
-	except KeyboardInterrupt:
-		s.close()
-
-	return 0
+    return 0
 
 if __name__ == '__main__':
-	sys.exit(main())
+    sys.exit(main())

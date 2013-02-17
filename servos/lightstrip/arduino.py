@@ -34,8 +34,9 @@ class Arduino:
         tty = None
         for name in devnames:
             print("Trying to open arduino at: {}".format(name))
-            tty = serial.Serial(name, self.baud)
-            if not tty:
+            try:
+                tty = serial.Serial(name, self.baud)
+            except serial.SerialException as e:
                 continue
 
         if not tty:
