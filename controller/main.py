@@ -14,6 +14,9 @@ METERS_PER_FOOT = 0.305 # m
 METERS_PER_INCH = METERS_PER_FOOT / 12. # m
 
 def m(s):
+    """
+    Convert an string of form feet'inches" into meters.
+    """
     feet = 0
     inches = 0
 
@@ -31,23 +34,24 @@ def m(s):
     return feet * METERS_PER_FOOT + inches * METERS_PER_INCH
 
 class HouseRules(RuleSet):
-    def event_BedroomKinect_MAYBEADDUSER(self, sensor):
+    def event_BedroomKinect_MAYBEADDUSER(self, sensor, sensorUser):
         # If we were OFF before, then turn on, otherwise, we may already be in
         # a higher-priority state.
         if len(sensor.users) == 1:
-            self.floorplan.get_servo('BedLightStrip').turn_on_full()
+            self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
 
-    def event_BedroomKinect_ADDUSER(self, sensor):
+    def event_BedroomKinect_ADDUSER(self, sensor, sensorUser):
         # This is only here in case we missed the MAYBEADDUSER.
         if len(sensor.users) == 1:
-            self.floorplan.get_servo('BedLightStrip').turn_on_full()
+            self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
 
-    def event_BedroomKinect_REMOVEUSER(self, sensor):
+    def event_BedroomKinect_REMOVEUSER(self, sensor, sensorUser):
         # Last one out, hit the lights.
         if not sensor.users:
-            self.floorplan.get_servo('BedLightStrip').turn_off_full()
+            self.floorplan.get_servo('BedLightStrip').color(0, 0, 0)
 
-    def event_BedroomKinect_POSITION(self, sensor, sensorPos):
+    def event_BedroomKinect_POSITION(self, sensor, sensorUser, sensorPos):
+        """
         zones = {
             'Desk':
             {'low':  (m(''' 0'93" '''), m(''' 0'59" '''), 0),
@@ -62,8 +66,26 @@ class HouseRules(RuleSet):
         for room in self.floorplan.rooms_with_sensor(sensor):
             roomPos = room.map_sensor_position_to_room_position(sensor, sensorPos)
             inside = [name for name, zone in zones.items() if is_inside_zone(zone, roomPos)]
-            print("{}: {} -> {}".format(room.name, roomPos, inside))
+            if len(inside) == 0:
+                self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
+            elif inside[0] == 'Desk':
+                self.floorplan.get_servo('BedLightStrip').color(0, 97, 207)
+
+            #print("{}: {} -> {}".format(room.name, roomPos, inside))
         #self.floorplan.get_servo('BedLightStrip').send_test_message()
+        """
+
+    def user_ENTERZONE(self, user, zone):
+        print("ENTERZONE: {}".format(zone.name))
+        zonemap = {
+            'Bed': (0, 0, 1),
+            'Desk': (0, 97, 207),
+        }
+        self.floorplan.get_servo('BedLightStrip').color(*zonemap[zone.name])
+
+    def user_LEAVEZONE(self, user, zone):
+        print("LEAVEZONE: {}".format(zone.name))
+        self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
 
 def build_floorplan() -> FloorPlan:
     """
@@ -83,20 +105,21 @@ def build_floorplan() -> FloorPlan:
         +----------------------+  6'7"
     """
 
-    flat = FloorPlan('TrainedMonkeyStudios')
-    rules = HouseRules(flat)
+    fp = FloorPlan('TrainedMonkeyStudios')
+    rules = HouseRules(fp)
 
     # Add all logical rooms.
-    bathroom = flat.add_room('Bathroom', m(''' 11'3" '''),  m(''' 4'9" '''))
-    bedroom = flat.add_room( 'Bedroom',  m(''' 12'4" '''),  m(''' 12'7" '''))
-    pantry = flat.add_room(  'Pantry',   m(''' 4'7" '''),   m(''' 2'6" '''))
-    laundry = flat.add_room( 'Laundry',  m(''' 3'1" '''),   m(''' 2'6" '''))
-    hallway = flat.add_room( 'Hallway',  m(''' 3' '''),     m(''' 7'7" '''))
-    kitchen = flat.add_room( 'Kitchen',  m(''' 8'4" '''),   m(''' 8' '''))
-    entry = flat.add_room(   'Entry',    m(''' 3'8" '''),   m(''' 11'11" '''))
-    living = flat.add_room(  'Living',   m(''' 12'4"  '''), m(''' 11'11"  '''))
-    porch = flat.add_room(   'Porch',    m(''' 6'7" '''),   m(''' 11'11" '''))
-    dining = flat.add_room(  'Dining',   m(''' 7'7" '''),   m(''' 8'3" '''))
+    ceiling = m(''' 8' ''')
+    bathroom = fp.add_room('Bathroom', m(''' 11'3" '''),  m(''' 4'9" '''),    ceiling)
+    bedroom = fp.add_room( 'Bedroom',  m(''' 12'4" '''),  m(''' 12'7" '''),   ceiling)
+    pantry = fp.add_room(  'Pantry',   m(''' 4'7" '''),   m(''' 2'6" '''),    ceiling)
+    laundry = fp.add_room( 'Laundry',  m(''' 3'1" '''),   m(''' 2'6" '''),    ceiling)
+    hallway = fp.add_room( 'Hallway',  m(''' 3' '''),     m(''' 7'7" '''),    ceiling)
+    kitchen = fp.add_room( 'Kitchen',  m(''' 8'4" '''),   m(''' 8' '''),      ceiling)
+    entry = fp.add_room(   'Entry',    m(''' 3'8" '''),   m(''' 11'11" '''),  ceiling)
+    living = fp.add_room(  'Living',   m(''' 12'4"  '''), m(''' 11'11"  '''), ceiling)
+    porch = fp.add_room(   'Porch',    m(''' 6'7" '''),   m(''' 11'11" '''),  ceiling)
+    dining = fp.add_room(  'Dining',   m(''' 7'7" '''),   m(''' 8'3" '''),    ceiling)
 
     # Connect our rooms.
     doors = [
@@ -104,13 +127,25 @@ def build_floorplan() -> FloorPlan:
         (('''6"''', '''2'6"'''), 'Bedroom', ('''3"''', '''9'10"'''), 'Hallway', ('''2'9"''', '''6'10"''')),
     ]
     for size, name1, pos1, name2, pos2 in doors:
-        room1 = flat.get_room(name1)
-        room2 = flat.get_room(name2)
+        room1 = fp.get_room(name1)
+        room2 = fp.get_room(name2)
         size = (m(size[0]), m(size[1]))
         pos1 = (m(pos1[0]), m(pos1[1]))
         pos2 = (m(pos2[0]), m(pos2[1]))
         room1.add_portal_to(room2, size, pos1)
         room2.add_portal_to(room1, size, pos2)
+
+    # Add zones to all rooms.
+    bedroomZones = {
+        'Bed': (
+            (m(''' 57" '''), 0, 0),
+            (m(''' 134" '''), m(''' 58" '''), m(''' 8' '''))),
+        'Desk': (
+            (m(''' 93" '''), m(''' 59" '''), 0),
+            (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'57" '''))),
+    }
+    for name, extents in bedroomZones.items():
+        bedroom.add_zone(Zone(name, extents[0], extents[1]))
 
     # Add all the sensors.
     sensors = [
@@ -123,9 +158,9 @@ def build_floorplan() -> FloorPlan:
                  )])
     ]
     for cls, name, host, port, rooms in sensors:
-        s = cls(rules, name, (host, port))
+        s = cls(fp, rules, name, (host, port))
         for roomName, X, Y, Z, registration in rooms:
-            flat.add_sensor(s, roomName, (X, Y, Z), registration)
+            fp.add_sensor(s, roomName, (X, Y, Z), registration)
 
     # Add all servos.
     servos = [
@@ -133,11 +168,11 @@ def build_floorplan() -> FloorPlan:
     ]
     for cls, name, host, port, room in servos:
         s = cls(name, (host, port))
-        flat.add_servo(s, room)
+        fp.add_servo(s, room)
     #bedLightStrip = LightStrip('BedLightStrip', '127.0.0.1')
-    #flat.add_servo(bedLightStrip, 'Bedroom')
+    #fp.add_servo(bedLightStrip, 'Bedroom')
 
-    return flat
+    return fp
 
 def main():
     floorplan = build_floorplan()

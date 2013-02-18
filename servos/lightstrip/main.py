@@ -1,7 +1,10 @@
 #!/usr/bin/python3
 from arduino import Arduino
 import argparse
+import datetime
 import socket
+import struct
+import time
 import sys
 import zmq
 
@@ -34,11 +37,19 @@ def main():
             assert json['name'] == args.name
             op = json['type']
             if op == 'ON':
-                arduino.write(b'i')
                 print("TURN ON")
+                arduino.write(b'i')
             elif op == 'OFF':
-                arduino.write(b'o')
                 print("TURN OFF")
+                arduino.write(b'o')
+            elif op == 'GENERIC':
+                r, g, b = [json[i] for i in "rgb"]
+                t = int(round(json['t'] * 1000))
+                print("{} Color: ({} {} {}) in {}".format(datetime.datetime.now(), r, g, b, t))
+                msg = struct.pack('!BBBBH', ord('G'), r, g, b, t)
+                arduino.write(msg)
+            elif op == 'TEST':
+                print("Hello world!")
             else:
                 print("UNKNOWN MESSAGE: {}".format(op))
     except KeyboardInterrupt:

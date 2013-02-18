@@ -36,10 +36,18 @@ class LightStrip(Servo):
             'type': 'OFF'
         })
 
-    """
+    def color(self, r:int, g:int, b:int, t:float=1.0):
+        self.send_message({
+            'name': self.name,
+            'type': 'GENERIC',
+            'r': r,
+            'g': g,
+            'b': b,
+            't': t
+        })
+
     def send_test_message(self):
         self.send_message({
             'name': self.name,
             'type': 'TEST'
         })
-    """
