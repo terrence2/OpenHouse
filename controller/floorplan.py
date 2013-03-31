@@ -2,8 +2,11 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from sensors import Sensor
 from servos import Servo
+import logging
 import itertools
 import numpy
+
+log = logging.getLogger('floorplan')
 
 def registration_to_matrix(nums:[float]):
     A = numpy.array(nums, dtype=float, order='C')
@@ -185,11 +188,18 @@ class User:
                 dtsec = dt.seconds + dt.microseconds / 1000000
                 self.velocity = (end - start) / dtsec
 
+        def get_status(self):
+            return {
+                'defunct': self.defunct,
+                'room': self.room.name if self.room else '',
+                'position': list(self.position) if self.position is not None else 'nowhere',
+                'velocity': list(self.velocity) if self.velocity is not None else ''
+            }
+
         def __str__(self):
             if self.defunct:
                 return "DEFUNCT"
-            return "in {} @ {} v {}({} samp)".format(self.room.name, self.position, self.velocity, len(self.history))
-
+            return "in {} @ {} v {}".format(self.room.name, self.position, self.velocity)
 
     def __init__(self, floorplan, modelUID, sensorUser):
         self.floorplan = floorplan
@@ -203,14 +213,20 @@ class User:
         # Any zones the user is currently in.
         self.zones = []
 
-    def remove_user(self, sensorUser):
+    def remove_sensor_track(self, sensorUser):
         """
         Called by the floorplan when one of our observing sensors loses our track.
         """
         del self.tracks[sensorUser.key()]
 
+    def has_no_tracks(self):
+        return len(self.tracks) == 0
+
     def nondefunct(self):
         return [t for _, t in self.tracks.items() if not t.defunct]
+
+    def is_defunct(self):
+        return bool(self.nondefunct())
 
     def get_position(self):
         allpos = [t.position for t in self.nondefunct()]
@@ -230,22 +246,42 @@ class User:
         """
         Called when one of our tracked positions changes.
         """
-        room = self.get_room()
-        priorZones = None if not room else room.get_zones_at(self.get_position())
+        # Get the current state so that we can send delta events after the update.
+        priorRoom = self.get_room()
+        priorZones = None if not priorRoom else priorRoom.get_zones_at(self.get_position())
 
-        track = self.tracks[sensorUser.key()]
-        track.update()
+        # Update the state.
         # FIXME: Check for and remove diverged tracks
+        self.tracks[sensorUser.key()].update()
+
+        # Check for and emit room change event.
+        currentRoom = self.get_room()
+        if priorRoom != currentRoom:
+            self.floorplan.rules.send_user_event(self, 'CHANGEROOM', priorRoom, currentRoom)
+            # Leave any priorZones.
+            if priorRoom:
+                for zone in priorZones:
+                    self.floorplan.rules.send_user_event(self, 'LEAVEZONE', zone)
+            # Enter any zones in the new room.
+            if currentRoom:
+                for zone in currentRoom.get_zones_at(self.get_position()):
+                    self.floorplan.rules.send_user_event(self, 'ENTERZONE', zone)
 
         # Check for enter and leave zone events.
-        if room:
-            currentZones = room.get_zones_at(self.get_position())
+        elif priorRoom:
+            currentZones = priorRoom.get_zones_at(self.get_position())
             leftZones = priorZones - currentZones
             enteredZones = currentZones - priorZones
             for zone in leftZones:
                 self.floorplan.rules.send_user_event(self, 'LEAVEZONE', zone)
             for zone in enteredZones:
                 self.floorplan.rules.send_user_event(self, 'ENTERZONE', zone)
+
+    def get_status(self):
+        return {
+            'tracks': {'{}-{}'.format(sn,sid): t.get_status() for (sn, sid), t in self.tracks.items()},
+            'zones': self.zones
+        }
 
     def __str__(self):
         tracks = ["{}-track{} {}".format(n,i,str(t)) for (n,i),t in self.tracks.items()]
@@ -327,17 +363,53 @@ class FloorPlan:
     def rooms_with_sensor(self, sensor:Sensor) -> [Room]:
         return [self.rooms[name] for name in self.sensorToRooms[sensor.name]]
 
+    def users_in_room(self, room:Room) -> {User}:
+        return {u for n,u in self.users.items() if not u.is_defunct() and u.get_room() == room}
+
+    def room_has_users(self, room:Room) -> bool:
+        return bool(self.users_in_room(room))
+
+    def handle_timeout(self):
+        """
+        Called by the network if no events were received every Network.Interval.
+        """
+
+    def handle_control_message(self, json):
+        """
+        Called by the network when we receive a message on the control port.
+        Returns a pair: (Reply, DoExit)
+        """
+        if 'name' not in json:
+            log.warning("Dropping invalid control message: no name")
+            return
+
+        eventName = json['name']
+        if eventName == 'exit':
+            return {}, True
+
+        elif eventName == 'status':
+            # Collect and return the system status.
+            return {
+                'sensorUsers': {s.name: s.get_status() for s in self.all_sensors()},
+                'realUsers': {str(n): u.get_status() for n, u in self.users.items()},
+            }, False
+
+        else:
+            log.warning("Unrecognized control message: {}".format(eventName))
+
+        return {}, False
+
     def handle_sensor_message(self, json):
         """
         Called by the network to dispatch messages to the sensor they belong to.
         """
         if 'name' not in json:
-            print("Dropping invalid message: no name")
+            log.warning("Dropping invalid sensor message: no name")
             return
 
         name = json['name']
         if name not in self.sensors:
-            print("Got control message from unknown sensor: {}".format(name))
+            log.warning("Got control message from unknown sensor: {}".format(name))
             return
 
         sensor = self.sensors[name]
@@ -350,10 +422,10 @@ class FloorPlan:
         """
         # Filter out users that we have decided are probably not really users.
         # FIXME: check here if the "user" moved and ungarbage.
-        if sensorUser.probablyGarbage:
+        if not sensorUser or sensorUser.probablyGarbage:
             return
 
-        if eventName in ['MAYBEADDUSER', 'ADDUSER']:
+        if eventName == 'ADDUSER':
             """
             We want to filter new users to remove splits. E.g. if a new user
             appears magically right next to another user /and/ there was only
@@ -362,6 +434,7 @@ class FloorPlan:
             first position update, because we have no idea where the new users
             is right now.
             """
+            log.debug("ADDUSER {}".format(sensorUser.uid))
             return
 
         elif eventName == 'REMOVEUSER':
@@ -370,10 +443,14 @@ class FloorPlan:
             after a user is totally gone, so we handle "removal" in software.
             This event is just to manage the User's sensor list.
             """
+            log.debug("REMOVEUSER {}".format(sensorUser.uid))
             # It is possible for a transitory hit to have never been positioned or associated with a user.
             if sensorUser.modelUID is None:
                 return
-            self.users[sensorUser.modelUID].remove_user(sensorUser)
+            self.users[sensorUser.modelUID].remove_sensor_track(sensorUser)
+            if self.users[sensorUser.modelUID].has_no_tracks():
+                priorUser = self.users.pop(sensorUser.modelUID, None)
+                self.rules.send_user_event(priorUser, 'REMOVEUSER')
             return
 
         elif eventName == 'POSITION':
@@ -395,6 +472,7 @@ class FloorPlan:
             # Update the user info with our new data.
             self.users[sensorUser.modelUID].update(sensorUser)
 
+        # self.show_state()
         #for uid, u in self.users.items():
-        #    print(str(u))
+        #    pass;#print(str(u))
 

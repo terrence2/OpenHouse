@@ -1,3 +1,5 @@
+import logging
+log = logging.getLogger('rules')
 
 class RuleSet:
     """
@@ -19,9 +21,13 @@ class RuleSet:
         visitor = getattr(self, method, None)
         if visitor:
             visitor(sensor, *args)
+        else:
+            log.warning("Unhandled Sensor Event: {} -> {}".format(eventName, method))
 
     def send_user_event(self, user, eventName, *args):
         method = 'user_' + eventName;
         visitor = getattr(self, method, None)
         if visitor:
             visitor(user, *args)
+        else:
+            log.warning("Unhandled User Event: {} -> {}".format(eventName, method))

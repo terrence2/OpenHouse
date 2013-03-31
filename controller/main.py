@@ -1,186 +1,149 @@
 #!/usr/bin/python3
-import re
-import select
+import argparse
+import contextlib
+import curses
+import locale
+import logging
+import socket
 import sys
+import threading
+import time
 import zmq
 
-from sensors import *
-from servos import *
-from floorplan import *
-from ruleset import RuleSet
+# The next two need to be ordered
+import readline
+import cmd
+
+from pprint import pprint
+
 from network import Network
 
-METERS_PER_FOOT = 0.305 # m
-METERS_PER_INCH = METERS_PER_FOOT / 12. # m
 
-def m(s):
-    """
-    Convert an string of form feet'inches" into meters.
-    """
-    feet = 0
-    inches = 0
+@contextlib.contextmanager
+def enter_console():
+    locale.setlocale(locale.LC_ALL, '')
+    stdscr = curses.initscr()
+    stdscr.keypad(1)
+    curses.noecho()
+    curses.cbreak()
+    curses.start_color()
+    try:
+        yield stdscr
+    finally:
+        stdscr.keypad(0)
+        curses.nocbreak()
+        curses.echo()
+        curses.endwin()
 
-    s = s.strip()
+def tui_mode(sock):
+    with enter_console() as stdscr:
+        height, width = stdscr.getmaxyx()
+        halfh = height // 2
+        halfw = width // 2
+        winraw = curses.newwin(halfh, halfw, height - halfh, 0)
+        winreal = curses.newwin(halfh, width - halfw, height - halfh, width - halfw)
 
-    feetmatch = re.match(r'^(-?\d+)\'', s)
-    if feetmatch:
-        feet = float(feetmatch.group(1))
-        s = s[len(feetmatch.group(0)):].strip()
+        stdscr.nodelay(1)
+        curses.curs_set(0)
+        while curses.ERR == stdscr.getch():
+            # Get current status.
+            sock.send_json({'name': 'status'})
+            status = sock.recv_json()
+            if 'error' in status:
+                return status['traceback'] + '\n' + status['error']
 
-    inchesmatch = re.match(r'^(-?\d+)\"', s)
-    if inchesmatch:
-        inches = float(inchesmatch.group(1))
+            # Put raw users on raw window.
+            h = 0
+            for sensorName, users in status['sensorUsers'].items():
+                winraw.addstr(h, 0, sensorName)
+                h += 1
+                for uid, pos in users.items():
+                    winraw.addstr(h, 4, '{:5}: {}'.format(uid, pos))
+                    h += 1
+            winraw.refresh()
 
-    return feet * METERS_PER_FOOT + inches * METERS_PER_INCH
+            # Put transformed users.
+            h = 0
+            for uid, data in status['realUsers'].items():
+                winreal.addstr(h, 0, 'User-{}'.format(uid))
+                h += 1
+                rooms = []
+                for trackname, trackdata in data['tracks'].items():
+                    winreal.addstr(h, 4, '{}: {}'.format(trackname, trackdata['position']))
+                    rooms.append(trackdata['room'])
+                    h += 1
+                winreal.addstr(h, 8, 'Rooms: ' + ', '.join(rooms))
+                winreal.addstr(h+1, 8, 'Zones: ' + ', '.join(data['zones']))
+                h += 2
+            winreal.refresh()
 
-class HouseRules(RuleSet):
-    def event_BedroomKinect_MAYBEADDUSER(self, sensor, sensorUser):
-        # If we were OFF before, then turn on, otherwise, we may already be in
-        # a higher-priority state.
-        if len(sensor.users) == 1:
-            self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
+            # Sleep a bit.
+            stdscr.refresh()
+            time.sleep(0.1)
 
-    def event_BedroomKinect_ADDUSER(self, sensor, sensorUser):
-        # This is only here in case we missed the MAYBEADDUSER.
-        if len(sensor.users) == 1:
-            self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
+    return 'TUI FINISHED'
 
-    def event_BedroomKinect_REMOVEUSER(self, sensor, sensorUser):
-        # Last one out, hit the lights.
-        if not sensor.users:
-            self.floorplan.get_servo('BedLightStrip').color(0, 0, 0)
+class CommandLoop(cmd.Cmd):
+    prompt = '> '
 
-    def event_BedroomKinect_POSITION(self, sensor, sensorUser, sensorPos):
-        """
-        zones = {
-            'Desk':
-            {'low':  (m(''' 0'93" '''), m(''' 0'59" '''), 0),
-             'high': (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'57" '''))}
-        }
-        def is_inside_zone(zone, pos):
-            for i in range(3):
-                if pos[i] < zone['low'][i] or pos[i] > zone['high'][i]:
-                    return False
-            return True
+    def __init__(self):
+        super().__init__()
+        self.ctx = zmq.Context()
+        self.ctl = self.ctx.socket(zmq.REQ)
+        self.ctl.connect("tcp://localhost:{}".format(Network.DefaultControlPort))
 
-        for room in self.floorplan.rooms_with_sensor(sensor):
-            roomPos = room.map_sensor_position_to_room_position(sensor, sensorPos)
-            inside = [name for name, zone in zones.items() if is_inside_zone(zone, roomPos)]
-            if len(inside) == 0:
-                self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
-            elif inside[0] == 'Desk':
-                self.floorplan.get_servo('BedLightStrip').color(0, 97, 207)
+    def do_exit(self, line):
+        self.ctl.send_json({'name': 'exit'})
+        self.ctl.recv_json()
+        print("END OF TRANSMISSION")
+        return True
 
-            #print("{}: {} -> {}".format(room.name, roomPos, inside))
-        #self.floorplan.get_servo('BedLightStrip').send_test_message()
-        """
+    def do_EOF(self, line):
+        return self.do_exit(line)
 
-    def user_ENTERZONE(self, user, zone):
-        print("ENTERZONE: {}".format(zone.name))
-        zonemap = {
-            'Bed': (0, 0, 1),
-            'Desk': (0, 97, 207),
-        }
-        self.floorplan.get_servo('BedLightStrip').color(*zonemap[zone.name])
+    def do_status(self, line):
+        self.ctl.send_json({'name': 'status'})
+        status = self.ctl.recv_json()
+        pprint(status)
 
-    def user_LEAVEZONE(self, user, zone):
-        print("LEAVEZONE: {}".format(zone.name))
-        self.floorplan.get_servo('BedLightStrip').color(255, 255, 255)
+    def do_tui(self, line):
+        rv = tui_mode(self.ctl)
+        print(rv)
 
-def build_floorplan() -> FloorPlan:
-    """
-      0,0         24'
-        +----------+-----------+
-        |  11'3"   |           |
-        -----------+  Bedroom  |
-        | P  |  :  |           | 12'7"
-        |-------+  |           |
-        |       |HW|  12'4"   k|------+
-        |       +  +-----------+      |
-    25' | Kitch :              | Porch|
-        |       :              |      |
-        |             Living   |11'11"|
-        |Dining                |      |
-        |        Entry         |------+
-        +----------------------+  6'7"
-    """
 
-    fp = FloorPlan('TrainedMonkeyStudios')
-    rules = HouseRules(fp)
+def input_loop():
+    """Runs in thread 0 to control the system using the local terminal."""
+    cmdloop = CommandLoop()
+    cmdloop.cmdloop('LOCAL CONTROL ACTIVE END OF LINE')
 
-    # Add all logical rooms.
-    ceiling = m(''' 8' ''')
-    bathroom = fp.add_room('Bathroom', m(''' 11'3" '''),  m(''' 4'9" '''),    ceiling)
-    bedroom = fp.add_room( 'Bedroom',  m(''' 12'4" '''),  m(''' 12'7" '''),   ceiling)
-    pantry = fp.add_room(  'Pantry',   m(''' 4'7" '''),   m(''' 2'6" '''),    ceiling)
-    laundry = fp.add_room( 'Laundry',  m(''' 3'1" '''),   m(''' 2'6" '''),    ceiling)
-    hallway = fp.add_room( 'Hallway',  m(''' 3' '''),     m(''' 7'7" '''),    ceiling)
-    kitchen = fp.add_room( 'Kitchen',  m(''' 8'4" '''),   m(''' 8' '''),      ceiling)
-    entry = fp.add_room(   'Entry',    m(''' 3'8" '''),   m(''' 11'11" '''),  ceiling)
-    living = fp.add_room(  'Living',   m(''' 12'4"  '''), m(''' 11'11"  '''), ceiling)
-    porch = fp.add_room(   'Porch',    m(''' 6'7" '''),   m(''' 11'11" '''),  ceiling)
-    dining = fp.add_room(  'Dining',   m(''' 7'7" '''),   m(''' 8'3" '''),    ceiling)
-
-    # Connect our rooms.
-    doors = [
-        (('''2'4"''', '''6"'''), 'Bathroom', ('''8'11"''', '''4'6"'''), 'Hallway', ('''0'4"''', '''0'-3"''')),
-        (('''6"''', '''2'6"'''), 'Bedroom', ('''3"''', '''9'10"'''), 'Hallway', ('''2'9"''', '''6'10"''')),
-    ]
-    for size, name1, pos1, name2, pos2 in doors:
-        room1 = fp.get_room(name1)
-        room2 = fp.get_room(name2)
-        size = (m(size[0]), m(size[1]))
-        pos1 = (m(pos1[0]), m(pos1[1]))
-        pos2 = (m(pos2[0]), m(pos2[1]))
-        room1.add_portal_to(room2, size, pos1)
-        room2.add_portal_to(room1, size, pos2)
-
-    # Add zones to all rooms.
-    bedroomZones = {
-        'Bed': (
-            (m(''' 57" '''), 0, 0),
-            (m(''' 134" '''), m(''' 58" '''), m(''' 8' '''))),
-        'Desk': (
-            (m(''' 93" '''), m(''' 59" '''), 0),
-            (m(''' 12'4" '''), m(''' 10'7" '''), m(''' 0'57" '''))),
-    }
-    for name, extents in bedroomZones.items():
-        bedroom.add_zone(Zone(name, extents[0], extents[1]))
-
-    # Add all the sensors.
-    sensors = [
-        (Kinect, 'BedroomKinect', 'gorilla', Network.DefaultSensorPort,
-                [('Bedroom', m(''' 12'4" '''), m(''' 12'7" '''), m(''' 6'1" '''),
-                     [-0.0005185897176859047, -0.0003758472848349213, -0.0007688408741131634, 3.66,
-                      0.0008539254011549632, -0.0002865791659343441, -0.0004358859454365706, 3.73625,
-                      5.647017342997122e-05, 0.0008819999810935458, -0.0004692546423619012, 1.855416666666667,
-                      0.0, 0.0, 0.0, 1.0]
-                 )])
-    ]
-    for cls, name, host, port, rooms in sensors:
-        s = cls(fp, rules, name, (host, port))
-        for roomName, X, Y, Z, registration in rooms:
-            fp.add_sensor(s, roomName, (X, Y, Z), registration)
-
-    # Add all servos.
-    servos = [
-        (LightStrip, 'BedLightStrip', '127.0.0.1', Network.DefaultServoPort, 'Bedroom')
-    ]
-    for cls, name, host, port, room in servos:
-        s = cls(name, (host, port))
-        fp.add_servo(s, room)
-    #bedLightStrip = LightStrip('BedLightStrip', '127.0.0.1')
-    #fp.add_servo(bedLightStrip, 'Bedroom')
-
-    return fp
-
-def main():
+def mcp_loop():
+    """Runs in thread 1 to drive the house based on network events."""
+    from instances.trainedmonkeystudios import build_floorplan
     floorplan = build_floorplan()
-
     network = Network(floorplan)
-
     return network.run()
 
+def main():
+    parser = argparse.ArgumentParser(description='I AM THE MASTER CONTROL PROGRAM END OF LINE\n' +
+                                                 'YOU WILL BE FOUND AND YOUR NEEDS FULLFILLED END OF LINE\n')
+    parser.add_argument('-V', '--loglevel', dest='loglevel', type=str, default='DEBUG',
+                        help='Set the log level (default:DEBUG).')
+    args = parser.parse_args()
+
+    global log
+    loglevel = getattr(logging, args.loglevel.upper())
+    logging.basicConfig(format='%(asctime)s:%(levelname)s:%(name)s:%(message)s',
+                        filename='eventlog.log', level=loglevel)
+    log = logging.getLogger('home')
+
+    mcp = threading.Thread(name='MCP', target=mcp_loop)
+    mcp.start()
+
+    ctl = threading.Thread(name='Control', target=input_loop)
+    ctl.start()
+
+    mcp.join()
+    ctl.join()
 
 if __name__ == '__main__':
     sys.exit(main())

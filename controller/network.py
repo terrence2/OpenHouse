@@ -1,9 +1,14 @@
+import logging
 import zmq
 from select import POLLIN, POLLOUT, POLLHUP, POLLNVAL, POLLERR
+
+log = logging.getLogger('network')
 
 class Network:
     DefaultSensorPort = 31975
     DefaultServoPort = 31978
+    DefaultControlPort = 31976
+    Interval = 500
 
     def __init__(self, floorplan):
         self.floorplan = floorplan
@@ -26,9 +31,10 @@ class Network:
         for servo in self.floorplan.all_servos():
             servo.set_socket(self.updateSock)
 
-        #self.sensorctl = self.ctx.socket(zmq.REP)
-        #self.sensorctl.bind("tcp://*:" + str(self.SensorControlPort))
-        #self.poller.register(self.sensorctl, POLLIN)
+        # Create the control socket.
+        self.ctl = self.ctx.socket(zmq.REP)
+        self.ctl.bind("tcp://*:" + str(self.DefaultControlPort))
+        self.poller.register(self.ctl, POLLIN)
 
         #stream = self.ctx.socket(zmq.REP)
         #stream.bind("tcp://*:" + str(StreamPort))
@@ -42,32 +48,31 @@ class Network:
 
     def run(self):
         while True:
-            ready = self.poller.poll(2000)
+            ready = self.poller.poll(Network.Interval)
             if not ready:
+                self.floorplan.handle_timeout()
                 continue
 
             for (sock, event) in ready:
-                # Check for specific well-known sockets.
+                # Check sensor sockets.
                 if sock in self.sensorSocks:
                     if event == POLLIN:
-                        # TODO: move name computation to controller.
                         self.floorplan.handle_sensor_message(sock.recv_json())
                     else:
-                        print("error on sensor socket")
-                        return 1
+                        log.warning("error on sensor socket")
 
+                # Check control socket.
+                elif sock == self.ctl:
+                    if event == POLLIN:
+                        try:
+                            rep, doexit = self.floorplan.handle_control_message(sock.recv_json())
+                            sock.send_json(rep)
+                            if doexit:
+                                return 0
+                        except Exception as e:
+                            import traceback
+                            import sys
+                            sock.send_json({'error': str(e), 'traceback': traceback.format_tb(sys.last_traceback)})
+                    else:
+                        log.warning("error on control socket")
 
-                """
-                # Check servo sockets.
-                for s in self.servos:
-                    if sock == s:
-                        if event == POLLOUT:
-                            msg = self.servos[s][0]
-                            self.servos[s] = self.servos[s][1:]
-                            s.send(msg)
-                            if not self.servos[s]:
-                                self.poller.unregister(s)
-
-                        else:
-                            print("Unexpected event on socket: {}".format(s))
-                """

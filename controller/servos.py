@@ -16,7 +16,6 @@ class Servo:
         self.socket = sock
 
     def send_message(self, json):
-        print("Sending on socket: {}".format(json))
         self.socket.send_json(json)
 
 class LightStrip(Servo):
