@@ -37,6 +37,7 @@ class Arduino:
             try:
                 tty = serial.Serial(name, self.baud)
             except serial.SerialException as e:
+                print("Failed to open arduino: " + str(e))
                 continue
 
         if not tty:
@@ -48,7 +49,7 @@ class Arduino:
         time.sleep(3)
         return tty
 
-    def write(self, data:bytes):
+    def write(self, data):
         assert self.tty
         try:
             self.tty.write(data)

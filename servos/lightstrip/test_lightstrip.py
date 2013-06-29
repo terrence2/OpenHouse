@@ -9,7 +9,7 @@ class Interp(cmd.Cmd):
     prompt = '> '
 
     def __init__(self, arduino, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        cmd.Cmd.__init__(self, *args, **kwargs)
         self.arduino = arduino
 
     def postcmd(self, stop, line):
@@ -47,8 +47,8 @@ CMDS = {
     'green': 'g',
     'blue': 'b'
 }
-for name, cmd in CMDS.items():
-    setattr(Interp, 'do_' + name, lambda self, line, cmd=cmd: self.arduino.write(cmd.encode('ASCII')))
+for name, command in CMDS.items():
+    setattr(Interp, 'do_' + name, lambda self, line, cmd=command: self.arduino.write(command.encode('ASCII')))
 
 def main():
     parser = argparse.ArgumentParser(description='Control a LED lightstrip attached to an Arduino.')
