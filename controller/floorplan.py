@@ -1,19 +1,15 @@
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
-from sensors import Sensor
-from servos import Servo
 import logging
 import itertools
 import numpy
 
+from collections import defaultdict, deque
+from datetime import datetime, timedelta
+
+from lib import registration_to_matrix
+from sensors import Sensor
+from servos import Servo
+
 log = logging.getLogger('floorplan')
-
-def registration_to_matrix(nums:[float]):
-    A = numpy.array(nums, dtype=float, order='C')
-    return A.reshape((4,4))
-
-def vec4(x, y, z, w=1):
-    return numpy.array((x, y, z, w), dtype=float, order='C')
 
 class Portal:
     """
@@ -80,6 +76,8 @@ class Room:
 
     def add_sensor(self, sensor:Sensor, position:(float, float), registration:[float]):
         assert sensor.name not in self.sensors
+        sensor.add_registration(self.name, position,
+                                registration_to_matrix(registration))
         self.sensors[sensor.name] = {'position': position,
                                      'matrix': registration_to_matrix(registration),
                                      'sensor': sensor}
@@ -350,7 +348,6 @@ class FloorPlan:
         if sensor.name not in self.sensors:
             self.sensors[sensor.name] = sensor
         assert sensor is self.sensors[sensor.name]
-        sensor.floorplan = self
         self.rooms[roomName].add_sensor(sensor, position, registration)
         self.sensorToRooms[sensor.name].append(roomName)
 

@@ -2,9 +2,7 @@
 from arduino import Arduino
 import argparse
 import datetime
-import socket
 import struct
-import time
 import sys
 import zmq
 
@@ -22,7 +20,6 @@ def main():
     args = parser.parse_args()
 
     arduino = Arduino(args.tty, 9600)
-    arduino.write(b'0')
 
     ctx = zmq.Context()
     sock = ctx.socket(zmq.SUB)
@@ -36,17 +33,11 @@ def main():
             json = sock.recv_json()
             assert json['name'] == args.name
             op = json['type']
-            if op == 'ON':
-                print("TURN ON")
-                arduino.write(b'i')
-            elif op == 'OFF':
-                print("TURN OFF")
-                arduino.write(b'o')
-            elif op == 'GENERIC':
+            if op == 'GENERIC':
                 r, g, b = [json[i] for i in "rgb"]
                 t = int(round(json['t'] * 1000))
                 print("{} Color: ({} {} {}) in {}".format(datetime.datetime.now(), r, g, b, t))
-                msg = struct.pack('!BBBBH', ord('G'), r, g, b, t)
+                msg = struct.pack('>HHHH', r << 8, g << 8, b << 8, t)
                 arduino.write(msg)
             elif op == 'TEST':
                 print("Hello world!")

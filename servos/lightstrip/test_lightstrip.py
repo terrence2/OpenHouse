@@ -5,6 +5,7 @@ import cmd
 import struct
 import sys
 
+
 class Interp(cmd.Cmd):
     prompt = '> '
 
@@ -21,34 +22,59 @@ class Interp(cmd.Cmd):
 
     def do_color(self, line):
         """
-        Input is: r g b time
-        With rgb in int [0,255] and time in float seconds.
+        Input is:
+            #rrggbb [time]
+            rrr ggg bbb [time]
+
+        With xx in hex [0,FF] and
+        With xxx in int [0,255] and
+        Time is in float seconds and is optional.
         """
-        nums = line.split()
-        r, g, b = [int(c) for c in nums[:3]]
-        t = float(nums[3])
+        nums = [l.strip() for l in line.split()]
+
+        if len(nums) == 0:
+            return
+
+        t = 0
+        if nums[0].startswith('#'):
+            clr = nums[0][1:]
+            assert len(clr) == 6
+            r = int(clr[0:2], 16)
+            g = int(clr[2:4], 16)
+            b = int(clr[4:6], 16)
+            if len(nums) > 1:
+                t = float(nums[1])
+
+        elif len(nums) > 2:
+            r, g, b = [int(c) for c in nums[:3]]
+            if len(nums) > 3:
+                t = float(nums[3])
+
         tMS = int(round(t * 1000))
-        tHi = tMS >> 8
-        tLo = tMS & 0xFF
-        for name, byte in [('r', r), ('g', g), ('b', b), ('tHi', tHi), ('tLo', tLo)]:
-            if byte < 0 or byte > 255:
-                print("Invalid byte supplied for: " + name)
-                return
-        data = struct.pack('!BBBBH', ord('G'), r, g, b, tMS)
-        print(data)
+        r <<= 8
+        g <<= 8
+        b <<= 8
+        data = struct.pack('>HHHH', r, g, b, tMS)
+
         self.arduino.write(data)
 
-CMDS = {
-    'on': '1',
-    'off': '0',
-    'fadein': 'i',
-    'fadeout': 'o',
-    'red': 'r',
-    'green': 'g',
-    'blue': 'b'
-}
-for name, command in CMDS.items():
-    setattr(Interp, 'do_' + name, lambda self, line, cmd=command: self.arduino.write(command.encode('ASCII')))
+    def do_c(self, line):
+        self.do_color(line)
+
+    def do_sleep(self, line):
+        self.do_color("#000001")
+
+    def do_work(self, line):
+        self.do_color("#0061cf")
+
+    def do_out(self, line):
+        self.do_color("#000055")
+
+    def do_on(self, line):
+        self.do_color("#FFFFFF")
+
+    def do_off(self, line):
+        self.do_color("#000000")
 
 def main():
     parser = argparse.ArgumentParser(description='Control a LED lightstrip attached to an Arduino.')
