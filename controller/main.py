@@ -25,7 +25,7 @@ def main():
         filename='eventlog.log', level=loglevel)
     log = logging.getLogger('home')
 
-    from instances.trainedmonkeystudios import build_floorplan
+    from instances.foothill import build_floorplan
     floorplan = build_floorplan()
     smodel = SensorModel(floorplan)
     network = Network(floorplan, smodel)

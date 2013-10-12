@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from lib import registration_to_matrix
 from sensors import Sensor
-from servos import Servo
+from actuators import Actuator
 
 log = logging.getLogger('floorplan')
 
@@ -53,7 +53,7 @@ class Room:
 
         # The set of devices that observes and affects this room.
         self.sensors = {}
-        self.servos = {}
+        self.actuators = {}
 
     def add_portal_to(self, other, size, position):
         p = Portal(other, size[0], size[1], position[0], position[1])
@@ -70,9 +70,9 @@ class Room:
                 out.add(zone)
         return out
 
-    def add_servo(self, servo:Servo):
-        assert servo.name not in self.servos
-        self.servos[servo.name] = servo
+    def add_actuator(self, actuator:Actuator):
+        assert actuator.name not in self.actuators
+        self.actuators[actuator.name] = actuator
 
     def add_sensor(self, sensor:Sensor, position:(float, float), registration:[float]):
         assert sensor.name not in self.sensors
@@ -287,7 +287,7 @@ class User:
 
 class FloorPlan:
     """
-    Contains Rooms filled with Sensors and Servos and links them together into a
+    Contains Rooms filled with Sensors and Actuators and links them together into a
     conceptual space.
 
     It is important to have a model separate from the kinect's idea of a user.
@@ -312,9 +312,9 @@ class FloorPlan:
         # A map of the house.
         self.rooms = {}
 
-        # Every sensor and servo in the house.
+        # Every sensor and actuator in the house.
         self.sensors = {}
-        self.servos = {}
+        self.actuators = {}
 
         # Every user that we are currently tracking.
         self.users = {}
@@ -332,17 +332,17 @@ class FloorPlan:
     def get_room(self, name:str) -> Room:
         return self.rooms[name]
 
-    def add_servo(self, servo:Servo, roomName:str):
-        if servo.name not in self.servos:
-            self.servos[servo.name] = servo
-        assert servo is self.servos[servo.name]
-        self.rooms[roomName].add_servo(servo)
+    def add_actuator(self, actuator:Actuator, roomName:str):
+        if actuator.name not in self.actuators:
+            self.actuators[actuator.name] = actuator
+        assert actuator is self.actuators[actuator.name]
+        self.rooms[roomName].add_actuator(actuator)
 
-    def get_servo(self, name:str):
-        return self.servos[name]
+    def get_actuator(self, name:str):
+        return self.actuators[name]
 
-    def all_servos(self):
-        return self.servos.values()
+    def all_actuators(self):
+        return self.actuators.values()
 
     def add_sensor(self, sensor:Sensor, roomName:str, position:(float,float), registration:[float]):
         if sensor.name not in self.sensors:

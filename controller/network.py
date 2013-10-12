@@ -2,6 +2,8 @@ import logging
 import zmq
 from select import POLLIN
 
+from actuators import ZmqActuator
+
 log = logging.getLogger('network')
 
 
@@ -13,7 +15,7 @@ class Network:
     """
 
     DefaultSensorPort = 31975
-    DefaultServoPort = 31978
+    DefaultActuatorPort = 31978
     DefaultControlPort = 31976
     Interval = 500
 
@@ -33,11 +35,12 @@ class Network:
             self.sensorSocks.append(sock)
             self.poller.register(sock, POLLIN)
 
-        # Create the update broadcaster and let all servos know about it.
+        # Create the update broadcaster and let all actuators know about it.
         self.updateSock = self.ctx.socket(zmq.PUB)
-        self.updateSock.bind("tcp://*:" + str(Network.DefaultServoPort))
-        for servo in self.floorplan.all_servos():
-            servo.set_socket(self.updateSock)
+        self.updateSock.bind("tcp://*:" + str(Network.DefaultActuatorPort))
+        for actuator in self.floorplan.all_actuators():
+            if isinstance(ZmqActuator):
+                actuator.set_socket(self.updateSock)
 
         # Create the control socket.
         self.ctl = self.ctx.socket(zmq.REP)
