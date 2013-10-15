@@ -285,6 +285,15 @@ class User:
         tracks = ["{}-track{} {}".format(n,i,str(t)) for (n,i),t in self.tracks.items()]
         return "UID{}: {}".format(self.uid, '; '.join(tracks))
 
+
+class ListableDict(dict):
+    def __init__(self, parent): self.parent = parent
+    def parent(self): return self.parent
+    def is_dir(self): return True
+    def listdir(self): return self.keys()
+    def lookup(self, name): return self[name]
+
+
 class FloorPlan:
     """
     Contains Rooms filled with Sensors and Actuators and links them together into a
@@ -310,19 +319,24 @@ class FloorPlan:
         self.rules = None
 
         # A map of the house.
-        self.rooms = {}
+        self.rooms = ListableDict(self)
 
         # Every sensor and actuator in the house.
-        self.sensors = {}
-        self.actuators = {}
+        self.sensors = ListableDict(self)
+        self.actuators = ListableDict(self)
 
         # Every user that we are currently tracking.
-        self.users = {}
+        self.users = ListableDict(self)
         self.nextUID = itertools.count(1)
 
         # Maps sensor names to the rooms they observe: this lets us dispatch new
         # events to the right rooms quickly.
         self.sensorToRooms = defaultdict(list) # {str: [str]}
+
+    def parent(self): return self
+    def is_dir(self): return True
+    def listdir(self): return ['rooms', 'sensors', 'actuators', 'users']
+    def lookup(self, name): return self.__dict__[name]
 
     def add_room(self, name, width, length, height) -> Room:
         assert name not in self.rooms

@@ -3,6 +3,7 @@ import argparse
 import logging
 import sys
 
+from filesystem import FileSystem
 from network import Network
 from sensormodel import SensorModel
 
@@ -22,14 +23,20 @@ def main():
     loglevel = getattr(logging, args.loglevel.upper())
     logging.basicConfig(
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s',
-        filename='eventlog.log', level=loglevel)
+        filename='mcp-eventlog.log', level=loglevel)
     log = logging.getLogger('home')
 
     from instances.foothill import build_floorplan
     floorplan = build_floorplan()
     smodel = SensorModel(floorplan)
-    network = Network(floorplan, smodel)
-    return network.run()
+
+    #mountpoint = sys.argv[1]
+    #operations = Operations()
+    fs = FileSystem(floorplan)
+    return fs.run()
+
+    #network = Network(floorplan, smodel)
+    #return network.run()
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()

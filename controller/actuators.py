@@ -1,4 +1,3 @@
-from network import Network
 
 class Actuator:
     """
@@ -15,12 +14,12 @@ class ZmqActuator(Actuator):
     """
     An actuator which is available over the network via ZMQ.
     """
-    def __init__(self, name:str, addr:(str, int)):
+    def __init__(self, name:str, address:(str, int)):
         super().__init__(name)
 
         # Currently unused, as we simply bcast on the servo socket and servos
         # subscribe to get updates.
-        self.addr = addr
+        self.address = address
 
         # The socket we need to broadcast on to reach our servo.
         self.socket = None
@@ -78,7 +77,7 @@ class HueBridge:
     constructed and passed to HueLights, but generally not used directly.
     """
     def __init__(self, address:str, username:str):
-        self.address = addr
+        self.address = address
         self.username = username
 
     def request(self, mode, resource, data=None):
