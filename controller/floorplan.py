@@ -350,6 +350,7 @@ class FloorPlan:
         if actuator.name not in self.actuators:
             self.actuators[actuator.name] = actuator
         assert actuator is self.actuators[actuator.name]
+        actuator.set_floorplan(self)
         self.rooms[roomName].add_actuator(actuator)
 
     def get_actuator(self, name:str):

@@ -1,17 +1,23 @@
+import errno
+import http.client
+import json
+import sys
 
-class Actuator:
+from filesystem import File, Dir
+
+class Actuator(Dir):
     """
     Interface to a thing in the world which can be controlled.
     """
 
     def __init__(self, name:str):
-        super().__init__()
+        super().__init__(None)
 
         # All actuators must have a name.
         self.name = name
 
-        # The floorplan will set itself here when we add.
-        self.floorplan = None
+    def set_floorplan(self, fp):
+        self.parent = fp
 
 
 class ZmqActuator(Actuator):
@@ -33,6 +39,7 @@ class ZmqActuator(Actuator):
 
     def send_message(self, json):
         self.socket.send_json(json)
+
 
 class LightStrip(ZmqActuator):
     """
@@ -72,7 +79,8 @@ class LightStrip(ZmqActuator):
             'type': 'TEST'
         })
 
-class HueBridge:
+
+class HueBridge(Dir):
     """
     A Philips Hue bridge which provides access to individual Hue lights.
 
@@ -85,21 +93,20 @@ class HueBridge:
         self.username = username
 
     def request(self, mode, resource, data=None):
+        if data is not None:
+            data = json.dumps(data).encode('UTF-8')
         conn = http.client.HTTPConnection(self.address)
-        conn.request(mode, address, data)
+        conn.request(mode, '/api/' + self.username + resource, data)
         res = conn.getresponse()
+        data = res.read()
         conn.close()
-        return json.loads(str(result.read(), encoding='utf-8'))
+        print("data: ", data)
+        sys.stdout.flush()
+        return json.loads(str(data, encoding='UTF-8'))
 
+    def listdir(self):
+        return ["address", "username"]
 
-class File:
-    def __init__(self, read, write):
-        self.read = read
-        self.write = write
-    def is_dir(self): return False
-    def read(self):
-        data = self.read()
-        return data
 
 class HueLight(Actuator):
     """
@@ -110,17 +117,28 @@ class HueLight(Actuator):
         self.bridge = bridge
         self.id = id
 
-        self.fs_type_ = File(lambda: "light-hsv",
-                             lambda: "")
-        self.fs_state_ = File(None, None)
+        self.type = File(lambda: "light-hsv\n", lambda: errno.ENOTSUP)
+        self.on = File(self.on_read, self.on_write)
+        self.hsv = File(self.hsv_read, lambda: errno.ENOTSUP)
 
-    def parent(self): return self.floorplan
-    def is_dir(self): return True
-    def listdir(self): return ["type", "state"]
+    def on_read(self):
+        data = self.bridge.request("GET", "/")
+        state = data['lights'][str(self.id)]['state']
+        return "{s[on]}\n".format(s=state)
+
+    def hsv_read(self):
+        data = self.bridge.request("GET", "")
+        state = data['lights'][str(self.id)]['state']
+        return "{s[bri]} {s[hue]} {s[sat]}\n".format(s=state)
+
+    def on_write(self, data):
+        self.bridge.request("PUT", "/lights/" + str(self.id) + "/state",
+                            {'on': data.startswith('true')})
+
+    def listdir(self):
+        return ["type", "on", "hsv"]
+
     def lookup(self, name):
-        if name == "type":
-            return self.fs_type_
-        else:
-            return self.fs_state_
+        return self.__dict__[name]
 
 

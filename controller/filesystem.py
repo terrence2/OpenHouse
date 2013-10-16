@@ -41,6 +41,7 @@ class FileSystem(llfuse.Operations):
         entry.st_uid = 1000
         entry.st_gid = 1000
         entry.st_rdev = 0
+        entry.st_size = 4096
         entry.st_blksize = 4096
         entry.st_blocks = 1
         entry.st_atime = 0
@@ -49,11 +50,9 @@ class FileSystem(llfuse.Operations):
         if not obj.is_dir():
             entry.st_mode = 0o600 | stat.S_IFREG
             entry.st_nlink = 1
-            entry.st_size = len(obj.read())
         else:
             entry.st_mode = 0o600 | stat.S_IFDIR
             entry.st_nlink = 2
-            entry.st_size = 2 + len(obj.listdir())
         return entry
 
     def getattr(self, inode):
@@ -72,6 +71,27 @@ class FileSystem(llfuse.Operations):
             stat = self._getattr(child)
             yield (name.encode('UTF-8'), stat, i + 1)
 
+    def open(self, inode, flags):
+        assert inode in self.inode_to_obj_
+        return inode
+
+    def read(self, fh, offset, length):
+        obj = self.inode_to_obj_[fh]
+        data = obj.read()
+        if isinstance(data, int):
+            raise llfuse.FUSEError(data)
+        data = data.encode('UTF-8')
+        return data[offset:offset + length]
+
+    def write(self, fh, offset, buf):
+        obj = self.inode_to_obj_[fh]
+        data = buf.decode("UTF-8")
+        obj.write(data)
+        return len(buf)
+
+    def setattr(self, inode, attr):
+        return self.getattr(inode)
+
     def lookup(self, inode_p, name):
         parent = self.inode_to_obj_[inode_p]
         name = name.decode('UTF-8')
@@ -79,7 +99,10 @@ class FileSystem(llfuse.Operations):
             return inode_p
         if name == '..':
             return self._lookup_or_ceate_inode(parent.parent())
-        return self._getattr(parent.lookup(name))
+        try:
+            return self._getattr(parent.lookup(name))
+        except KeyError:
+            raise llfuse.FUSEError(errno.ENOENT)
 
     def run(self):
         llfuse.init(self, '/things', ['fsname=thingfs', 'nonempty', 'debug'])
@@ -91,3 +114,28 @@ class FileSystem(llfuse.Operations):
             raise
 
         llfuse.close()
+
+
+class File:
+    def __init__(self, read, write):
+        self.read = read
+        self.write = write
+
+    def is_dir(self):
+        return False
+
+    def read(self):
+        data = self.read()
+        return data
+
+
+class Dir:
+    def __init__(self, parent):
+        self.parent = parent
+
+    def is_dir(self):
+        return True
+
+    def listdir(self):
+        raise llfuse.FUSEError(errno.ENOTSUP)
+
