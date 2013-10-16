@@ -1,22 +1,18 @@
 import errno
 import logging
-import os
 import stat
+import sys
+
+from pprint import pprint
 
 import llfuse
 
 log = logging.getLogger('fs')
 
+
 class FileSystem(llfuse.Operations):
     """
     Export the floorplan as an interactable filesystem.
-    /name
-    /rooms/
-    /sensors/
-    /sensors/by-room/
-    /sensors/by-name/
-    /actuators/
-    /users/
     """
     def __init__(self, floorplan):
         self.floorplan = floorplan
@@ -71,27 +67,22 @@ class FileSystem(llfuse.Operations):
     def readdir(self, inode, off):
         obj = self.inode_to_obj_[inode]
         entries = obj.listdir()
-        for i, name in enumerate(entries[off:], off + 1):
-            yield (name.encode('UTF-8'), self._getattr(obj.lookup(name)), i)
+        for i, name in enumerate(entries[off:], off):
+            child = obj.lookup(name)
+            stat = self._getattr(child)
+            yield (name.encode('UTF-8'), stat, i + 1)
 
     def lookup(self, inode_p, name):
         parent = self.inode_to_obj_[inode_p]
         name = name.decode('UTF-8')
-
         if name == '.':
-            inode = inode_p
-        elif name == '..':
-            inode = self._lookup_or_ceate_inode(parent.parent())
-        else:
-            obj = parent.lookup(name)
-            if not obj:
-                raise llfuse.FUSEError(errno.ENOENT)
-            inode = self._lookup_or_create_inode(obj)
-
-        return self.getattr(inode)
+            return inode_p
+        if name == '..':
+            return self._lookup_or_ceate_inode(parent.parent())
+        return self._getattr(parent.lookup(name))
 
     def run(self):
-        llfuse.init(self, '/things', ['fsname=thingfs', 'nonempty'])
+        llfuse.init(self, '/things', ['fsname=thingfs', 'nonempty', 'debug'])
 
         try:
             llfuse.main(single=True)
@@ -100,4 +91,3 @@ class FileSystem(llfuse.Operations):
             raise
 
         llfuse.close()
-

@@ -10,6 +10,10 @@ class Actuator:
         # All actuators must have a name.
         self.name = name
 
+        # The floorplan will set itself here when we add.
+        self.floorplan = None
+
+
 class ZmqActuator(Actuator):
     """
     An actuator which is available over the network via ZMQ.
@@ -88,6 +92,15 @@ class HueBridge:
         return json.loads(str(result.read(), encoding='utf-8'))
 
 
+class File:
+    def __init__(self, read, write):
+        self.read = read
+        self.write = write
+    def is_dir(self): return False
+    def read(self):
+        data = self.read()
+        return data
+
 class HueLight(Actuator):
     """
     An individually controllable Philips Hue light.
@@ -96,4 +109,18 @@ class HueLight(Actuator):
         super().__init__(name)
         self.bridge = bridge
         self.id = id
+
+        self.fs_type_ = File(lambda: "light-hsv",
+                             lambda: "")
+        self.fs_state_ = File(None, None)
+
+    def parent(self): return self.floorplan
+    def is_dir(self): return True
+    def listdir(self): return ["type", "state"]
+    def lookup(self, name):
+        if name == "type":
+            return self.fs_type_
+        else:
+            return self.fs_state_
+
 

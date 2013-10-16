@@ -290,7 +290,7 @@ class ListableDict(dict):
     def __init__(self, parent): self.parent = parent
     def parent(self): return self.parent
     def is_dir(self): return True
-    def listdir(self): return self.keys()
+    def listdir(self): return list(self.keys())
     def lookup(self, name): return self[name]
 
 
