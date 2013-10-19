@@ -1,3 +1,4 @@
+import colorsys
 import errno
 import http.client
 import json
@@ -104,8 +105,6 @@ class HueBridge(Dir):
         res = conn.getresponse()
         data = res.read()
         conn.close()
-        print("data: ", data)
-        sys.stdout.flush()
         return json.loads(str(data, encoding='UTF-8'))
 
     def listdir(self):
@@ -123,14 +122,10 @@ class HueLight(Actuator):
 
         self._fs_on = File(self.read_on, self.write_on)
         self._fs_hsv = File(self.read_hsv, self.write_hsv)
+        self._fs_rgb = File(self.read_rgb, self.write_rgb)
+        self._fs_colortemp = File(self.read_colortemp, self.write_colortemp)
 
     # ON
-    def read_on(self) -> str:
-        return str(self.on) + "\n"
-
-    def write_on(self, data:str):
-        self.on = data.startswith('true')
-
     @property
     def on(self) -> bool:
         data = self.hue_bridge.request("GET", "/")
@@ -140,19 +135,13 @@ class HueLight(Actuator):
     def on(self, value:bool):
         self.hue_bridge.request("PUT", self.state_url(), {'on': bool(value)})
 
+    def read_on(self) -> str:
+        return str(self.on) + "\n"
+
+    def write_on(self, data:str):
+        self.on = data.startswith('true')
+
     # HSV
-    def read_hsv(self) -> str:
-        return "{} {} {}\n".format(*self.hsv)
-
-    def write_hsv(self, data:str):
-        try:
-            parts = data.strip().split()
-            parts = [int(p) for p in parts]
-            self.hsv = parts
-        except Exception as e:
-            log.warn(str(e))
-            return
-
     @property
     def hsv(self) -> (int, int, int):
         data = self.hue_bridge.request("GET", "")
@@ -166,9 +155,91 @@ class HueLight(Actuator):
                              'hue': value[1],
                              'sat': value[2]})
 
+    def read_hsv(self) -> str:
+        return "{} {} {}\n".format(*self.hsv)
+
+    def write_hsv(self, data:str):
+        try:
+            parts = data.strip().split()
+            parts = [int(p) for p in parts]
+            self.hsv = parts
+        except Exception as e:
+            log.warn(str(e))
+            return
+
+    # RGB
+    @property
+    def rgb(self) -> (int, int, int):
+        data = self.hue_bridge.request("GET", "")
+        state = self.state_from(data)
+        return self.bhs_to_rgb((state['bri'], state['hue'], state['sat']))
+
+    @rgb.setter
+    def rgb(self, data:(int, int, int)):
+        bri, hue, sat = self.rgb_to_bhs(data)
+        self.hue_bridge.request("PUT", self.state_url(),
+                                {'bri': bri,
+                                 'hue': hue,
+                                 'sat': sat})
+
+    def read_rgb(self) -> str:
+        return "{} {} {}\n".format(*self.rgb)
+
+    def write_rgb(self, data:str):
+        data = data.strip()
+        try:
+            if data.startswith('#'):
+                if len(data) == 4:
+                    r = int(data[1], 16) * 16
+                    g = int(data[2], 16) * 16
+                    b = int(data[3], 16) * 16
+                elif len(data) == 7:
+                    r = int(data[1:3], 16)
+                    g = int(data[3:5], 16)
+                    b = int(data[5:7], 16)
+                else:
+                    raise AssertionError("HTML format must have 3 or 6 chars: "
+                                         + str(len(data)) + ':' + data)
+            else:
+                r, g, b = [int(p) for p in data.strip().split()]
+            self.rgb = (r, g, b)
+        except Exception as e:
+            log.warn(str(e))
+            return
+
+    # Color Temperature
+    @property
+    def colortemp(self) -> int:
+        "Mired color temperature."
+        data = self.hue_bridge.request("GET", "")
+        return int(self.state_from(data)['ct'])
+
+    @colortemp.setter
+    def colortemp(self, data:int):
+        self.hue_bridge.request("PUT", self.state_url(), {'ct': data})
+
+    def read_colortemp(self) -> str:
+        return "{} in [153,500]".format(self.colortemp)
+
+    def write_colortemp(self, data:str):
+        self.colortemp = int(data.strip())
+
     # Utility
     def state_url(self):
         return "/lights/{}/state".format(self.hue_light_id)
 
     def state_from(self, data):
         return data['lights'][str(self.hue_light_id)]['state']
+
+    def rgb_to_bhs(self, rgb):
+        r, g, b = [p / 256 for p in rgb]
+        hue, light, sat = colorsys.rgb_to_hls(r, g, b)
+        return (int(light * 256), int(hue * 2**16), int(sat * 256))
+
+    def bhs_to_rgb(self, bhs):
+        bri, hue, sat = [p / 256 for p in bhs]
+        hue /= 256
+        r, g, b = colorsys.hls_to_rgb(hue, bri, sat)
+        return [int(p * 256) for p in (r, g, b)]
+
+
