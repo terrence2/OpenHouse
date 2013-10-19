@@ -124,18 +124,45 @@ class File:
     def is_dir(self):
         return False
 
-    def read(self):
-        data = self.read()
-        return data
-
 
 class Dir:
+    """
+    A base class mixin which allows the class to be used
+    as a filesystem directory entry.
+    """
     def __init__(self, parent):
         self.parent = parent
+
+    def parent(self):
+        return self.parent
 
     def is_dir(self):
         return True
 
     def listdir(self):
-        raise llfuse.FUSEError(errno.ENOTSUP)
+        keys = self.__dict__.keys()
+        return [k[len('_fs_'):] for k in keys if k.startswith('_fs_')]
+
+    def lookup(self, name):
+        return self.__dict__['_fs_' + name]
+
+
+class Map(dict):
+    """
+    A map which is usable as a filesystem directory.
+    """
+    def __init__(self, parent):
+        self.parent = parent
+
+    def parent(self):
+        return self.parent
+
+    def is_dir(self):
+        return True
+
+    def listdir(self):
+        return list(self.keys())
+
+    def lookup(self, name):
+        return self[name]
 

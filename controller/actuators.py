@@ -1,9 +1,13 @@
 import errno
 import http.client
 import json
+import logging
 import sys
 
 from filesystem import File, Dir
+
+log = logging.getLogger('actuators')
+
 
 class Actuator(Dir):
     """
@@ -112,33 +116,59 @@ class HueLight(Actuator):
     """
     An individually controllable Philips Hue light.
     """
-    def __init__(self, name:str, bridge:HueBridge, id:int):
+    def __init__(self, name:str, bridge:HueBridge, hue_light_id:int):
         super().__init__(name)
-        self.bridge = bridge
-        self.id = id
+        self.hue_bridge = bridge
+        self.hue_light_id = hue_light_id
 
-        self.type = File(lambda: "light-hsv\n", lambda: errno.ENOTSUP)
-        self.on = File(self.on_read, self.on_write)
-        self.hsv = File(self.hsv_read, lambda: errno.ENOTSUP)
+        self._fs_on = File(self.read_on, self.write_on)
+        self._fs_hsv = File(self.read_hsv, self.write_hsv)
 
-    def on_read(self):
-        data = self.bridge.request("GET", "/")
-        state = data['lights'][str(self.id)]['state']
-        return "{s[on]}\n".format(s=state)
+    # ON
+    def read_on(self) -> str:
+        return str(self.on) + "\n"
 
-    def hsv_read(self):
-        data = self.bridge.request("GET", "")
-        state = data['lights'][str(self.id)]['state']
-        return "{s[bri]} {s[hue]} {s[sat]}\n".format(s=state)
+    def write_on(self, data:str):
+        self.on = data.startswith('true')
 
-    def on_write(self, data):
-        self.bridge.request("PUT", "/lights/" + str(self.id) + "/state",
-                            {'on': data.startswith('true')})
+    @property
+    def on(self) -> bool:
+        data = self.hue_bridge.request("GET", "/")
+        return self.state_from(data)['on']
 
-    def listdir(self):
-        return ["type", "on", "hsv"]
+    @on.setter
+    def on(self, value:bool):
+        self.hue_bridge.request("PUT", self.state_url(), {'on': bool(value)})
 
-    def lookup(self, name):
-        return self.__dict__[name]
+    # HSV
+    def read_hsv(self) -> str:
+        return "{} {} {}\n".format(*self.hsv)
 
+    def write_hsv(self, data:str):
+        try:
+            parts = data.strip().split()
+            parts = [int(p) for p in parts]
+            self.hsv = parts
+        except Exception as e:
+            log.warn(str(e))
+            return
 
+    @property
+    def hsv(self) -> (int, int, int):
+        data = self.hue_bridge.request("GET", "")
+        state = self.state_from(data)
+        return (state['bri'], state['hue'], state['sat'])
+
+    @hsv.setter
+    def hsv(self, value:(int, int, int)):
+        self.hue_bridge.request("PUT", self.state_url(),
+                            {'bri': value[0],
+                             'hue': value[1],
+                             'sat': value[2]})
+
+    # Utility
+    def state_url(self):
+        return "/lights/{}/state".format(self.hue_light_id)
+
+    def state_from(self, data):
+        return data['lights'][str(self.hue_light_id)]['state']

@@ -5,11 +5,14 @@ import numpy
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
+import filesystem
+
 from lib import registration_to_matrix
 from sensors import Sensor
 from actuators import Actuator
 
 log = logging.getLogger('floorplan')
+
 
 class Portal:
     """
@@ -21,6 +24,7 @@ class Portal:
         self.height = height
         self.x = x
         self.y = y
+
 
 class Zone:
     """
@@ -37,6 +41,7 @@ class Zone:
             if pos[i] < self.low[i] or pos[i] > self.high[i]:
                 return False
         return True
+
 
 class Room:
     """
@@ -92,6 +97,7 @@ class Room:
         if not inside:
             return None
         return roomPos
+
 
 class User:
     """
@@ -286,15 +292,7 @@ class User:
         return "UID{}: {}".format(self.uid, '; '.join(tracks))
 
 
-class ListableDict(dict):
-    def __init__(self, parent): self.parent = parent
-    def parent(self): return self.parent
-    def is_dir(self): return True
-    def listdir(self): return list(self.keys())
-    def lookup(self, name): return self[name]
-
-
-class FloorPlan:
+class FloorPlan(filesystem.Dir):
     """
     Contains Rooms filled with Sensors and Actuators and links them together into a
     conceptual space.
@@ -311,7 +309,7 @@ class FloorPlan:
     the human we were tracking -> quick, add another user to the database.
     """
     def __init__(self, name):
-        super().__init__()
+        super().__init__(self)
         self.name = name
 
         # The rules for us to dispatch events to.
@@ -319,24 +317,31 @@ class FloorPlan:
         self.rules = None
 
         # A map of the house.
-        self.rooms = ListableDict(self)
+        self._fs_rooms = filesystem.Map(self)
 
         # Every sensor and actuator in the house.
-        self.sensors = ListableDict(self)
-        self.actuators = ListableDict(self)
+        self._fs_sensors = filesystem.Map(self)
+        self._fs_actuators = filesystem.Map(self)
 
         # Every user that we are currently tracking.
-        self.users = ListableDict(self)
+        self._fs_users = filesystem.Map(self)
         self.nextUID = itertools.count(1)
 
         # Maps sensor names to the rooms they observe: this lets us dispatch new
         # events to the right rooms quickly.
         self.sensorToRooms = defaultdict(list) # {str: [str]}
 
-    def parent(self): return self
-    def is_dir(self): return True
-    def listdir(self): return ['rooms', 'sensors', 'actuators', 'users']
-    def lookup(self, name): return self.__dict__[name]
+    @property
+    def rooms(self): return self._fs_rooms
+
+    @property
+    def sensors(self): return self._fs_sensors
+
+    @property
+    def actuators(self): return self._fs_actuators
+
+    @property
+    def users(self): return self._fs_users
 
     def add_room(self, name, width, length, height) -> Room:
         assert name not in self.rooms
