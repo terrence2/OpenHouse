@@ -1,17 +1,44 @@
 import logging
 import itertools
 import numpy
+import pprint
 
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 
-import filesystem
+import filesystem as fs
 
 from lib import registration_to_matrix
 from sensors import Sensor
 from actuators import Actuator
 
 log = logging.getLogger('floorplan')
+
+
+class Alarm(fs.File):
+    def __init__(self, name, callback, data=None, year='*', month='*', day='*', hour='*', minute='*', second='*'):
+        super().__init__(self.fs_read, self.fs_write)
+        self.name = name
+        self.callback = callback
+        self.data = data
+        self.year = year
+        self.month = month
+        self.day = day
+        self.hour = hour
+        self.minute = minute
+        self.second = second
+
+    def next_instance(self, now:datetime):
+        raise NotImplementedError()
+
+    def fs_read(self) -> str:
+        return str(self) + '\n'
+
+    def fs_write(self, data:str):
+        log.warning("write not implemented for alarms")
+
+    def __str__(self):
+        return "{} @ {}/{}/{} {}:{}:{}".format(self.name, self.year, self.month, self.day, self.hour, self.minute, self.second)
 
 
 class Portal:
@@ -43,12 +70,13 @@ class Zone:
         return True
 
 
-class Room:
+class Room(fs.Dir):
     """
     An axis-aligned rectangular extent in a floorplan.
     """
     def __init__(self, name, dimensions):
-        super().__init__()
+        super().__init__(None)
+
         self.name = name
         self.dimensions = dimensions
 
@@ -60,11 +88,55 @@ class Room:
         self.sensors = {}
         self.actuators = {}
 
+        # A node for setting pre-set modes.
+        self.presets_ = {}
+        self._fs_presets = fs.File(self.read_presets, None)
+        self.preset = None
+        self._fs_preset = fs.File(self.read_preset, self.write_preset)
+
+    # Re-use the parent link as the floorplan link.
+    @property
+    def floorplan(self):
+        return self.parent
+    @floorplan.setter
+    def floorplan(self, fp):
+        self.parent = fp
+
+    # Presets
+    def add_preset(self, name:str, state:dict):
+        assert name not in self.presets_
+        self.presets_[name] = state
+
+    def read_presets(self) -> str:
+        return pprint.pformat(self.presets_) + '\n'
+
+    def read_preset(self) -> str:
+        return str(self.preset) + '\n'
+
+    def write_preset(self, data:str):
+        name = data.strip()
+        if name not in self.presets_:
+            log.warning("Got attempted set of preset not in list: {}".format(name))
+            return
+        self._apply_preset(name)
+
+    def _apply_preset(self, name:str):
+        self.preset = name
+        state = self.presets_[name]
+        for actname, props in state.items():
+            assert actname in self.actuators
+            self.actuators[actname].control = ''
+            for propname, propval in props.items():
+                log.info("setting {} state {} to {}".format(actname, propname, propval))
+                setattr(self.actuators[actname], propname, propval)
+
+    # Portal
     def add_portal_to(self, other, size, position):
         p = Portal(other, size[0], size[1], position[0], position[1])
         self.portals.append(p)
         return p
 
+    # Zone
     def add_zone(self, zone:Zone):
         self.zones[zone.name] = zone
 
@@ -75,10 +147,12 @@ class Room:
                 out.add(zone)
         return out
 
+    # Actuator
     def add_actuator(self, actuator:Actuator):
         assert actuator.name not in self.actuators
         self.actuators[actuator.name] = actuator
 
+    # Sensor
     def add_sensor(self, sensor:Sensor, position:(float, float), registration:[float]):
         assert sensor.name not in self.sensors
         sensor.add_registration(self.name, position,
@@ -292,7 +366,7 @@ class User:
         return "UID{}: {}".format(self.uid, '; '.join(tracks))
 
 
-class FloorPlan(filesystem.Dir):
+class FloorPlan(fs.Dir):
     """
     Contains Rooms filled with Sensors and Actuators and links them together into a
     conceptual space.
@@ -317,19 +391,25 @@ class FloorPlan(filesystem.Dir):
         self.rules = None
 
         # A map of the house.
-        self._fs_rooms = filesystem.Map(self)
+        self._fs_rooms = fs.Map(self)
 
         # Every sensor and actuator in the house.
-        self._fs_sensors = filesystem.Map(self)
-        self._fs_actuators = filesystem.Map(self)
+        self._fs_sensors = fs.Map(self)
+        self._fs_actuators = fs.Map(self)
 
         # Every user that we are currently tracking.
-        self._fs_users = filesystem.Map(self)
+        self._fs_users = fs.Map(self)
         self.nextUID = itertools.count(1)
 
         # Maps sensor names to the rooms they observe: this lets us dispatch new
         # events to the right rooms quickly.
         self.sensorToRooms = defaultdict(list) # {str: [str]}
+
+        # The set of time-activated events.
+        self._fs_alarms = fs.Map(self)
+
+        # Instanciations of the next instance of each alarm in alarms_.
+        self.concrete_alarms_ = set()
 
     @property
     def rooms(self): return self._fs_rooms
@@ -341,22 +421,42 @@ class FloorPlan(filesystem.Dir):
     def actuators(self): return self._fs_actuators
 
     @property
+    def alarms(self): return self._fs_alarms
+
+    @property
     def users(self): return self._fs_users
 
-    def add_room(self, name, width, length, height) -> Room:
-        assert name not in self.rooms
-        self.rooms[name] = Room(name, (width, length, height))
-        return self.rooms[name]
+    def add_room(self, room:Room) -> Room:
+        """
+        Insert a room into the floorplan. The room name must be globally unique
+        and not already in a floorplan.
+        """
+        assert room.name not in self.rooms
+        self.rooms[room.name] = room
+        assert room.floorplan is None
+        room.floorplan = self
+        return room
 
     def get_room(self, name:str) -> Room:
         return self.rooms[name]
 
-    def add_actuator(self, actuator:Actuator, roomName:str):
-        if actuator.name not in self.actuators:
-            self.actuators[actuator.name] = actuator
-        assert actuator is self.actuators[actuator.name]
-        actuator.set_floorplan(self)
-        self.rooms[roomName].add_actuator(actuator)
+    def add_actuator(self, actuator:Actuator, rooms:[Room]) -> Actuator:
+        """
+        Inserts an actuator into the floorplan. The actuator must not already
+        have been added to any floorplan. The actuator name must be globally
+        unique.
+
+        The rooms list is a convenience parameter that simply inserts the
+        actuator into the listed rooms so that this does not need to be done
+        manually.
+        """
+        assert actuator.name not in self.actuators
+        self.actuators[actuator.name] = actuator
+        assert actuator.floorplan is None
+        actuator.floorplan = self
+        for room in rooms:
+            room.add_actuator(actuator)
+        return actuator
 
     def get_actuator(self, name:str):
         return self.actuators[name]
@@ -386,10 +486,16 @@ class FloorPlan(filesystem.Dir):
     def room_has_users(self, room:Room) -> bool:
         return bool(self.users_in_room(room))
 
+    def add_alarm(self, alarm:Alarm):
+        self.alarms[alarm.name] = alarm
+        #self.concrete_alarms_ += {alarm.next_instance(datetime.now())}
+
     def handle_timeout(self):
         """
         Called by the network if no events were received every Network.Interval.
         """
+        # Check if our current time is after any concrete alarm instances and
+        # call the callback and re-trigger if so.
 
     def handle_control_message(self, json):
         """
@@ -493,3 +599,5 @@ class FloorPlan(filesystem.Dir):
         #for uid, u in self.users.items():
         #    pass;#print(str(u))
 
+    def do_sunrise(self, data):
+        print("Called do_sunrise")

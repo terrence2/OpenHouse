@@ -21,7 +21,12 @@ class Actuator(Dir):
         # All actuators must have a name.
         self.name = name
 
-    def set_floorplan(self, fp):
+    # Re-use the parent link as the floorplan link.
+    @property
+    def floorplan(self):
+        return self.parent
+    @floorplan.setter
+    def floorplan(self, fp):
         self.parent = fp
 
 
@@ -124,6 +129,8 @@ class HueLight(Actuator):
         self._fs_hsv = File(self.read_hsv, self.write_hsv)
         self._fs_rgb = File(self.read_rgb, self.write_rgb)
         self._fs_colortemp = File(self.read_colortemp, self.write_colortemp)
+        self._fs_control = File(self.read_control, None)
+        self.control_ = ''
 
     # ON
     @property
@@ -223,6 +230,25 @@ class HueLight(Actuator):
 
     def write_colortemp(self, data:str):
         self.colortemp = int(data.strip())
+
+    # Action
+    @property
+    def control(self) -> str:
+        """
+        The current controling state of the light.
+
+        When the control is empty, the light is allowed to be controlled
+        by timers and events from the model. When the control is set,
+        however, its value is the non-model action that set its state.
+        """
+        return self.control_
+
+    @control.setter
+    def control(self, value:str):
+        self.control_ = value
+
+    def read_control(self) -> str:
+        return self.control_ + '\n'
 
     # Utility
     def state_url(self):
