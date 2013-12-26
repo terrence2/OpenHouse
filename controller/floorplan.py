@@ -153,12 +153,13 @@ class Room(fs.Dir):
         self.actuators[actuator.name] = actuator
 
     # Sensor
-    def add_sensor(self, sensor:Sensor, position:(float, float), registration:[float]):
+    def add_sensor(self, sensor: Sensor, position: (float, float), registration: [float]):
         assert sensor.name not in self.sensors
-        sensor.add_registration(self.name, position,
-                                registration_to_matrix(registration))
+
+        #sensor.add_registration(self.name, position,
+        #                        registration_to_matrix(registration))
         self.sensors[sensor.name] = {'position': position,
-                                     'matrix': registration_to_matrix(registration),
+                                     'matrix': None,  # registration_to_matrix(registration),
                                      'sensor': sensor}
 
     def map_sensor_position_to_room_position(self, sensor:Sensor, position:(float, float, float)):
@@ -190,7 +191,7 @@ class User:
             self.floorplan = floorplan
 
             # The controlling sensor's tracking info.
-            self.sensorUser = sensorUser
+            self.sensor_user = sensorUser
 
             # The state will be marked defunct if we are sensed but cannot be localized to a room.
             self.defunct = True
@@ -211,7 +212,7 @@ class User:
             self.initialize_from_sensor()
 
         def initialize_from_sensor(self):
-            room, roomPos = self.find_correct_room()
+            room, room_pos = self.find_correct_room()
             if room is None:
                 self.defunct = True
                 self.room = None
@@ -222,14 +223,14 @@ class User:
 
             self.defunct = False
             self.room = room
-            self.position = roomPos
-            self.history = deque([(datetime.now(), roomPos)])
+            self.position = room_pos
+            self.history = deque([(datetime.now(), room_pos)])
             self.velocity = vec4(0, 0, 0)
 
         def find_correct_room(self):
-            for room in self.floorplan.rooms_with_sensor(self.sensorUser.sensor):
-                roomPos = room.map_sensor_position_to_room_position(self.sensorUser.sensor,
-                                                                    self.sensorUser.rawPosition)
+            for room in self.floorplan.rooms_with_sensor(self.sensor_user.sensor):
+                roomPos = room.map_sensor_position_to_room_position(self.sensor_user.sensor,
+                                                                    self.sensor_user.rawPosition)
                 if roomPos is not None:
                     return room, roomPos
             return None, None
@@ -240,8 +241,8 @@ class User:
                 self.initialize_from_sensor()
                 return
 
-            roomPos = self.room.map_sensor_position_to_room_position(self.sensorUser.sensor,
-                                                                     self.sensorUser.rawPosition)
+            roomPos = self.room.map_sensor_position_to_room_position(self.sensor_user.sensor,
+                                                                     self.sensor_user.rawPosition)
             if roomPos is None:
                 self.initialize_from_sensor()
                 return
@@ -259,9 +260,9 @@ class User:
 
             # Estimate velocity from history.
             if len(self.history) > 1:
-                starttime, start = self.history[0]
-                endtime, end = self.history[-1]
-                dt = endtime - starttime
+                start_time, start = self.history[0]
+                end_time, end = self.history[-1]
+                dt = end_time - start_time
                 assert dt > timedelta(0)
                 dtsec = dt.seconds + dt.microseconds / 1000000
                 self.velocity = (end - start) / dtsec
@@ -312,7 +313,7 @@ class User:
             return vec4(-1, -1, -1)
         return sum(allpos) / len(allpos)
 
-    def get_room(self):
+    def get_room(self) -> Room:
         rooms = [t.room for t in self.nondefunct()]
         if not len(rooms):
             return None
@@ -464,20 +465,24 @@ class FloorPlan(fs.Dir):
     def all_actuators(self):
         return self.actuators.values()
 
-    def add_sensor(self, sensor:Sensor, roomName:str, position:(float,float), registration:[float]):
+    def add_sensor(self, sensor: Sensor, room_name: str, position: (float, float), registration: [float]) -> Sensor:
+        """
+        Maps a sensor into a room (and adds it to the floorplan if it is not already tracked.
+        """
         if sensor.name not in self.sensors:
             self.sensors[sensor.name] = sensor
         assert sensor is self.sensors[sensor.name]
-        self.rooms[roomName].add_sensor(sensor, position, registration)
-        self.sensorToRooms[sensor.name].append(roomName)
+        self.rooms[room_name].add_sensor(sensor, position, registration)
+        self.sensorToRooms[sensor.name].append(room_name)
+        return sensor
 
-    def get_sensor(self, name:str):
+    def get_sensor(self, name: str):
         return self.sensors[name]
 
     def all_sensors(self):
         return self.sensors.values()
 
-    def rooms_with_sensor(self, sensor:Sensor) -> [Room]:
+    def rooms_with_sensor(self, sensor: Sensor) -> [Room]:
         return [self.rooms[name] for name in self.sensorToRooms[sensor.name]]
 
     def users_in_room(self, room:Room) -> {User}:

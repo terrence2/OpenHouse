@@ -4,7 +4,6 @@ log = logging.getLogger('SensorModel')
 
 
 class SensorModel:
-
     """
     The sensor model receives input from the suite of sensors configured by the
     floorplan and post-processes them to account for known sensor defects. The

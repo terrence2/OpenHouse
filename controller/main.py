@@ -1,15 +1,10 @@
 #!/usr/bin/python3
 import argparse
 import logging
-import sys
 
 from filesystem import FileSystem
 from network import Network
 from sensormodel import SensorModel
-
-
-def mcp_loop():
-    """Runs in thread 1 to drive the house based on network events."""
 
 
 def main():
@@ -20,23 +15,28 @@ def main():
     args = parser.parse_args()
 
     global log
-    loglevel = getattr(logging, args.loglevel.upper())
+    log_level = getattr(logging, args.loglevel.upper())
     logging.basicConfig(
         format='%(asctime)s:%(levelname)s:%(name)s:%(message)s',
-        filename='mcp-eventlog.log', level=loglevel)
+        filename='mcp-eventlog.log', level=log_level)
     log = logging.getLogger('home')
 
     from instances.foothill import build_floorplan
     floorplan = build_floorplan()
-    smodel = SensorModel(floorplan)
+    sensor_model = SensorModel(floorplan)
+
+    network = Network(floorplan, sensor_model)
+    network.start()
 
     #mountpoint = sys.argv[1]
     #operations = Operations()
     fs = FileSystem(floorplan)
-    return fs.run()
+    fs.run()
 
-    #network = Network(floorplan, smodel)
-    #return network.run()
+    print("Waiting for Network to exit...")
+    network.ready_to_exit = True
+    network.join(10)
+
 
 if __name__ == '__main__':
     main()

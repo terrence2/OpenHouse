@@ -1,22 +1,78 @@
 from actuators import HueBridge, HueLight
 from floorplan import FloorPlan, Room, Alarm
-from lib import Dim3
+from network import Network
+from sensors import Nerve
+from lib import Dim3, m
 
-# ------------------------------------------------------
-# |                    |      .                        |
-# |                    |      .                        |
-# |                    |      .                        |
-# |                    |      .                        |
-# |     10ftx13ft      |______.      12ftx10ft         |
-# |                    .      |                        |
-# |                    .      |                        |
-# |                    .      |                        |
-# |                    .      |                        |
-# |                    +------+      ------------------+
-# |                    @                 @
-# |                    @                 @
-# |                    @                 @
-# |@@@@@@---------------------+      +---+
+"""
+Horizontal: 4/ft
+Vert: 2/ft
+
+-----------------------------------------------------------------------------------------------+
+|                                        |    .            *                                   |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                                        |    .                                                |
+|                         10ftx13ft      |____.                              12ftx10ft         |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        .    |                                                |
+|                                        +____+@@@@@@@@@@--------------------------------------+
+|                                        @                   @
+|                                        @                   @
+|                                        @                   @
+|                                        @                   @
+|@@@@@@----------------------------------+               +---+
+@                                        @               @   |
+@                                        @               @   |
+@                                        @               @   |
+@                                        @               @   |
+@                                        @               @   |
++------+                                 +               +---+
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
++
+"""
 
 def build_floorplan() -> FloorPlan:
 
@@ -46,6 +102,7 @@ def build_floorplan() -> FloorPlan:
     fp.add_actuator(HueLight('DeskHue', bridge, 2), [bedroom])
     fp.add_actuator(HueLight('DresserHue', bridge, 3), [bedroom])
 
-    #fp.add_time_event()
+    bedroom_nerve = Nerve(fp, 'BedroomNerve', ('rpi-nerve-bedroom', Network.DefaultSensorPort))
+    fp.add_sensor(bedroom_nerve, 'Bedroom', (m('4ft'), 0), None)
 
     return fp

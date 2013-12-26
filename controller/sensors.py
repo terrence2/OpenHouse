@@ -9,8 +9,7 @@ log = logging.getLogger('sensor')
 
 
 class Sensor:
-
-    def __init__(self, floorplan, rules, name, addr):
+    def __init__(self, floorplan, name, addr):
         super().__init__()
 
         # Location to publisher so that the network knows where to subscribe
@@ -20,24 +19,29 @@ class Sensor:
         # The name of this sensor, used to identify it uniquly in messages.
         self.name = name
 
-        # The rules to trigger on events or updates.
-        self.rules = rules
+
+class Nerve(Sensor):
+    def __init__(self, floorplan, name: str, addr: str):
+        super().__init__(floorplan, name, addr)
+
+    def handle_sensor_message(self, json):
+        """
+        Called by the sensor model to inform us of new messages from the
+        network.
+        """
+        msg_type = json['type']
+        if msg_type == ''
 
 
 class Kinect(Sensor):
-
     class Track:
-
         class State:
             # Kinect maybe sees someone.
             PENDING = 0
-
             # Kinect has identified a person, but hasn't given us position yet.
             DISCOVERED = 1
-
             # An active uid.
             TRACKING = 2
-
             # A uid which is probably garbage.
             ARTIFACT = 3
 
@@ -50,7 +54,6 @@ class Kinect(Sensor):
         NotRealPersonTimeout = timedelta(seconds=2)
 
         class Pos:
-
             def __init__(self, t, pos):
                 self.x = pos[0]
                 self.y = pos[1]
@@ -118,7 +121,7 @@ class Kinect(Sensor):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Raw kinect identifed tracks.
+        # Raw kinect identified tracks.
         self.tracks = {}
 
         # Transformations we want to apply to each user.
@@ -192,4 +195,4 @@ class Kinect(Sensor):
 
         else:
             log.warning("Got unhandled message type: {}".format(msgType))
-        return {}
+
