@@ -88,7 +88,7 @@ int main(int argc, char **argv)
         time_t next = time(NULL) + 3;
         while (time(NULL) < next) {
             if (motion.waitForMotion(3000000))
-                net.detectedMovement();
+                net.detectedMovement(motion.state());
             printf("MotionState: %d\n", motion.state());
         }
     }

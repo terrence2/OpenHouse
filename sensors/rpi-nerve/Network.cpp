@@ -26,9 +26,10 @@ SendMessage(socket_t &sock, const string &data)
 }
 
 void
-Network::detectedMovement()
+Network::detectedMovement(bool state)
 {
-    string data = "{\"name\": \"" + mName + "\", \"type\": \"MOVEMENT\" }";
+    string s = state ? "true" : "false";
+    string data = "{\"name\": \"" + mName + "\", \"type\": \"MOVEMENT\", \"STATE\": " + s + " }";
     SendMessage(mSensorSock, data);
 }
 
