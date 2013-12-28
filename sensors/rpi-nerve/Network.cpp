@@ -29,7 +29,7 @@ void
 Network::detectedMovement(bool state)
 {
     string s = state ? "true" : "false";
-    string data = "{\"name\": \"" + mName + "\", \"type\": \"MOVEMENT\", \"STATE\": " + s + " }";
+    string data = "{\"name\": \"" + mName + "\", \"type\": \"MOVEMENT\", \"state\": " + s + " }";
     SendMessage(mSensorSock, data);
 }
 
