@@ -34,11 +34,11 @@ Network::detectedMovement(bool state)
 }
 
 void
-Network::updateTempAndHumidity(uint32_t temp, uint32_t humidity)
+Network::updateTempAndHumidity(float temp, float humidity)
 {
     string data = "{\"name\": \"" + mName + "\", \"type\": \"TEMP_HUMIDITY\""
-            ", \"temp\": " + to_string(temp) + 
-            ", \"humidity\": " + to_string(humidity) + 
+            ", \"temp\": " + to_string(temp) +
+            ", \"humidity\": " + to_string(humidity) +
             "}";
     SendMessage(mSensorSock, data);
 }

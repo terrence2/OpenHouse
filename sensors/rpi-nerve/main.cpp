@@ -16,12 +16,13 @@
  *     led-pin: 17
  */
 
-const char *shortopts = "n:d:t:m:h";
+const char *shortopts = "n:d:t:m:Dh";
 const struct option longopts[] = {
     { "name", true, NULL, 'n' },
     { "dht-pin", true, NULL, 'd' },
     { "dht-type", true, NULL, 't' },
     { "motion-pin", true, NULL, 'm' },
+    { "debug", false, NULL, 'D' },
     { "help", false, NULL, 'h' },
     { NULL, 0, NULL, 0 }
 };
@@ -36,14 +37,16 @@ int main(int argc, char **argv)
     DHTType dhtType = (DHTType)-1;
     bool haveMotionPin = false;
     uint16_t motionPin = (uint16_t)-1;
-    int goret;
-    while ((goret = getopt_long(argc, argv, shortopts, longopts, NULL)) >= 0) {
-        char optchar = (char)goret;
+    bool debugMode = false;
+    int ret;
+    while ((ret = getopt_long(argc, argv, shortopts, longopts, NULL)) >= 0) {
+        char optchar = (char)ret;
         switch (optchar) {
         case 'n': haveName = true; name = optarg; break;
         case 'd': haveDHTPin = true; dhtPin = atoi(optarg); break;
         case 't': haveDHTType = true; dhtType = TypeFromString(optarg); break;
         case 'm': haveMotionPin = true; motionPin = atoi(optarg); break;
+        case 'D': debugMode = true; break;
         case 'h': printf("Usage: nerve -n NAME -d PIN -t TYPE -m PIN\n"
                          "  -n,--name       The name to connect as.\n"
                          "  -d,--dht-pin    The pin the DHT is on.\n"
@@ -77,7 +80,7 @@ int main(int argc, char **argv)
     if (!bcm2835_init())
         return 1;
 
-    DHTReader dht(dhtType, dhtPin);
+    DHTReader dht(dhtType, dhtPin, debugMode);
     MotionDetector motion(motionPin);
     while (true) {
         if (dht.read()) {
@@ -89,7 +92,8 @@ int main(int argc, char **argv)
         while (time(NULL) < next) {
             if (motion.waitForMotion(3000000))
                 net.detectedMovement(motion.state());
-            printf("MotionState: %d\n", motion.state());
+            if (debugMode)
+                printf("MotionState: %d\n", motion.state());
         }
     }
 

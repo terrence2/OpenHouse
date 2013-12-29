@@ -21,6 +21,10 @@ class DHTReader
     const DHTType type_;
     const uint8_t pin_;
 
+    // Print out lots of extra debugging information about timings. Useful for
+    // setting the clock scale appropriately.
+    bool debug_;
+
     // The DHT holds the wire high or low for very little time when writing out
     // its data. It is a small enough window that on a raspberry pi we don't have
     // time to take a syscall to get the current time. Thus, we use the time it
@@ -31,8 +35,8 @@ class DHTReader
     // compiled with optimization level -O3, this comes out to:
     //    ~ 200 cycles for the sync pulse between bits
     //    ~ 250 cycles for the sync pulse between bytes
-    //    ~ 100 cycles for low bits
-    //    ~ 300 cycles for high bits
+    //    ~  95 cycles for low bits
+    //    ~ 265 cycles for high bits
     //
     // If you've overclocked your pi, if you are using a different compiler, if
     // the broadcom chipset driver gets faster, if you've slathered your pi in
@@ -45,7 +49,7 @@ class DHTReader
     uint32_t timeoutCycles() const { return TimeoutCycles * clockScale_; }
     int bitSyncDelay() const { return 200 * clockScale_; }
     int byteSyncDelay() const { return 250 * clockScale_; }
-    int lowHighCutoff() const { return 200 * clockScale_; }
+    int lowHighCutoff() const { return 180 * clockScale_; }
 
     // State data.
     uint16_t timings_[NumTimings];
@@ -70,8 +74,8 @@ class DHTReader
     bool parseData();
 
   public:
-    explicit DHTReader(DHTType type, uint8_t pin, float clockScale = 1.0f)
-      : type_(type), pin_(pin), clockScale_(clockScale), temp_(0), humidity_(0)
+    explicit DHTReader(DHTType type, uint8_t pin, bool debug = false, float clockScale = 1.0f)
+      : type_(type), pin_(pin), debug_(debug), clockScale_(clockScale), temp_(0), humidity_(0)
     {}
 
     bool read() {

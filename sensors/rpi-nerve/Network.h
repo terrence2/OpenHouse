@@ -14,7 +14,7 @@ class Network
     Network(const std::string &name);
 
     void detectedMovement(bool state);
-    void updateTempAndHumidity(uint32_t temp, uint32_t humidity);
+    void updateTempAndHumidity(float temp, float humidity);
 
     void checkControlSock();
 

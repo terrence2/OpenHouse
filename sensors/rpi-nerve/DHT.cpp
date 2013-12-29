@@ -46,7 +46,7 @@ DHTReader::readTimings()
     // Discard the first bit.
     waitForState(true);
     waitForState(false);
-    
+
     // Time each state transition. The timing here is extremely sensitive, so we
     // read the timings up front and worry about parsing the data later.
     for (uint32_t i = 0; i < NumTimings; ++i) {
@@ -57,17 +57,17 @@ DHTReader::readTimings()
         }
     }
 
-#ifdef DEBUG
-    for (uint32_t i = 0; i < NumTimings; ++i) {
-        int expect = (i && i % 16 == 0) ? byteSyncDelay() : bitSyncDelay();
-        if (i && i % 16 == 0)
-            printf("===\n");
-        if (i % 2 == 0)
-            printf("sync: %d: %d\n", timings_[i], (int)timings_[i] - expect);
-        else
-            printf("bit : %d ----> %d\n", timings_[i], timings_[i] > lowHighCutoff());
+    if (debug_) {
+        for (uint32_t i = 0; i < NumTimings; ++i) {
+            int expect = (i && i % 16 == 0) ? byteSyncDelay() : bitSyncDelay();
+            if (i && i % 16 == 0)
+                printf("===\n");
+            if (i % 2 == 0)
+                printf("sync: %d: %d\n", timings_[i], (int)timings_[i] - expect);
+            else
+                printf("bit : %d ----> %d\n", timings_[i], timings_[i] > lowHighCutoff());
+        }
     }
-#endif
 
     return true;
 }
@@ -83,10 +83,10 @@ DHTReader::reconstructDataFromTimings()
         data_[byteOff] = data_[byteOff] << 1 | bit;
     }
 
-#ifdef DEBUG
-    printf("Data: 0x%x 0x%x 0x%x 0x%x: chkbyte 0x%x | chksum: 0x%x\n", 
-        data_[0], data_[1], data_[2], data_[3], data_[4], (data_[0] + data_[1] + data_[2] + data_[3]) & 0xFF);
-#endif
+    if (debug_) {
+        printf("Data: 0x%x 0x%x 0x%x 0x%x: chkbyte 0x%x | chksum: 0x%x\n", 
+            data_[0], data_[1], data_[2], data_[3], data_[4], (data_[0] + data_[1] + data_[2] + data_[3]) & 0xFF);
+    }
 
     return true;
 }
@@ -111,6 +111,15 @@ DHTReader::parseData()
     temp_ = ((data_[2] & 0x7F)* 256 + data_[3]) / 10.0f;
     if (data_[2] & 0x80)
         temp_ *= -1;
+
+    if (temp_ < 0.0f || temp_ > 100.0f) {
+        fprintf(stderr, "Temperature data out of range, discarding: got %f\n", temp_);
+        return false;
+    }
+    if (humidity_ < 0.0f || humidity_ > 100.0f) {
+        fprintf(stderr, "Humidity data out of range, discarding: got %f\n", humidity_);
+        return false;
+    }
 
     return true;
 }
