@@ -80,7 +80,9 @@ class FileSystem(llfuse.Operations):
         data = obj.read()
         if isinstance(data, int):
             raise llfuse.FUSEError(data)
-        data = data.encode('UTF-8')
+        if isinstance(data, str):
+            data = data.encode('UTF-8')
+        assert isinstance(data, bytes)
         return data[offset:offset + length]
 
     def write(self, fh, offset, buf):
