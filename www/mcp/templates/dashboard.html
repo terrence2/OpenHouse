@@ -1,0 +1,20 @@
+<html>
+<head>
+    <title>MasterControlProgram: Dashboard</title>
+    <script>
+        window.onload = function()
+        {
+            // Refresh the summary image every 10 seconds.
+            window.setInterval(function(e) {
+                var summary = document.getElementById('summary');
+                summary.src = "/mcp/graph/summary/?" + (new Date).getTime();
+            }, 10000);
+            // Refresh the room-images every 5 min.
+            window.setInterval(function(e) {}, 5 * 60 * 1000);
+        }
+    </script>
+</head>
+<body>
+    <img id="summary" src="/mcp/graph/summary/" />
+</body>
+</html>
