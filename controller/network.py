@@ -4,6 +4,7 @@ from select import POLLIN
 from threading import Thread
 
 from actuators import ZmqActuator
+from sensormodel import SensorModel
 
 log = logging.getLogger('network')
 
@@ -80,7 +81,7 @@ class Network(Thread):
         try:
             self.model.handle_sensor_message(sock.recv_json())
         except KeyError as ex:
-            log.warning("processing sensor message: " + str(ex))
+            log.exception("failed to process sensor message")
 
     def check_control(self, sock, event):
         if sock != self.ctl:

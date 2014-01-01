@@ -1,3 +1,5 @@
+from sensors import Sensor
+
 import logging
 
 log = logging.getLogger('SensorModel')
@@ -44,5 +46,6 @@ class SensorModel:
         Receive a raw sensor message from the network.
         """
         sensor = self.sensors[json['name']]
+        assert isinstance(sensor, Sensor)
         sensor.handle_sensor_message(json)
 

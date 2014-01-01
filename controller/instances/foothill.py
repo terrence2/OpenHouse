@@ -74,6 +74,7 @@ Vert: 2/ft
 +
 """
 
+
 def build_floorplan() -> FloorPlan:
 
     fp = FloorPlan("Foothill")
@@ -102,7 +103,7 @@ def build_floorplan() -> FloorPlan:
     fp.add_actuator(HueLight('DeskHue', bridge, 2), [bedroom])
     fp.add_actuator(HueLight('DresserHue', bridge, 3), [bedroom])
 
-    bedroom_nerve = Nerve(fp, 'BedroomNerve', ('rpi-nerve-bedroom', Network.DefaultSensorPort))
+    bedroom_nerve = Nerve(fp, 'rpi-nerve-bedroom', ('rpi-nerve-bedroom', Network.DefaultSensorPort))
     fp.add_sensor(bedroom_nerve, 'Bedroom', (m('4ft'), 0), None)
 
     return fp
