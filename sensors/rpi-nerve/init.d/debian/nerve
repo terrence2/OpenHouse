@@ -1,0 +1,53 @@
+#!/bin/sh
+# Start/stop the nerve daemon.
+#
+### BEGIN INIT INFO
+# Provides:          nerve
+# Required-Start:    $network $remote_fs $syslog $time
+# Required-Stop:     $network $remote_fs $syslog $time
+# Should-Start:      $network $named slapd autofs ypbind nscd nslcd
+# Should-Stop:       $network $named slapd autofs ypbind nscd nslcd
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Monitor hardware sensors and upload data.
+# Description:       
+### END INIT INFO
+
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+DESC="nerve daemon"
+NAME=nerve
+DAEMON=/usr/sbin/nerve
+PIDFILE=/var/run/nerve.pid
+SCRIPTNAME=/etc/init.d/"$NAME"
+
+test -f $DAEMON || exit 0
+
+. /lib/lsb/init-functions
+
+case "$1" in
+start)	log_daemon_msg "Starting nerve daemon" "nerve"
+        start_daemon -p $PIDFILE $DAEMON $EXTRA_OPTS
+        log_end_msg $?
+	;;
+stop)	log_daemon_msg "Stopping nerve daemon" "nerve"
+        killproc -p $PIDFILE $DAEMON
+        RETVAL=$?
+        [ $RETVAL -eq 0 ] && [ -e "$PIDFILE" ] && rm -f $PIDFILE
+        log_end_msg $RETVAL
+        ;;
+restart) log_daemon_msg "Restarting nerve daemon" "nerve" 
+        $0 stop
+        $0 start
+        ;;
+reload|force-reload) log_daemon_msg "Reloading configuration files for nerve daemon" "nerve"
+	# nerve has no configuration
+        log_end_msg 0
+        ;;
+status)
+        status_of_proc -p $PIDFILE $DAEMON $NAME && exit 0 || exit $?
+        ;;
+*)	log_action_msg "Usage: /etc/init.d/nerve {start|stop|status|restart|reload|force-reload}"
+        exit 2
+        ;;
+esac
+exit 0
