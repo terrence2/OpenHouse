@@ -192,15 +192,6 @@ mainloop(const Options &opts)
     while (opts.waitMode)
         sleep(10);
 
-    if (!bcm2835_init()) {
-        daemon_log(LOG_ERR, "Failed to initialize broadcom 2835 device. Are we running as root?");
-        return 1;
-    }
-
-    Network net(opts.name);
-    DHTReader dht(opts.dhtType, opts.dhtPin, opts.debugMode);
-    MotionDetector motion(opts.motionPin);
-
     if (daemon_close_all(-1) < 0) {
         daemon_log(LOG_ERR, "Failed to close all descriptors.");
         return 1;
@@ -215,6 +206,15 @@ mainloop(const Options &opts)
         daemon_log(LOG_ERR, "Could not register signal handlers (%s).", strerror(errno));
         return 1;
     }
+
+    if (!bcm2835_init()) {
+        daemon_log(LOG_ERR, "Failed to initialize broadcom 2835 device. Are we running as root?");
+        return 1;
+    }
+
+    Network net(opts.name);
+    DHTReader dht(opts.dhtType, opts.dhtPin, opts.debugMode);
+    MotionDetector motion(opts.motionPin);
 
     // Unblock the parent once we are done with initialization and are sure we can continue.
     if (!opts.foregroundMode)
@@ -247,7 +247,7 @@ got_exit_signal()
     FD_ZERO(&fds);
     FD_SET(signalfd, &fds);
     struct timeval tv = { 0, 0 };
-    if (select(1, &fds, 0, 0, &tv) < 0) {
+    if (select(FD_SETSIZE, &fds, 0, 0, &tv) < 0) {
         if (errno == EINTR)
             return false;
 

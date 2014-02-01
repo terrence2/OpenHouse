@@ -37,8 +37,6 @@ fi
 
 . /lib/lsb/init-functions
 
-echo `users`
-
 case "$1" in
 start)	log_daemon_msg "Starting nerve daemon" "nerve"
         start_daemon -p $PIDFILE -- "$DAEMON" -n $HOSTNAME \
