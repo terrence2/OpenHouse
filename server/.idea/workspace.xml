@@ -29,6 +29,7 @@
             <state line="86" column="15" selection-start="3128" selection-end="3128" vertical-scroll-proportion="0.0" vertical-offset="1244" max-vertical-offset="1980">
               <folding>
                 <element signature="e#25#35#0" expanded="true" />
+                <marker date="1393179786619" expanded="true" signature="2995:3155" placeholder="..." />
               </folding>
             </state>
           </provider>
@@ -51,6 +52,8 @@
             <state line="53" column="4" selection-start="1399" selection-end="1399" vertical-scroll-proportion="0.0" vertical-offset="270" max-vertical-offset="1080">
               <folding>
                 <element signature="e#25#54#0" expanded="true" />
+                <marker date="1393182652528" expanded="true" signature="608:1402" placeholder="..." />
+                <marker date="1393182652528" expanded="true" signature="613:1402" placeholder="&quot;&quot;&quot;...&quot;&quot;&quot;" />
               </folding>
             </state>
           </provider>
@@ -70,7 +73,7 @@
       <file leaf-file-name="abode.py" pinned="false" current="true" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/mcp/abode.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state line="37" column="23" selection-start="1074" selection-end="1074" vertical-scroll-proportion="0.60167134" vertical-offset="234" max-vertical-offset="1692">
+            <state line="95" column="0" selection-start="3399" selection-end="3399" vertical-scroll-proportion="-0.20334262" vertical-offset="1856" max-vertical-offset="2952">
               <folding />
             </state>
           </provider>
@@ -79,7 +82,7 @@
       <file leaf-file-name="test_abode.py" pinned="false" current="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/test/test_abode.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state line="24" column="0" selection-start="1016" selection-end="1016" vertical-scroll-proportion="0.0" vertical-offset="0" max-vertical-offset="630">
+            <state line="93" column="41" selection-start="4162" selection-end="4162" vertical-scroll-proportion="0.0" vertical-offset="1208" max-vertical-offset="1926">
               <folding>
                 <element signature="e#0#29#0" expanded="true" />
               </folding>
@@ -222,6 +225,7 @@
     <property name="LayoutCode.rearrangeEntriesPython" value="false" />
     <property name="recentsLimit" value="5" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/test" />
+    <property name="SearchEverywhereHistory" value="" />
   </component>
   <component name="PyConsoleOptionsProvider">
     <option name="myPythonConsoleState">
@@ -497,6 +501,7 @@
         <state line="2" column="10" selection-start="35" selection-end="35" vertical-scroll-proportion="0.0" vertical-offset="36" max-vertical-offset="252">
           <folding>
             <element signature="e#25#35#0" expanded="true" />
+            <marker date="1393179786619" expanded="true" signature="2995:3155" placeholder="..." />
           </folding>
         </state>
       </provider>
@@ -553,7 +558,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state line="47" column="60" selection-start="1348" selection-end="1348" vertical-scroll-proportion="0.0" vertical-offset="180" max-vertical-offset="990">
           <folding>
-            <element signature="e#0#29#0" expanded="true" />
+            <element signature="e#0#29#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -574,20 +579,12 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/test/test_abode.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state line="24" column="0" selection-start="1016" selection-end="1016" vertical-scroll-proportion="0.0" vertical-offset="0" max-vertical-offset="630">
-          <folding>
-            <element signature="e#0#29#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/eyrie.py">
       <provider selected="true" editor-type-id="text-editor">
         <state line="86" column="15" selection-start="3128" selection-end="3128" vertical-scroll-proportion="0.0" vertical-offset="1244" max-vertical-offset="1980">
           <folding>
             <element signature="e#25#35#0" expanded="true" />
+            <marker date="1393179786619" expanded="true" signature="2995:3155" placeholder="..." />
           </folding>
         </state>
       </provider>
@@ -597,6 +594,8 @@
         <state line="53" column="4" selection-start="1399" selection-end="1399" vertical-scroll-proportion="0.0" vertical-offset="270" max-vertical-offset="1080">
           <folding>
             <element signature="e#25#54#0" expanded="true" />
+            <marker date="1393182652528" expanded="true" signature="608:1402" placeholder="..." />
+            <marker date="1393182652528" expanded="true" signature="613:1402" placeholder="&quot;&quot;&quot;...&quot;&quot;&quot;" />
           </folding>
         </state>
       </provider>
@@ -610,9 +609,18 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/test/test_abode.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state line="93" column="41" selection-start="4162" selection-end="4162" vertical-scroll-proportion="0.0" vertical-offset="1116" max-vertical-offset="1926">
+          <folding>
+            <element signature="e#0#29#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/mcp/abode.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state line="37" column="23" selection-start="1074" selection-end="1074" vertical-scroll-proportion="0.60167134" vertical-offset="234" max-vertical-offset="1692">
+        <state line="95" column="0" selection-start="3399" selection-end="3399" vertical-scroll-proportion="-0.20334262" vertical-offset="1856" max-vertical-offset="2952">
           <folding />
         </state>
       </provider>
