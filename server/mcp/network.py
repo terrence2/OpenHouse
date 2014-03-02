@@ -1,13 +1,22 @@
 __author__ = 'terrence'
 
+try:
+    from enum import Enum
+except ImportError:
+    class Enum: pass
+
 import logging
-import json
 import zmq
 from zmq.sugar import socket as zmq_socket
 from select import POLLIN
 from threading import Thread
 
 log = logging.getLogger('network')
+
+
+class DeviceType(Enum):
+    sensor = 1
+    actuator = 2
 
 
 class Sensor:
@@ -20,10 +29,20 @@ class Sensor:
         assert hasattr(sensor, 'name')
         assert hasattr(sensor, 'address')
         assert hasattr(sensor, 'on_message')
-        self.name = sensor.name
-        self.address = sensor.address  # ipv4: (str, int)
         self.instance = sensor
         self.socket = None  # ZMQ socket, assigned by Bus.
+
+    @staticmethod
+    def device_type():
+        return DeviceType.sensor
+
+    @property
+    def name(self):
+        return self.instance.name
+
+    @property
+    def address(self):
+        return self.instance.address
 
     def on_message(self, message: object):
         self.instance.on_message(message)
@@ -34,11 +53,21 @@ class Actuator:
         """
         Construct a network actuator given some object with name and address.
         """
-        self.name = actuator.name
-        self.address = actuator.address
         self.bus = None
         self.socket = None
         self.instance = actuator
+
+    @staticmethod
+    def device_type():
+        return DeviceType.actuator
+
+    @property
+    def name(self):
+        return self.instance.name
+
+    @property
+    def address(self):
+        return self.instance.address
 
     def send_message(self, message: object):
         assert self.socket is not None
@@ -83,6 +112,12 @@ class Bus(Thread):
         sensor.socket = self.connect_(sensor.address, zmq.SUB)
         sensor.socket.setsockopt(zmq.SUBSCRIBE, b'')
         self.sensors[sensor.socket] = sensor
+
+    def add_device(self, device: Sensor or Actuator):
+        if device.device_type() == DeviceType.sensor:
+            return self.add_sensor(device)
+        assert device.device_type() == DeviceType.actuator
+        return self.add_actuator(device)
 
     def run(self):
         while not self.ready_to_exit:

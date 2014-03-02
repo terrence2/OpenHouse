@@ -100,6 +100,38 @@ class TestBus(TestCase):
         bus.exit()
         bus.join()
 
+    def test_add_device(self):
+        remote_sensor = FakeSensor()
+        remote_actuator = FakeActuator()
+
+        local_sensor = LocalSensor()
+        local_sensor.remote = network.Sensor(local_sensor)
+
+        local_actuator = LocalActuator()
+        local_actuator.remote = network.Actuator(local_actuator)
+
+        bus = network.Bus()
+        bus.add_device(local_sensor.remote)
+        bus.add_device(local_actuator.remote)
+        bus.start()
+
+        # Check the sensor.
+        while local_sensor.message is None:
+            remote_sensor.publish()
+            time.sleep(0.1)
+        self.assertEqual(local_sensor.message, {'some': 'data'})
+
+        # Dispatch an action and make sure it arrives at actuator.
+        local_actuator.actuate({'hello': 'world'})
+        remote_actuator.wait_for_message()
+        self.assertEqual(remote_actuator.request, {'hello': 'world'})
+
+        # Wait for the actuator's response.
+        local_actuator.wait_for_reply()
+        self.assertEqual(local_actuator.reply, {'hi': 'actuator'})
+        bus.exit()
+        bus.join()
+
     def test_run(self):
         bus = network.Bus()
         bus.start()
