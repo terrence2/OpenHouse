@@ -7,6 +7,7 @@ from mcp.abode import Abode
 from mcp.filesystem import FileSystem
 from mcp.sensors.nerve import Nerve
 from mcp.dimension import Coord, Size
+import mcp.fs_reflector as reflector
 
 import sys
 import time
@@ -115,6 +116,8 @@ def main():
     abode = build_abode()
     devices = add_devices(abode)
     filesystem = FileSystem('/things')
+    reflector.map_abode_to_filesystem(abode, filesystem)
+    reflector.map_devices_to_filesystem(devices, filesystem)
 
     bus = network.Bus()
     for device in devices:

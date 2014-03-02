@@ -1,9 +1,8 @@
 __author__ = 'terrence'
 
-
-class Sensor:
+class Actuator:
     def is_sensor(self):
-        return True
+        return False
 
     def is_actuator(self):
-        return False
+        return True
