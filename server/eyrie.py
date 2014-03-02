@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
 __author__ = 'terrence'
 
 import mcp
 import mcp.network as network
 from mcp.abode import Abode
+from mcp.filesystem import FileSystem
 from mcp.sensors.nerve import Nerve
 from mcp.dimension import Coord, Size
 
@@ -106,19 +108,20 @@ def add_reactions(abode):
     #subprocess.check_output(["rrdtool", "update", self.database_filename, "--",
     #                         "N:{}:{}".format(self.last_temperature, self.last_humidity)])
 
+
 def main():
-    log = mcp.enable_logging(level='INFO')
+    log = mcp.enable_logging(level='DEBUG')
 
     abode = build_abode()
     devices = add_devices(abode)
+    filesystem = FileSystem('/things')
 
     bus = network.Bus()
     for device in devices:
-        bus.add_device(device)
+        bus.add_device(device.remote)
     bus.start()
 
-    while True:
-        time.sleep(1)
+    filesystem.run()
 
     bus.exit()
     bus.join()
