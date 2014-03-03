@@ -20,24 +20,28 @@ log = logging.getLogger('fs')
 
 
 class NodeType(Enum):
+    Unknown = 0
     Regular = stat.S_IFREG
     Directory = stat.S_IFDIR
 
 
-class Node:
-    LAST_INODE = 1
+# Bump allocate unique inodes.
+LAST_INODE = 1
 
+
+class Node:
     def __init__(self):
         super().__init__()
 
         # Automatically assign unique inodes.
-        self.inode = self.LAST_INODE
-        self.LAST_INODE += 1
+        global LAST_INODE
+        self.inode = LAST_INODE
+        LAST_INODE += 1
 
         # Raw file attributes. Some of these must be overridden by subclasses.
         # We represent stat bitfields like st_mode split out and use properties to combine them for display.
         self.permission_ = 0o600
-        self.mode_ = None
+        self.mode_ = NodeType.Unknown
         self.nlink_ = 2
 
     @property
@@ -55,11 +59,21 @@ class Node:
 
 
 class File(Node):
-    def __init__(self):
+    def __init__(self, read_function: callable, write_function: callable):
         super().__init__()
 
         # Required overrides.
         self.mode_ = stat.S_IFREG
+
+        # properties
+        self.read_function_ = read_function
+        self.write_function_ = write_function
+
+    def read(self) -> str:
+        return self.read_function_()
+
+    def write(self, data: str):
+        self.write_function_(data)
 
 
 class Directory(Node):
@@ -74,11 +88,12 @@ class Directory(Node):
             '.': self,
         }
 
-    def add_entry(self, name: str, node: Node):
+    def add_entry(self, name: str, node: Node) -> Node:
         self.entries_[name] = node
         if node.type == NodeType.Directory:
             self.nlink_ += 1
             node.entries_['..'] = self
+        return node
 
     def lookup(self, name: str) -> Node:
         return self.entries_[name]
@@ -109,6 +124,7 @@ class FileSystem(llfuse.Operations):
         return self.root_
 
     def _getattr(self, node: Node):
+        self.inode_to_node_[node.inode] = node
         entry = llfuse.EntryAttributes()
         entry.st_ino = node.inode
         entry.generation = 0

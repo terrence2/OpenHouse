@@ -4,6 +4,7 @@ __author__ = 'terrence'
 import mcp
 import mcp.network as network
 from mcp.abode import Abode
+from mcp.actuators.hue import HueBridge, HueLight
 from mcp.filesystem import FileSystem
 from mcp.sensors.nerve import Nerve
 from mcp.dimension import Coord, Size
@@ -95,12 +96,18 @@ def build_abode():
     return abode
 
 
-def add_devices(abode):
+def add_devices(abode: Abode, bus: network.Bus):
     bedroom_nerve = Nerve('bedroom_nerve', ('rpi-nerve-bedroom', network.Bus.DefaultSensorPort))
     bedroom_nerve.listen_temperature(lambda val: abode.lookup('/eyrie/bedroom').set('temperature', val))
     bedroom_nerve.listen_humidity(lambda val: abode.lookup('/eyrie/bedroom').set('humidity', val))
     bedroom_nerve.listen_motion(lambda val: abode.lookup('/eyrie/bedroom').set('motion', val))
-    return [bedroom_nerve]
+    bus.add_sensor(bedroom_nerve)
+
+    bedroom_huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
+    bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
+    desk_hue = HueLight('hue-bedroom-desk', bedroom_huebridge, 2)
+    dresser_hue = HueLight('hue-bedroom-dresser', bedroom_huebridge, 3)
+    return [bedroom_nerve, bed_hue, desk_hue, dresser_hue]
 
 
 def add_reactions(abode):
@@ -112,16 +119,13 @@ def add_reactions(abode):
 
 def main():
     log = mcp.enable_logging(level='DEBUG')
-
-    abode = build_abode()
-    devices = add_devices(abode)
     filesystem = FileSystem('/things')
+    bus = network.Bus()
+    abode = build_abode()
+    devices = add_devices(abode, bus)
     reflector.map_abode_to_filesystem(abode, filesystem)
     reflector.map_devices_to_filesystem(devices, filesystem)
 
-    bus = network.Bus()
-    for device in devices:
-        bus.add_device(device.remote)
     bus.start()
 
     filesystem.run()
