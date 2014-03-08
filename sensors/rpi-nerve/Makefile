@@ -1,7 +1,7 @@
 CC = gcc
 CPP = g++
 CFLAGS = -Wall -std=c++0x -I. `pkg-config --cflags libdaemon libzmq` -Os
-LIBS = -lbcm2835 `pkg-config --libs libdaemon libzmq`
+LIBS = -lbcm2835 `pkg-config --libs libdaemon libzmq` -lstdc++
 DEPS = Makefile
 OBJ = Network.o MotionDetector.o DHT.o main.o
 
