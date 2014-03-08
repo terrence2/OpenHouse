@@ -1,0 +1,11 @@
+[Unit]
+Description=The nerve sensor daemon.
+Requires=network.target
+
+[Service]
+User=root
+StandardError=syslog
+ExecStart=/usr/bin/nerve
+
+[Install]
+WantedBy=basic.target

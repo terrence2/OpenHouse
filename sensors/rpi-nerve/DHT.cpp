@@ -1,11 +1,10 @@
-#include <DHT.h>
+#include "DHT.h"
+#include "Logging.h"
 
 #include <stdio.h>
 #include <unistd.h>
 
 #include <bcm2835.h>
-
-#include <libdaemon/dlog.h>
 
 DHTType
 TypeFromString(const char *name)
@@ -41,7 +40,7 @@ DHTReader::readTimings()
     while (bcm2835_gpio_lev(pin_) == true && ++count < timeout) // ~2s timeout.
         usleep(1);
     if (count == timeout) {
-        daemon_log(LOG_ERR, "Timed out waiting for DHT. Please double-check your pin settings.");
+        fprintf(stderr, PRIO_ERR "Timed out waiting for DHT. Please double-check your pin settings.");
         return false;
     }
 
@@ -54,7 +53,7 @@ DHTReader::readTimings()
     for (uint32_t i = 0; i < NumTimings; ++i) {
         timings_[i] = waitForState(i % 2 == 0);
         if (timings_[i] == timeoutCycles()) {
-            daemon_log(LOG_ERR, "DHT timed out while reading.");
+            fprintf(stderr, PRIO_ERR "DHT timed out while reading.");
             return false;
         }
     }
@@ -63,11 +62,11 @@ DHTReader::readTimings()
         for (uint32_t i = 0; i < NumTimings; ++i) {
             int expect = (i && i % 16 == 0) ? byteSyncDelay() : bitSyncDelay();
             if (i && i % 16 == 0)
-                daemon_log(LOG_DEBUG, "===");
+                fprintf(stderr, PRIO_DEBUG "===");
             if (i % 2 == 0)
-                daemon_log(LOG_DEBUG, "sync: %d: %d", timings_[i], (int)timings_[i] - expect);
+                fprintf(stderr, PRIO_DEBUG "sync: %d: %d", timings_[i], (int)timings_[i] - expect);
             else
-                daemon_log(LOG_DEBUG, "bit : %d ----> %d", timings_[i], timings_[i] > lowHighCutoff());
+                fprintf(stderr, PRIO_DEBUG "bit : %d ----> %d", timings_[i], timings_[i] > lowHighCutoff());
         }
     }
 
@@ -86,7 +85,7 @@ DHTReader::reconstructDataFromTimings()
     }
 
     if (debug_) {
-        daemon_log(LOG_DEBUG, "Data: 0x%x 0x%x 0x%x 0x%x: chkbyte 0x%x | chksum: 0x%x",
+        fprintf(stderr, PRIO_DEBUG "Data: 0x%x 0x%x 0x%x 0x%x: chkbyte 0x%x | chksum: 0x%x",
                    data_[0], data_[1], data_[2], data_[3], data_[4],
                    (data_[0] + data_[1] + data_[2] + data_[3]) & 0xFF);
     }
@@ -100,7 +99,7 @@ DHTReader::parseData()
     uint8_t checkByte = data_[4];
     uint8_t checkSum = (data_[0] + data_[1] + data_[2] + data_[3]) & 0xFF;
     if (checkByte != checkSum) {
-        daemon_log(LOG_WARNING, "Checksum mismatch! Got check byte: 0x%x, but checksum 0x%x",
+        fprintf(stderr, PRIO_WARNING "Checksum mismatch! Got check byte: 0x%x, but checksum 0x%x",
                    checkByte, checkSum);
         return false;
     }
@@ -117,11 +116,11 @@ DHTReader::parseData()
         temp_ *= -1;
 
     if (temp_ < 0.0f || temp_ > 100.0f) {
-        daemon_log(LOG_WARNING, "Temperature data out of range, discarding: got %f", temp_);
+        fprintf(stderr, PRIO_WARNING "Temperature data out of range, discarding: got %f", temp_);
         return false;
     }
     if (humidity_ < 0.0f || humidity_ > 100.0f) {
-        daemon_log(LOG_WARNING, "Humidity data out of range, discarding: got %f", humidity_);
+        fprintf(stderr, PRIO_WARNING "Humidity data out of range, discarding: got %f", humidity_);
         return false;
     }
 
