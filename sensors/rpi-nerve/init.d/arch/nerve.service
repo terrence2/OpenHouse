@@ -5,7 +5,7 @@ Requires=network.target
 [Service]
 User=root
 StandardError=syslog
-ExecStart=/usr/bin/nerve
+ExecStart=/usr/bin/nerve -d 4 -t AM2302 -m 23
 
 [Install]
 WantedBy=basic.target

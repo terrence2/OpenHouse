@@ -73,16 +73,25 @@ class DHTReader
     bool reconstructDataFromTimings();
     bool parseData();
 
+    // Statistics. Total number of attempted reads and total read failures.
+    uint32_t readCount_;
+    uint32_t failureCount_;
+
   public:
     explicit DHTReader(DHTType type, uint8_t pin, bool debug = false, float clockScale = 1.0f)
-      : type_(type), pin_(pin), debug_(debug), clockScale_(clockScale), temp_(0), humidity_(0)
+      : type_(type), pin_(pin), debug_(debug), clockScale_(clockScale), temp_(0), humidity_(0),
+        readCount_(0), failureCount_(0)
     {}
 
     bool read() {
-        return reset() &&
-               readTimings() &&
-               reconstructDataFromTimings() &&
-               parseData();
+        ++readCount_;
+        bool success = reset() &&
+                       readTimings() &&
+                       reconstructDataFromTimings() &&
+                       parseData();
+        if (!success)
+            failureCount_++;
+        return success;
     }
 
     float celsius() const {
@@ -97,6 +106,10 @@ class DHTReader
     float humidity() const {
         assert(humidity_ > 0.0f);
         return humidity_;
+    }
+
+    float failureRate() const {
+        return float(failureCount_) / float(readCount_) * 100.0f;
     }
 };
 
