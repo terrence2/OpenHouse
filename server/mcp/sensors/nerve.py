@@ -4,7 +4,7 @@ import logging
 from mcp import network
 from mcp.sensors import Sensor
 
-log = logging.getLogger('network')
+log = logging.getLogger('nerve')
 
 
 class NerveEvent:
@@ -47,12 +47,16 @@ class Nerve(Sensor):
         """
         msg_type = json['type']
         if msg_type == 'TEMP_HUMIDITY':
+            temp, humidity = float(json['temp']), float(json['humidity'])
+            log.info("from {} -> temperature: {}, humidity: {}".format(self.name, temp, humidity))
             if self.on_temperature_:
-                self.on_temperature_(NerveEvent('temperature', float(json['temp'])))
+                self.on_temperature_(NerveEvent('temperature', temp))
             if self.on_humidity_:
-                self.on_humidity_(NerveEvent('humidity', float(json['humidity'])))
+                self.on_humidity_(NerveEvent('humidity', humidity))
 
         elif msg_type == 'MOVEMENT':
+            state = bool(json['state'])
+            log.info("from {} -> motion state: {}".format(self.name, state))
             if self.on_motion_:
                 self.on_motion_(NerveEvent('motion', bool(json['state'])))
 

@@ -19,6 +19,18 @@ class Area:
         self.properties_ = {}  #: {str: any}
         self.listeners_ = {}  #: {str: {str: [callable]}} property -> event -> calls
 
+    def subarea_names(self) -> [str]:
+        """
+        Return the names of all sub-areas in this area.
+        """
+        return list(self.subareas_.keys())
+
+    def property_names(self) -> [str]:
+        """
+        Return the names of all properties on this area.
+        """
+        return list(self.properties_.keys())
+
     def path(self):
         """
         Construct and return the path that when passed to Abode.lookup will return
