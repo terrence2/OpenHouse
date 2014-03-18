@@ -187,9 +187,9 @@ def add_data_recorders(abode: Abode, args):
 
         def recorder(event):
             assert event.property_name == input_name
-            log.info("Recording {} for {} - {}".format(input_name, room_name, event.property_value))
+            log.info("Recording {} for {} - {}".format(input_name, room_name, int(event.property_value)))
             subprocess.check_output(["rrdtool", "update", database_file, "--",
-                                     "N:{}".format(event.property_value)])
+                                     "N:{}".format(int(event.property_value))])
         return recorder
 
     for room in ('bedroom', 'office', 'livingroom'):
