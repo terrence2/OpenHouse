@@ -182,18 +182,19 @@ def add_presets(abode, devices, filesystem):
 
 
 def add_data_recorders(abode: Abode, args):
-    def make_record_temperature(name):
-        database_file = os.path.join(args.rrd_path, name + '-temperature.rrd'
-        def record_temperature(event):
+    def make_recorder(room_name, input_name):
+        database_file = os.path.join(args.rrd_path, room_name + '-' + input_name + '.rrd')
+
+        def recorder(event):
+            assert event.property_name == input_name
+            log.info("Recording {} for {} - {}".format(input_name, room_name, event.property_value))
             subprocess.check_output(["rrdtool", "update", database_file, "--",
                                      "N:{}".format(event.property_value)])
-        return record_temperature
+        return recorder
 
-    abode.lookup('/eyrie/bedroom').listen('temperature', 'propertyTouched', make_record_temperature('bedroom'))
-    #abode.lookup('/eyrie/bedroom').listen('humidity', 'propertyTouched', make_record_humidity())
-    #abode.lookup('/eyrie/livingroom').listen('temperature', 'propertyTouched', lambda event: print("LIV:", event.property_value))
-    #DatabaseLocation = "/storage/raid/data/var/db/mcp/{}.rrd"
-    pass
+    for room in ('bedroom', 'office', 'livingroom'):
+        for input in ('temperature', 'humidity', 'motion'):
+            abode.lookup('/eyrie/' + room).listen(input, 'propertyTouched', make_recorder(room, input))
 
 
 def main():
