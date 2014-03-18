@@ -10,6 +10,9 @@ from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.dimension import Coord, Size
 import mcp.fs_reflector as reflector
 
+import os
+import os.path
+import subprocess
 import sys
 import time
 
@@ -123,24 +126,21 @@ def add_devices(abode: Abode, bus: network.Bus, filesystem: FileSystem):
         nerves.append(nerve)
     bedroom_nerve, office_nerve, livingroom_nerve = nerves
 
-
     bedroom_huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
     bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
     desk_hue = HueLight('hue-bedroom-desk', bedroom_huebridge, 2)
     dresser_hue = HueLight('hue-bedroom-dresser', bedroom_huebridge, 3)
-    devices = [bedroom_nerve, office_nerve, livingroom_nerve, bed_hue, desk_hue, dresser_hue]
 
-    reflector.map_devices_to_filesystem(devices, filesystem)
-    return devices
+    # Insert controllable devices into the filesystem.
+    directory = filesystem.root().add_entry("actuators", Directory())
+    for light in (bed_hue, desk_hue, dresser_hue):
+        reflector.add_hue_light(directory, light)
+
+    devices = (bedroom_nerve, office_nerve, livingroom_nerve, bed_hue, desk_hue, dresser_hue)
+    return {device.name: device for device in devices}
 
 
-def add_reactions(abode, devices, filesystem):
-    #abode.lookup('/eyrie/bedroom').listen('temperature', 'propertyTouched', lambda event: print("BED:", event.property_value))
-    #abode.lookup('/eyrie/livingroom').listen('temperature', 'propertyTouched', lambda event: print("LIV:", event.property_value))
-    #DatabaseLocation = "/storage/raid/data/var/db/mcp/{}.rrd"
-    #subprocess.check_output(["rrdtool", "update", self.database_filename, "--",
-    #                         "N:{}:{}".format(self.last_temperature, self.last_humidity)])
-
+def add_presets(abode, devices, filesystem):
     bedroom_lighting_preset = "unset"
     def read_lighting_preset() -> str:
         return "Current Value is: {} -- Possible Values are: on, off, sleep, reading".format(bedroom_lighting_preset)
@@ -169,10 +169,7 @@ def add_reactions(abode, devices, filesystem):
             return
         state = states[data]
         for device_name, presets in state.items():
-            matches = [d for d in devices if d.name == device_name]
-            if not len(matches):
-                return
-            device = matches[0]
+            device = devices[device_name]
             for prop, value in presets.items():
                 setattr(device, prop, value)
 
@@ -181,18 +178,40 @@ def add_reactions(abode, devices, filesystem):
 
     presets = filesystem.root().add_entry("presets", Directory())
     bedroom = presets.add_entry("bedroom", Directory())
-    lighting = bedroom.add_entry("lighting", File(read_lighting_preset, write_lighting_preset))
+    bedroom.add_entry("lighting", File(read_lighting_preset, write_lighting_preset))
 
+
+def add_data_recorders(abode: Abode, args):
+    def make_record_temperature(name):
+        database_file = os.path.join(args.rrd_path, name + '-temperature.rrd'
+        def record_temperature(event):
+            subprocess.check_output(["rrdtool", "update", database_file, "--",
+                                     "N:{}".format(event.property_value)])
+        return record_temperature
+
+    abode.lookup('/eyrie/bedroom').listen('temperature', 'propertyTouched', make_record_temperature('bedroom'))
+    #abode.lookup('/eyrie/bedroom').listen('humidity', 'propertyTouched', make_record_humidity())
+    #abode.lookup('/eyrie/livingroom').listen('temperature', 'propertyTouched', lambda event: print("LIV:", event.property_value))
+    #DatabaseLocation = "/storage/raid/data/var/db/mcp/{}.rrd"
+    pass
 
 
 def main():
     global log
     log = mcp.enable_logging(level='DEBUG')
+
+    import argparse
+    parser = argparse.ArgumentParser(description='Master Control Program')
+    parser.add_argument('--rrd-path', default=os.path.expanduser("~/.local/var/db/mcp/"),
+                        help='Where to find rrd records and record their data.')
+    args = parser.parse_args()
+
     filesystem = FileSystem('/things')
     bus = network.Bus()
     abode = build_abode(filesystem)
     devices = add_devices(abode, bus, filesystem)
-    add_reactions(abode, devices, filesystem)
+    add_presets(abode, devices, filesystem)
+    add_data_recorders(abode, args)
 
     bus.start()
 

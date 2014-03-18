@@ -60,8 +60,3 @@ def add_hue_light(parent: Directory, hue: HueLight):
     """
 
 
-def map_devices_to_filesystem(devices: [], fs: FileSystem):
-    act_dir = fs.root().add_entry("actuators", Directory())
-    for device in devices:
-        if isinstance(device, HueLight):
-            add_hue_light(act_dir, device)
