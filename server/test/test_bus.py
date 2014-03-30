@@ -1,6 +1,7 @@
 from unittest import TestCase
 from mcp import network
 import time
+import threading
 import zmq
 
 __author__ = 'terrence'
@@ -66,7 +67,7 @@ class TestBus(TestCase):
         local = LocalActuator()
         local.remote = network.Actuator(local)
 
-        bus = network.Bus()
+        bus = network.Bus(threading.Lock())
         bus.add_actuator(local.remote)
         bus.start()
 
@@ -88,7 +89,7 @@ class TestBus(TestCase):
         local = LocalSensor()
         local.remote = network.Sensor(local)
 
-        bus = network.Bus()
+        bus = network.Bus(threading.Lock())
         bus.add_sensor(local.remote)
         bus.start()
 
@@ -110,7 +111,7 @@ class TestBus(TestCase):
         local_actuator = LocalActuator()
         local_actuator.remote = network.Actuator(local_actuator)
 
-        bus = network.Bus()
+        bus = network.Bus(threading.Lock())
         bus.add_device(local_sensor.remote)
         bus.add_device(local_actuator.remote)
         bus.start()
@@ -133,7 +134,7 @@ class TestBus(TestCase):
         bus.join()
 
     def test_run(self):
-        bus = network.Bus()
+        bus = network.Bus(threading.Lock())
         bus.start()
         bus.exit()
         bus.join()

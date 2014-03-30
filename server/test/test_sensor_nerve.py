@@ -2,6 +2,7 @@ __author__ = 'terrence'
 
 from unittest import TestCase
 import time
+import threading
 
 import zmq
 
@@ -66,7 +67,7 @@ class TestNerve(TestCase):
         local.listen_humidity(receive_humidity([50, 60, 70]))
         local.listen_motion(receive_motion([True, False, True, False]))
 
-        bus = network.Bus()
+        bus = network.Bus(threading.Lock())
         bus.add_sensor(local.remote)
         bus.start()
 

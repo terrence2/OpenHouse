@@ -3,7 +3,8 @@ __author__ = 'terrence'
 try:
     from enum import Enum
 except ImportError:
-    class Enum: pass
+    class Enum:
+        pass
 
 import logging
 import zmq
@@ -87,9 +88,12 @@ class Bus(Thread):
     DefaultActuatorPort = 31978
     Interval = 500
 
-    def __init__(self):
+    def __init__(self, lock):
         super().__init__()
         self.ready_to_exit = False
+
+        # A lock to hold while executing response code.
+        self.lock_ = lock
 
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
@@ -159,7 +163,8 @@ class Bus(Thread):
             log.exception("failed to receive sensor message")
 
         try:
-            sensor.on_message(data)
+            with self.lock_:
+                sensor.on_message(data)
         except Exception:
             log.exception("failed to handle sensor message")
 
@@ -184,7 +189,8 @@ class Bus(Thread):
             log.exception("failed to receive sensor message")
 
         try:
-            actuator.on_reply(data)
+            with self.lock_:
+                actuator.on_reply(data)
         except Exception:
             log.exception("failed to handle actuator reply")
 

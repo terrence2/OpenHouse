@@ -10,11 +10,12 @@ from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.dimension import Coord, Size
 import mcp.fs_reflector as reflector
 
+import llfuse
+
 import os
 import os.path
 import subprocess
 import sys
-import time
 
 
 """
@@ -208,7 +209,7 @@ def main():
     args = parser.parse_args()
 
     filesystem = FileSystem('/things')
-    bus = network.Bus()
+    bus = network.Bus(llfuse.lock)
     abode = build_abode(filesystem)
     devices = add_devices(abode, bus, filesystem)
     add_presets(abode, devices, filesystem)
