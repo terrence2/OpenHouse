@@ -17,24 +17,68 @@ def summary(request):
     ]), content_type="image/png")
 
 
-def index(request):
-    sensor = request.GET['sensor']
+def database_for_sensor(sensor):
     database = "/storage/raid/data/var/db/mcp/{}.rrd".format(sensor)
     if not os.path.exists(database):
         return HttpResponseNotFound("I don't know about sensor {}".format(sensor))
+    return database
+
+
+def datasource_for_sensor(sensor):
+    if 'humidity' in sensor:
+        return 'humidity:AVERAGE'
+    elif 'temperature' in sensor:
+        return 'temperature:AVERAGE'
+    elif 'motion' in sensor:
+        return 'motion:AVERAGE'
+    return HttpResponseNotFound("Can't derive the database " +
+                                "for sensor {}.".format(sensor))
+
+
+def datasource_wants_cf_conversion(datasource, GET):
+    return datasource == 'temperature'
+
+
+def color_for_sensor_number(i):
+    colors = [
+        '#0061cf',
+        '#cf0061',
+        '#00cf61',
+        '#cf6100',
+        '#61cf00',
+        '#6100cf',
+    ]
+    return colors[i]
+
+
+def legend_for_sensor(sensor):
+    return sensor
+
+
+def index(request):
+    args = ['rrdtool', 'graph', '-']
+
+    title = request.GET.get('title', 'Sensor Data')
+    args += ['-t', title]
+
     width = request.GET.get('w', '1280')
     height = request.GET.get('h', '600')
-    bare = bool(int(request.GET.get('bare', '0')))
-    title = "Temperature and Humidity: " + sensor if not bare else ""
-    humidity_legend = ":Humidity" if not bare else ""
-    temp_legend = ":Temperature" if not bare else ""
-    scale = request.GET.get('scale', 'fahrenheit')
-    return HttpResponse(subprocess.check_output([
-            "rrdtool", "graph", "-",
-            "-t", title, "-w", width, "-h", height,
-            "DEF:celsius={}:temperature:AVERAGE".format(database),
-            "DEF:humidity={}:humidity:AVERAGE".format(database),
-            "CDEF:fahrenheit=celsius,9,*,5,/,32,+",
-            "LINE1:humidity#0061cf{}".format(humidity_legend),
-            "LINE1:{}#cf0061{}".format(scale, temp_legend)
-        ]), content_type="image/png")
+    args += ['-w', width, '-h', height]
+
+    sensors = request.GET.getlist('sensor')
+    for i, sensor in enumerate(sensors):
+        database = database_for_sensor(sensor)
+        datasource = datasource_for_sensor(sensor)
+        vname = 'vname_' + str(i)
+        args.append("DEF:{}={}:{}".format(vname, database, datasource))
+        if datasource_wants_cf_conversion(datasource, args):
+            next_vname = 'vname2_' + str(i)
+            args.append("CDEF:{}={},9,*,5,/,32,+".format(vname_next, vname))
+            vname = vname_next
+        color = color_for_sensor_number(i)
+        legend = legend_for_sensor(sensor)
+        args.append("LINE1:{}{}:{}".format(vname, color, legend))
+
+    png = subprocess.check_output(args)
+    return HttpResponse(png)
+

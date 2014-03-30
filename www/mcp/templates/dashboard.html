@@ -1,20 +1,81 @@
-<html>
+<!doctype html>
+<html ng-app="AngularApp">
 <head>
     <title>MasterControlProgram: Dashboard</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.0-beta.2/angular.min.js"> </script>
+    <script src="http://code.jquery.com/jquery-2.1.0.min.js"> </script>
     <script>
+        var app = angular.module('AngularApp', []);
+        app.config(function($interpolateProvider) {
+            $interpolateProvider.startSymbol('<[');
+            $interpolateProvider.endSymbol(']>');
+        });
         window.onload = function()
         {
+            /*
+            $('#sensorBedroomTemperature').prop('checked', true).trigger('input');
+            $('#sensorOfficeTemperature').prop('checked', true).trigger('input');
+            */
             // Refresh the summary image every 10 seconds.
+            /*
             window.setInterval(function(e) {
-                var summary = document.getElementById('summary');
-                summary.src = "/mcp/graph/summary/?" + (new Date).getTime();
             }, 10000);
+            */
             // Refresh the room-images every 5 min.
-            window.setInterval(function(e) {}, 5 * 60 * 1000);
+            //window.setInterval(function(e) {}, 5 * 60 * 1000);
         }
     </script>
 </head>
 <body>
-    <img id="summary" src="/mcp/graph/summary/" />
+  <table>
+  <tr>
+    <td>
+      <div>Bedroom</div>
+      <div><input type="checkbox" id="sensorBedroomTemperature"
+                  ng-model="sensorBedroomTemperature" checked
+                  ng-true-value="&sensor=bedroom-temperature" ng-false-value="">
+                      Temperature</input></div>
+      <div><input type="checkbox" id="sensorBedroomHumidity"
+                  ng-model="sensorBedroomHumidity"
+                  ng-true-value="&sensor=bedroom-humidity" ng-false-value="">
+                      Humidity</input></div>
+      <div><input type="checkbox" id="sensorBedroomMotion"
+                  ng-model="sensorBedroomMotion"
+                  ng-true-value="&sensor=bedroom-motion" ng-false-value="">
+                      Motion</input></div>
+      <div>Office</div>
+      <div><input type="checkbox" id="sensorOfficeTemperature"
+                  ng-model="sensorOfficeTemperature"
+                  ng-true-value="&sensor=office-temperature" ng-false-value="">
+                      Temperature</input></div>
+      <div><input type="checkbox" id="sensorOfficeHumidity"
+                  ng-model="sensorOfficeHumidity"
+                  ng-true-value="&sensor=office-humidity" ng-false-value="">
+                      Humidity</input></div>
+      <div><input type="checkbox" id="sensorOfficeMotion"
+                  ng-model="sensorOfficeMotion"
+                  ng-true-value="&sensor=office-motion" ng-false-value="">
+                      Motion</input></div>
+      <div>LivingRoom</div>
+      <div><input type="checkbox" id="sensorLivingroomTemperature"
+                  ng-model="sensorLivingroomTemperature"
+                  ng-true-value="&sensor=livingroom-temperature" ng-false-value="">
+                      Temperature</input></div>
+      <div><input type="checkbox" id="sensorLivingroomHumidity"
+                  ng-model="sensorLivingroomHumidity"
+                  ng-true-value="&sensor=livingroom-humidity" ng-false-value="">
+                      Humidity</input></div>
+      <div><input type="checkbox" id="sensorLivingroomMotion"
+                  ng-model="sensorLivingroomMotion"
+                  ng-true-value="&sensor=livingroom-motion" ng-false-value="">
+                      Motion</input></div>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <img id="summary" ng-src="/mcp/graph/?a=a<[sensorBedroomTemperature]><[sensorBedroomHumidity]><[sensorBedroomMotion]><[sensorOfficeTemperature]><[sensorOfficeHumidity]><[sensorOfficeMotion]><[sensorLivingroomTemperature]><[sensorLivingroomHumidity]><[sensorLivingroomMotion]>&title=Sensor Data" title="graph" />
+    </td>
+  </tr>
+  </table>
 </body>
 </html>
