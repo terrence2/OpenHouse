@@ -10,6 +10,7 @@ from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.dimension import Coord, Size
 import mcp.fs_reflector as reflector
 
+from apscheduler.scheduler import Scheduler
 import llfuse
 
 import os
@@ -141,50 +142,9 @@ def add_devices(abode: Abode, bus: network.Bus, filesystem: FileSystem):
     return {device.name: device for device in devices}
 
 
-def add_presets(abode, devices, filesystem):
-    bedroom_lighting_preset = "unset"
-    def read_lighting_preset() -> str:
-        return "Current Value is: {} -- Possible Values are: on, off, sleep, reading".format(bedroom_lighting_preset)
-
-    def write_lighting_preset(data: str):
-        data = data.strip()
-        states = {
-            'off':
-                   {'hue-bedroom-bed': {'on': False},
-                    'hue-bedroom-desk': {'on': False},
-                    'hue-bedroom-dresser': {'on': False}},
-            'on':
-                   {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
-                    'hue-bedroom-desk': {'on': True, 'hsv': (255, 34495, 232)},
-                    'hue-bedroom-dresser': {'on': True, 'hsv': (255, 34495, 232)}},
-            'read':
-                   {'hue-bedroom-bed': {'on': True, 'control': 'preset', 'hsv': (255, 34495, 232)},
-                    'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
-                    'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
-            'sleep':
-                   {'hue-bedroom-bed': {'on': False},
-                    'hue-bedroom-desk': {'on': True, 'hsv': (0, 47000, 255)},
-                    'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}}
-        }
-        if data not in states:
-            return
-        state = states[data]
-        for device_name, presets in state.items():
-            device = devices[device_name]
-            for prop, value in presets.items():
-                setattr(device, prop, value)
-
-        nonlocal bedroom_lighting_preset
-        bedroom_lighting_preset = data
-
-    presets = filesystem.root().add_entry("presets", Directory())
-    bedroom = presets.add_entry("bedroom", Directory())
-    bedroom.add_entry("lighting", File(read_lighting_preset, write_lighting_preset))
-
-
 def add_data_recorders(abode: Abode, args):
     def make_recorder(room_name, input_name):
-        database_file = os.path.join(args.rrd_path, room_name + '-' + input_name + '.rrd')
+        database_file = os.path.join(args.db_path, room_name + '-' + input_name + '.rrd')
 
         def recorder(event):
             assert event.property_name == input_name
@@ -204,21 +164,35 @@ def main():
 
     import argparse
     parser = argparse.ArgumentParser(description='Master Control Program')
-    parser.add_argument('--rrd-path', default=os.path.expanduser("~/.local/var/db/mcp/"),
-                        help='Where to find rrd records and record their data.')
+    parser.add_argument('--db-path', default=os.path.expanduser("~/.local/var/db/mcp/"),
+                        help='Where to store our data.')
     args = parser.parse_args()
 
+    # Platform services.
+    scheduler = Scheduler({'apscheduler.jobstores.file.class': 'apscheduler.jobstores.shelve_store:ShelveJobStore',
+                           'apscheduler.jobstores.file.path': os.path.join(args.db_path, 'scheduled_jobs')})
     filesystem = FileSystem('/things')
     bus = network.Bus(llfuse.lock)
+
+    # Raw data.
     abode = build_abode(filesystem)
     devices = add_devices(abode, bus, filesystem)
-    add_presets(abode, devices, filesystem)
+
+    # Side channel data recording.
     add_data_recorders(abode, args)
 
+    # Services on the data and platform.
+    from eyrie_managers import ManualControl
+    controllers = [
+        ManualControl(abode, devices, filesystem, bus, scheduler)
+    ]
+
     bus.start()
+    scheduler.start()
 
     filesystem.run()
 
+    scheduler.shutdown()
     bus.exit()
     bus.join()
     return 0

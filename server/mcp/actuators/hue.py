@@ -76,7 +76,7 @@ class HueLight(Actuator):
         return (state['bri'], state['hue'], state['sat'])
 
     @hsv.setter
-    def hsv(self, value:(int, int, int)):
+    def hsv(self, value: (int, int, int)):
         self.hue_bridge.request("PUT", self.state_url(),
                             {'bri': value[0],
                              'hue': value[1],
@@ -102,7 +102,7 @@ class HueLight(Actuator):
         return self.bhs_to_rgb((state['bri'], state['hue'], state['sat']))
 
     @rgb.setter
-    def rgb(self, data:(int, int, int)):
+    def rgb(self, data: (int, int, int)):
         bri, hue, sat = self.rgb_to_bhs(data)
         self.hue_bridge.request("PUT", self.state_url(),
                                 {'bri': bri,
@@ -112,7 +112,7 @@ class HueLight(Actuator):
     def read_rgb(self) -> str:
         return "{} {} {}\n".format(*self.rgb)
 
-    def write_rgb(self, data:str):
+    def write_rgb(self, data: str):
         data = data.strip()
         try:
             if data.startswith('#'):
@@ -142,13 +142,13 @@ class HueLight(Actuator):
         return int(self.state_from(data)['ct'])
 
     @colortemp.setter
-    def colortemp(self, data:int):
+    def colortemp(self, data: int):
         self.hue_bridge.request("PUT", self.state_url(), {'ct': data})
 
     def read_colortemp(self) -> str:
         return "{} in [153,500]".format(self.colortemp)
 
-    def write_colortemp(self, data:str):
+    def write_colortemp(self, data: str):
         self.colortemp = int(data.strip())
 
     # Action
@@ -164,7 +164,7 @@ class HueLight(Actuator):
         return self.control_
 
     @control.setter
-    def control(self, value:str):
+    def control(self, value: str):
         self.control_ = value
 
     def read_control(self) -> str:
