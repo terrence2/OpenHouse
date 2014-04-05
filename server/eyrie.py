@@ -10,6 +10,8 @@ from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.dimension import Coord, Size
 import mcp.fs_reflector as reflector
 
+from eyrie_controller import EyrieController
+
 from apscheduler.scheduler import Scheduler
 import llfuse
 
@@ -168,9 +170,14 @@ def main():
                         help='Where to store our data.')
     args = parser.parse_args()
 
+    # The controller has to come first so that it can initialize the alarms that the scheduler
+    # is going to be looking for in the global scope when we create it.
+    controller = EyrieController()
+    controller.build_alarms()
+
     # Platform services.
-    scheduler = Scheduler({'apscheduler.jobstores.file.class': 'apscheduler.jobstores.shelve_store:ShelveJobStore',
-                           'apscheduler.jobstores.file.path': os.path.join(args.db_path, 'scheduled_jobs')})
+    scheduler = Scheduler({'apscheduler.jobstore.default.class': 'apscheduler.jobstores.shelve_store:ShelveJobStore',
+                           'apscheduler.jobstore.default.path': os.path.join(args.db_path, 'scheduled_jobs.db')})
     filesystem = FileSystem('/things')
     bus = network.Bus(llfuse.lock)
 
@@ -181,11 +188,8 @@ def main():
     # Side channel data recording.
     add_data_recorders(abode, args)
 
-    # Services on the data and platform.
-    from eyrie_managers import ManualControl
-    controllers = [
-        ManualControl(abode, devices, filesystem, bus, scheduler)
-    ]
+    # Finally, really initialize our controller.
+    controller.init(abode, devices, filesystem, bus, scheduler)
 
     bus.start()
     scheduler.start()
