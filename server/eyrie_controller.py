@@ -37,8 +37,10 @@ class EyrieController:
         return globals()[EyrieController.alarm_name(name, day)]
 
     @staticmethod
-    def set_alarm(name, day, callable):
-        globals()[EyrieController.alarm_name(name, day)] = callable
+    def set_alarm(name, day, alarm_func):
+        global_name = EyrieController.alarm_name(name, day)
+        alarm_func.__name__ = global_name
+        globals()[global_name] = alarm_func
 
     @staticmethod
     def map_filesystem_to_scheduler_day(day):
@@ -61,12 +63,11 @@ class EyrieController:
         # Install custom alarm callbacks on the global.
         for name_ in ['wakeup', 'sleep']:
             for day_ in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                def make_alarm(control, name, day):
+                def make_alarm(controller, name, day):
                     def alarm():
-                        control.trigger_alarm(name, day)
-                    alarm.__name__ = EyrieController.alarm_name(name, day)
-                    return alarm
-                self.set_alarm(name_, day_, make_alarm(self, name_, day_))
+                        controller.trigger_alarm(name, day)
+                    controller.set_alarm(name, day, alarm)
+                make_alarm(self, name_, day_)
 
     def init_alarms(self):
         def alarms_help() -> str:
@@ -90,12 +91,18 @@ class EyrieController:
 
                     def write_alarm(data: str):
                         data = data.strip()
-                        hour, _, minute = data.strip().partition(':')
-                        hour = int(hour)
-                        minute = int(minute)
-                        day_of_week = controller.map_filesystem_to_scheduler_day(day)
                         alarm_func = controller.get_alarm(name, day)
                         existing_job = controller.find_job(alarm_func)
+
+                        if data == 'off':
+                            if existing_job:
+                                controller.scheduler.unschedule_job(existing_job)
+                            return
+
+                        hour, _, minute = data.strip().partition(':')
+                        hour = min(23, max(0, int(hour)))
+                        minute = min(59, max(0, int(minute)))
+                        day_of_week = controller.map_filesystem_to_scheduler_day(day)
                         if existing_job:
                             controller.scheduler.unschedule_job(existing_job)
                         controller.scheduler.add_cron_job(alarm_func, day_of_week=day_of_week, hour=hour, minute=minute)
