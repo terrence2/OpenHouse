@@ -14,6 +14,8 @@
 
 #include <bcm2835.h>
 
+#define INTERVAL 9 /*sec*/
+
 const static char *gShortOpts = "n:d:t:m:Dh";
 const static struct option gLongOpts[] = {
     { "name", false, NULL, 'n' },
@@ -149,9 +151,9 @@ mainloop(const Options &opts)
                     dht.failureRate());
         }
 
-        time_t next = time(NULL) + 3;
+        time_t next = time(NULL) + INTERVAL;
         while (time(NULL) < next) {
-            if (motion.waitForMotion(3000000))
+            if (motion.waitForMotion(INTERVAL * 1000000))
                 net.detectedMovement(motion.state());
         }
     }
