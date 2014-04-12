@@ -130,8 +130,10 @@ class EyrieController:
     @staticmethod
     def init_presets(devices, filesystem: FileSystem):
         bedroom_lighting_preset = "unset"
+
         def read_lighting_preset() -> str:
-            return "Current Value is: {} -- Possible Values are: on, off, sleep, reading".format(bedroom_lighting_preset)
+            return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
+                bedroom_lighting_preset)
 
         def write_lighting_preset(data: str):
             data = data.strip()
@@ -151,7 +153,11 @@ class EyrieController:
                 'sleep':
                     {'hue-bedroom-bed': {'on': False},
                      'hue-bedroom-desk': {'on': True, 'hsv': (0, 47000, 255)},
-                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}}
+                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}},
+                'low':
+                    {'hue-bedroom-bed': {'on': True, 'hsv': (0, 34495, 232)},
+                     'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
+                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
             }
             if data not in states:
                 return
