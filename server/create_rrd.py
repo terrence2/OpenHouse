@@ -32,11 +32,11 @@ def main():
             path = os.path.join(args.rrd_path, '{}-{}.rrd'.format(room, ds_name))
             command = [
                 'rrdtool', 'create', path,
-                '-s', '3',  # Step size / base interval == 3 seconds.
-                'DS:{}:GAUGE:10:-30:100'.format(ds_name),  # Data source => DS:<name>:<type>:<heartbeat>:<min>:<max>
-                'RRA:AVERAGE:.75:3:504576000'  # Archive format => RRA:<consolidation fn>:[<unknown "factor">:<step>:<rows>
+                '-s', '30',  # Step size / base interval == 30 seconds.
+                'DS:{}:GAUGE:90:{}:{}'.format(ds_name, minimum, maximum),  # Data source => DS:<name>:<type>:<heartbeat>:<min>:<max>
+                # 100yrs @ 30s per sample === 105,120,000 samples
+                'RRA:AVERAGE:.75:30:105120000'  # Archive format => RRA:<consolidation fn>:[<unknown "factor">:<step>:<rows>
             ]
-            # 504,576,000 samples == 1,513,728,000 seconds == 48 years @ ~3.8GiB
             print("Running: {}".format(subprocess.list2cmdline(command)))
             if not args.dry_run:
                 subprocess.check_call(command)
