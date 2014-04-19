@@ -14,7 +14,7 @@ import wave
 import alsaaudio as alsa
 try:
     import pocketsphinx as ps
-except:
+except ImportError:
     # The sphinx is just full of riddles.
     import pocketsphinx as ps
 
@@ -43,7 +43,7 @@ class CaptureSpokenCommands:
     # Set to true to get noise-floor and record info dumps.
     Debug = False
 
-    def __init__(self, prefix, signal_phrases, commands, callback,
+    def __init__(self, card, prefix, signal_phrases, commands, callback,
                  hmm_directory='/usr/share/pocketsphinx/model/hmm/en_US/hub4wsj_sc_8k'):
         # We will load |prefix|.lm, |prefix|.dict, and check the commands against |prefix|.sent.
         self.prefix_ = prefix
@@ -59,13 +59,13 @@ class CaptureSpokenCommands:
         self.callback_ = callback  # callable(cmd: _) -> None
 
         # The noise threshhold buffer: [rms: int].
-        self.noiseWindow_ = deque([], maxlen=self.PeriodsPerSecond * self.NoiseWindowTime)
+        self.noise_window_ = deque([], maxlen=self.PeriodsPerSecond * self.NoiseWindowTime)
 
         # The last few seconds of sound data: [period: bytes].
         self.periods_ = deque([], maxlen=self.PeriodsPerSecond * self.RecordHistoryTime)
 
         # Open the sound card for capture.
-        self.pcm = alsa.PCM(alsa.PCM_CAPTURE)
+        self.pcm = alsa.PCM(alsa.PCM_CAPTURE, alsa.PCM_NORMAL, card)
         print("Reading from card: {}".format(self.pcm.cardname()))
         self.pcm.setchannels(1)
         self.pcm.setformat(alsa.PCM_FORMAT_S16_LE)
@@ -73,30 +73,30 @@ class CaptureSpokenCommands:
         self.pcm.setperiodsize(self.PeriodSize)
 
         # ASR database for the greeting.
-        langmodel = os.path.realpath(self.prefix_ + ".lm")
+        language_model = os.path.realpath(self.prefix_ + ".lm")
         dictionary = os.path.realpath(self.prefix_ + ".dic")
         sent = os.path.realpath(self.prefix_ + ".sent")
         with open(sent, 'rb') as fp:
             content = fp.read()
             for key in self.commands_.keys():
                 assert key in content
-        self.decoder_greeting = ps.Decoder(hmm=hmm_directory, lm=langmodel, dict=dictionary)
+        self.decoder_greeting = ps.Decoder(hmm=hmm_directory, lm=language_model, dict=dictionary)
 
     def read_one_period(self):
         # Wait for next sound samples.
-        nsamples, data = self.pcm.read()
-        if nsamples != self.PeriodSize:
+        n_samples, data = self.pcm.read()
+        if n_samples != self.PeriodSize:
             raise Exception("short read")
         # Compute rms for this period.
         rms = audioop.rms(data, self.FrameSize)
         # Save this frame.
-        self.noiseWindow_.append(rms)
+        self.noise_window_.append(rms)
         self.periods_.append(data)
         return rms, data
 
     def noise_floor(self):
         """Return the current noise floor value based on the noise window."""
-        return sum(self.noiseWindow_) / len(self.noiseWindow_)
+        return sum(self.noise_window_) / len(self.noise_window_)
 
     def run(self):
         """REPL"""
