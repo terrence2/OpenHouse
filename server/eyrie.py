@@ -7,6 +7,7 @@ from mcp.abode import Abode
 from mcp.actuators.hue import HueBridge, HueLight
 from mcp.filesystem import FileSystem, Directory, File
 from mcp.sensors.nerve import Nerve, NerveEvent
+from mcp.sensors.listener import Listener, ListenerEvent
 from mcp.dimension import Coord, Size
 import mcp.fs_reflector as reflector
 
@@ -110,8 +111,9 @@ def build_abode(filesystem: FileSystem):
     return abode
 
 
-def add_devices(abode: Abode, bus: network.Bus, filesystem: FileSystem):
-    nerves = []
+def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, filesystem: FileSystem):
+    devices = {}
+
     for name in ['rpi-nerve-bedroom', 'rpi-nerve-office', 'rpi-nerve-livingroom']:
         path = name.replace('rpi-nerve-', '/eyrie/')
         log.info("Building nerve: {} at {}".format(name, path))
@@ -126,22 +128,33 @@ def add_devices(abode: Abode, bus: network.Bus, filesystem: FileSystem):
         nerve.listen_temperature(property_forwarder(path, 'temperature'))
         nerve.listen_humidity(property_forwarder(path, 'humidity'))
         nerve.listen_motion(property_forwarder(path, 'motion'))
-        bus.add_sensor(nerve)
-        nerves.append(nerve)
-    bedroom_nerve, office_nerve, livingroom_nerve = nerves
+        bus.add_sensor(nerve.remote)
+        devices[nerve.name] = nerve
 
     bedroom_huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
     bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
     desk_hue = HueLight('hue-bedroom-desk', bedroom_huebridge, 2)
     dresser_hue = HueLight('hue-bedroom-dresser', bedroom_huebridge, 3)
 
-    # Insert controllable devices into the filesystem.
+    # Insert controllable devices into the filesystem and device list.
     directory = filesystem.root().add_entry("actuators", Directory())
     for light in (bed_hue, desk_hue, dresser_hue):
         reflector.add_hue_light(directory, light)
+        devices[light.name] = light
 
-    devices = (bedroom_nerve, office_nerve, livingroom_nerve, bed_hue, desk_hue, dresser_hue)
-    return {device.name: device for device in devices}
+    # Add listeners.
+    for (name, machine) in [('listener-bedroom', 'lemur'), ('listener-avahi', 'avahi-wifi')]:
+        def command_forwarder(controller: EyrieController):
+            def on_command(event: ListenerEvent):
+                log.warning("Received command: {}".format(event.command))
+                controller.apply_preset(event.command.lower())
+            return on_command
+        listener = Listener(name, (machine, network.Bus.DefaultSensorPort))
+        listener.listen_for_commands(command_forwarder(controller))
+        bus.add_sensor(listener.remote)
+        devices[listener.name] = listener
+
+    return devices
 
 
 def add_data_recorders(abode: Abode, args):
@@ -171,7 +184,8 @@ def main():
     args = parser.parse_args()
 
     # The controller has to come first so that it can initialize the alarms that the scheduler
-    # is going to be looking for in the global scope when we create it.
+    # is going to be looking for in the global scope when we create it. We also want to be
+    # able to forward device events to it instead of the abode in some cases.
     controller = EyrieController()
     controller.build_alarms()
 
@@ -183,7 +197,7 @@ def main():
 
     # Raw data.
     abode = build_abode(filesystem)
-    devices = add_devices(abode, bus, filesystem)
+    devices = add_devices(abode, bus, controller, filesystem)
 
     # Side channel data recording.
     add_data_recorders(abode, args)

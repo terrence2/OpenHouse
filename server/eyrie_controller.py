@@ -127,50 +127,55 @@ class EyrieController:
                 device.on = True
                 device.hsv = (0, 34495, 232)
 
-    @staticmethod
-    def init_presets(devices, filesystem: FileSystem):
+    def apply_preset(self, name: str):
+        states = {
+            'off':
+                {'hue-bedroom-bed': {'on': False},
+                 'hue-bedroom-desk': {'on': False},
+                 'hue-bedroom-dresser': {'on': False}},
+            'on':
+                {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
+                 'hue-bedroom-desk': {'on': True, 'hsv': (255, 34495, 232)},
+                 'hue-bedroom-dresser': {'on': True, 'hsv': (255, 34495, 232)}},
+            'read':
+                {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
+                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
+                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
+            'sleep':
+                {'hue-bedroom-bed': {'on': False},
+                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 47000, 255)},
+                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}},
+            'low':
+                {'hue-bedroom-bed': {'on': True, 'hsv': (0, 34495, 232)},
+                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
+                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
+            }
+        if name not in states:
+            return False
+        state = states[name]
+        for device_name, presets in state.items():
+            device = self.devices[device_name]
+            for prop, value in presets.items():
+                setattr(device, prop, value)
+        return True
+
+    def init_presets(self, devices, filesystem: FileSystem):
         bedroom_lighting_preset = "unset"
 
         def read_lighting_preset() -> str:
             return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
                 bedroom_lighting_preset)
 
-        def write_lighting_preset(data: str):
-            data = data.strip()
-            states = {
-                'off':
-                    {'hue-bedroom-bed': {'on': False},
-                     'hue-bedroom-desk': {'on': False},
-                     'hue-bedroom-dresser': {'on': False}},
-                'on':
-                    {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
-                     'hue-bedroom-desk': {'on': True, 'hsv': (255, 34495, 232)},
-                     'hue-bedroom-dresser': {'on': True, 'hsv': (255, 34495, 232)}},
-                'read':
-                    {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
-                     'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
-                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
-                'sleep':
-                    {'hue-bedroom-bed': {'on': False},
-                     'hue-bedroom-desk': {'on': True, 'hsv': (0, 47000, 255)},
-                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}},
-                'low':
-                    {'hue-bedroom-bed': {'on': True, 'hsv': (0, 34495, 232)},
-                     'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
-                     'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
-            }
-            if data not in states:
-                return
-            state = states[data]
-            for device_name, presets in state.items():
-                device = devices[device_name]
-                for prop, value in presets.items():
-                    setattr(device, prop, value)
-
-            nonlocal bedroom_lighting_preset
-            bedroom_lighting_preset = data
+        def make_preset_writer(controller):
+            def write_lighting_preset(data: str):
+                nonlocal bedroom_lighting_preset
+                data = data.strip()
+                if not controller.apply_preset(data):
+                    return
+                bedroom_lighting_preset = data
+            return write_lighting_preset
 
         presets = filesystem.root().add_entry("presets", Directory())
         bedroom = presets.add_entry("bedroom", Directory())
-        bedroom.add_entry("lighting", File(read_lighting_preset, write_lighting_preset))
+        bedroom.add_entry("lighting", File(read_lighting_preset, make_preset_writer(self)))
 
