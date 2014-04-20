@@ -10,9 +10,6 @@ import socket
 corpus_files = os.listdir('corpus-0')
 corpus_files = [os.path.join('corpus-0', fn) for fn in corpus_files]
 
-hostname = socket.gethostname()
-conf_file = os.path.join('conf', hostname, 'listener.ini')
-
 setup(name='Listener',
       version='1.0',
       description='MCP Listener',
@@ -21,7 +18,7 @@ setup(name='Listener',
       scripts=['mcp-listener'],
       data_files=[
           ('/usr/share/mcp/listener/corpus', corpus_files),
-          ('/etc/mcp', [conf_file]),
+          ('/etc/mcp', ['conf/example/listener.example.ini']),
           ('/etc/systemd/system', ['init.d/mcp-listener.service']),
       ]
      )
