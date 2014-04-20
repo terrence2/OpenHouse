@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
 from __future__ import print_function, division
 
+import argparse
 import audioop
-import codecs
 from collections import deque
 import difflib
 import itertools as it
@@ -10,6 +10,7 @@ import os
 import os.path
 import tempfile
 import wave
+import zmq
 
 import alsaaudio as alsa
 try:
@@ -19,13 +20,15 @@ except ImportError:
     import pocketsphinx as ps
 
 
-class CaptureSpokenCommands:
-    # 1024 frames = 64ms per read
-    FrameSize = 2
-    Rate = 16000
-    PeriodSize = 1000
-    PeriodsPerSecond = Rate // PeriodSize
-    CommandEndPeriods = 5
+class CaptureSpokenCommands(object):
+    # Sphinx expects this format. We always transcribe to this format before storing samples in the internal buffers.
+    TranscribeChannels = 1
+    TranscribeRate = 16000
+    TranscribeFormat = alsa.PCM_FORMAT_S16_LE
+    TranscribeFrameSize = 2
+
+    # Constants derived from our parameters above.
+    PeriodsPerSecond = 16
 
     # Ideally we'd subtract the values from a mic across the room, but
     # for now we'll just keep a floating 5-second average of "noise".
@@ -37,14 +40,26 @@ class CaptureSpokenCommands:
     Threshhold = 0.8  # RMS amplitude over the noise floor to recognize an impulse
     NoiseWindowTime = 5  # seconds
 
-    # Amount of data to keep in the data buffer.
+    # How long to wait for no-utterance before considering a command completed.
+    CommandEndTime = 0.2  # seconds
+    CommandEndPeriods = CommandEndTime // (1 / PeriodsPerSecond)
+
+    # Amount of data to keep in the data buffer: e.g. max command length.
     RecordHistoryTime = 5  # seconds
 
     # Set to true to get noise-floor and record info dumps.
-    Debug = False
+    Debug = True
 
     def __init__(self, card, prefix, signal_phrases, commands, callback,
-                 hmm_directory='/usr/share/pocketsphinx/model/hmm/en_US/hub4wsj_sc_8k'):
+                 hmm_directory='/usr/share/pocketsphinx/model/hmm/en_US/hub4wsj_sc_8k',
+                 record_rate=TranscribeRate):
+        # The native record rate for cases where this is non-native.
+        self.record_rate_ = record_rate
+        self.record_period_ = self.record_rate_ // self.PeriodsPerSecond
+
+        # Resampling to the transcription rate may be needed if we have to select a different rate.
+        self.resample_context_ = None
+
         # We will load |prefix|.lm, |prefix|.dict, and check the commands against |prefix|.sent.
         self.prefix_ = prefix
 
@@ -66,11 +81,12 @@ class CaptureSpokenCommands:
 
         # Open the sound card for capture.
         self.pcm = alsa.PCM(alsa.PCM_CAPTURE, alsa.PCM_NORMAL, card)
+        self.pcm.setchannels(self.TranscribeChannels)
+        self.pcm.setformat(self.TranscribeFormat)
+        self.pcm.setrate(self.record_rate_)
+        self.pcm.setperiodsize(self.record_period_)
         print("Reading from card: {}".format(self.pcm.cardname()))
-        self.pcm.setchannels(1)
-        self.pcm.setformat(alsa.PCM_FORMAT_S16_LE)
-        self.pcm.setrate(self.Rate)
-        self.pcm.setperiodsize(self.PeriodSize)
+        self.pcm.dumpinfo()
 
         # ASR database for the greeting.
         language_model = os.path.realpath(self.prefix_ + ".lm")
@@ -85,10 +101,18 @@ class CaptureSpokenCommands:
     def read_one_period(self):
         # Wait for next sound samples.
         n_samples, data = self.pcm.read()
-        if n_samples != self.PeriodSize:
+        if n_samples != self.record_period_:
             raise Exception("short read")
+
+        # Resample if needed.
+        if self.record_rate_ != self.TranscribeRate:
+            data, self.resample_context_ = audioop.ratecv(data, self.TranscribeFrameSize, self.TranscribeChannels,
+                                                          self.record_rate_, self.TranscribeRate,
+                                                          self.resample_context_)
+
         # Compute rms for this period.
-        rms = audioop.rms(data, self.FrameSize)
+        rms = audioop.rms(data, self.TranscribeFrameSize)
+
         # Save this frame.
         self.noise_window_.append(rms)
         self.periods_.append(data)
@@ -173,6 +197,14 @@ class CaptureSpokenCommands:
         return None
 
     def transcribe_command(self, command_audio):
+        if self.Debug:
+            wf = wave.open('/tmp/lastcommand.wav', 'wb')
+            wf.setnchannels(self.TranscribeChannels)
+            wf.setsampwidth(self.TranscribeFrameSize // self.TranscribeChannels)
+            wf.setframerate(self.TranscribeRate)
+            wf.writeframes(command_audio)
+            wf.close()
+
         fp = tempfile.TemporaryFile()
         fp.write(command_audio)
         fp.seek(0)
@@ -192,3 +224,38 @@ class CaptureSpokenCommands:
             return None
         return self.commands_[close_matches[0]]
 
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='MCP Command Listener')
+    parser.add_argument('--capture-device', '-c', metavar="ALSA_GOOP", default='default',
+                        help='ALSA capture device to open.')
+    parser.add_argument('--busted-capture-rate', metavar="RATE", default=CaptureSpokenCommands.TranscribeRate, type=int,
+                        help=("Some capture devices do not feature a controllable rate. Sadly we can't easily detect " +
+                              "this case with current pyalsaaudio so we take our fixed sample rate on the command " +
+                              "line. Use the format data printed on startup to find the right number."))
+    args = parser.parse_args()
+
+    ctx = zmq.Context()
+    sock = ctx.socket(zmq.PUB)
+    sock.bind("tcp://*:31975")
+
+    def on_command(command):
+        print("DispatchedCommand: {}".format(command))
+        sock.send_json({'command': command})
+
+    commands = {
+        'HEY EYRIE TURN ON THE LIGHTS': 'ON',
+        'HEY EYRIE TURN THE LIGHTS ON': 'ON',
+        'HEY EYRIE TURN OFF THE LIGHTS': 'OFF',
+        'HEY EYRIE TURN THE LIGHTS OFF': 'OFF',
+        'HEY EYRIE ITS SLEEP TIME': 'SLEEP',
+        'HEY EYRIE ITS SLEEPY TIME': 'SLEEP',
+        'HEY EYRIE ITS BED TIME': 'SLEEP',
+        'HEY EYRIE ITS TIME FOR BED': 'SLEEP',
+        'HEY EYRIE ITS TIME TO SLEEP': 'SLEEP',
+        'HEY EYRIE TIME TO SLEEP': 'SLEEP',
+        'HEY EYRIE LOWER THE LIGHTS': 'LOW',
+        }
+    listener = CaptureSpokenCommands(args.capture_device, "corpus-0/9629", ["HEY EYRIE", "EYRIE"],
+                                     commands, on_command, record_rate=args.busted_capture_rate)
+    listener.run()
