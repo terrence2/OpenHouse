@@ -1,0 +1,13 @@
+[Unit]
+Description=Listener
+Requires=network.target
+
+[Service]
+User=terrence
+Nice=19
+IOSchedulingClass=2
+IOSchedulingPriority=7
+ExecStart=/usr/bin/mcp-listener
+
+[Install]
+WantedBy=basic.target

@@ -7,6 +7,7 @@ from __future__ import print_function, division
 import argparse
 import audioop
 from collections import deque
+import ConfigParser
 import difflib
 import itertools as it
 import os
@@ -34,7 +35,7 @@ class CaptureSpokenCommands(object):
     PeriodsPerSecond = 16
 
     # Ideally we'd subtract the values from a mic across the room, but
-    # for now we'll just keep a floating 5-second average of "noise".
+    # for now we'll just keep a floating average of "noise".
     # In general this wouldn't work: the floor would reach up with our
     # utterance being part of the noise. However, our recognition phrase
     # is short enough for this not to matter. We'll have to shout, if
@@ -51,7 +52,7 @@ class CaptureSpokenCommands(object):
     RecordHistoryTime = 5  # seconds
 
     # Set to true to get noise-floor and record info dumps.
-    Debug = True
+    Debug = False
 
     def __init__(self, card, prefix, signal_phrases, commands, callback,
                  hmm_directory='/usr/share/pocketsphinx/model/hmm/en_US/hub4wsj_sc_8k',
@@ -228,11 +229,25 @@ class CaptureSpokenCommands(object):
         return self.commands_[close_matches[0]]
 
 
-if __name__ == '__main__':
+def main():
+    config = ConfigParser.RawConfigParser()
+    config.read('/etc/mcp/listener.ini')
+    try:
+        capture_device = config.get('Config', 'capture_device')
+        corpus_prefix = config.get('Config', 'corpus_prefix')
+        busted_capture_rate = config.getint('Config', 'busted_capture_rate')
+        print(capture_device, corpus_prefix, busted_capture_rate)
+    except ConfigParser.NoSectionError:
+        capture_device = "default"
+        corpus_prefix = "./corpus/corpus"
+        busted_capture_rate = CaptureSpokenCommands.TranscribeRate
+
     parser = argparse.ArgumentParser(description='MCP Command Listener')
-    parser.add_argument('--capture-device', '-c', metavar="ALSA_GOOP", default='default',
+    parser.add_argument('--capture-device', '-c', metavar="ALSA_GOOP", default=capture_device,
                         help='ALSA capture device to open.')
-    parser.add_argument('--busted-capture-rate', metavar="RATE", default=CaptureSpokenCommands.TranscribeRate, type=int,
+    parser.add_argument('--corpus-prefix', '-C', metavar="PREFIX", default=corpus_prefix, type=str,
+                        help="Where in the system to find the corpus files.")
+    parser.add_argument('--busted-capture-rate', metavar="RATE", default=busted_capture_rate, type=int,
                         help=("Some capture devices do not feature a controllable rate. Sadly we can't easily detect " +
                               "this case with current pyalsaaudio so we take our fixed sample rate on the command " +
                               "line. Use the format data printed on startup to find the right number."))
@@ -258,7 +273,11 @@ if __name__ == '__main__':
         'HEY EYRIE ITS TIME TO SLEEP': 'SLEEP',
         'HEY EYRIE TIME TO SLEEP': 'SLEEP',
         'HEY EYRIE LOWER THE LIGHTS': 'LOW',
-        }
-    listener = CaptureSpokenCommands(args.capture_device, "corpus-0/9629", ["HEY EYRIE", "EYRIE"],
+    }
+    listener = CaptureSpokenCommands(args.capture_device, args.corpus_prefix, ["HEY EYRIE", "EYRIE"],
                                      commands, on_command, record_rate=args.busted_capture_rate)
     listener.run()
+
+if __name__ == '__main__':
+    main()
+
