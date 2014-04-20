@@ -1,3 +1,10 @@
+/* This Source Code Form is subject to the terms of the GNU General Public
+ * License, version 3. If a copy of the GPL was not distributed with this file,
+ * You can obtain one at https://www.gnu.org/licenses/gpl.txt. */
+
+#ifndef Math_h_
+#define Math_h_
+
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -288,3 +295,5 @@ std::ostream& operator<<(std::ostream &out, const TransformT &t)
         << " @ " << t.pos();
     return out;
 }
+
+#endif // Math_h_
