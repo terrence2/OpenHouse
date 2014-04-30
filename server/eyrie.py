@@ -138,10 +138,12 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
     bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
     desk_hue = HueLight('hue-bedroom-desk', bedroom_huebridge, 2)
     dresser_hue = HueLight('hue-bedroom-dresser', bedroom_huebridge, 3)
+    office_hue1 = HueLight('hue-office-ceiling1', bedroom_huebridge, 4)
+    office_hue2 = HueLight('hue-office-ceiling2', bedroom_huebridge, 5)
 
     # Insert controllable devices into the filesystem and device list.
     directory = filesystem.root().add_entry("actuators", Directory())
-    for light in (bed_hue, desk_hue, dresser_hue):
+    for light in (bed_hue, desk_hue, dresser_hue, office_hue1, office_hue2):
         reflector.add_hue_light(directory, light)
         devices[light.name] = light
 
