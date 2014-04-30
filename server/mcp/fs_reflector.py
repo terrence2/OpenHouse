@@ -51,14 +51,48 @@ def add_hue_light(parent: Directory, hue: HueLight):
 
     def read_on() -> str:
         return str(hue.on) + "\n"
-
     def write_on(data: str):
         hue.on = data.strip() == "True"
-
     subdir.add_entry("on", File(read_on, write_on))
+
+    def read_hsv() -> str:
+        return "Hue: {}, Saturation: {}, V: {}\n".format(*hue.hsv)
+    def write_hsv(data: str):
+        try:
+            parts = data.strip().split()
+            parts = [int(p) for p in parts]
+            hue.hsv = parts
+        except Exception as e:
+            log.warn(str(e))
+            return
+    subdir.add_entry("hsv", File(read_hsv, write_hsv))
+
+    def read_rgb() -> str:
+        return "0x{:02X}{:02X}{:02X}".format(*hue.rgb)
+    def write_rgb(data: str):
+        data = data.strip()
+        try:
+            if data.startswith('#'):
+                if len(data) == 4:
+                    r = int(data[1], 16) * 16
+                    g = int(data[2], 16) * 16
+                    b = int(data[3], 16) * 16
+                elif len(data) == 7:
+                    r = int(data[1:3], 16)
+                    g = int(data[3:5], 16)
+                    b = int(data[5:7], 16)
+                else:
+                    raise AssertionError("HTML format must have 3 or 6 chars: "
+                                         + str(len(data)) + ':' + data)
+            else:
+                r, g, b = [int(p) for p in data.strip().split()]
+            self.rgb = (r, g, b)
+        except Exception as e:
+            log.warn(str(e))
+            return
+    subdir.add_entry("rgb", File(read_rgb, write_rgb))
+
     """
-    subdir.add_entry("hsv")
-    subdir.add_entry("rgb")
     subdir.add_entry("colortemp")
     """
 

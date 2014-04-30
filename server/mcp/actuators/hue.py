@@ -85,6 +85,7 @@ class HueLight(Actuator):
                              'hue': value[1],
                              'sat': value[2]})
 
+    """
     def read_hsv(self) -> str:
         return "{} {} {}\n".format(*self.hsv)
 
@@ -96,6 +97,7 @@ class HueLight(Actuator):
         except Exception as e:
             log.warn(str(e))
             return
+    """
 
     # RGB
     @property
@@ -112,6 +114,7 @@ class HueLight(Actuator):
                                  'hue': hue,
                                  'sat': sat})
 
+    """
     def read_rgb(self) -> str:
         return "{} {} {}\n".format(*self.rgb)
 
@@ -136,6 +139,7 @@ class HueLight(Actuator):
         except Exception as e:
             log.warn(str(e))
             return
+    """
 
     # Color Temperature
     @property
