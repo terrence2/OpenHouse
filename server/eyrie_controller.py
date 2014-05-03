@@ -8,19 +8,61 @@ from mcp.abode import Abode
 from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, Directory, File
 
+from datetime import datetime
 import logging
+
 from apscheduler.scheduler import Scheduler
 
 log = logging.getLogger('manager')
 
 
+class EyrieState:
+    Manual = 0
+    WakingUp = 1
+    Daytime = 2
+    Bedtime = 3
+    Sleep = 4
+
+    @staticmethod
+    def to_string(state: int) -> str:
+        return ['manual', 'wakeup', 'daytime', 'bedtime', 'sleep'][state]
+
+
 class EyrieController:
+    """
+    The state machine:
+
+    WakingUp @ WakeupAlarm -> +30m
+      Simple replay of a sunrise until it ends or we manually move the state.
+
+    Daytime
+      Motion -> Lights
+      Light level set by time of day relative to sunset/sunrise.
+
+    Bedtime @ -30m -> SleepAlarm
+      Simple replay of sunset until it ends or we manually move the state.
+
+    Sleep
+      Lights fixed, no movement triggers (yet).
+
+    Manual
+      All other states can jump here and the lights will be set as requested.
+      When done, will cycle back to the appropriate state and update actuators.
+    """
+
+    DefaultWakeupTime = 60 * 10 + 0  # min
+    DefaultSleepTime = 60 * 23 + 29  # min
+    WakeupAlarmInterval = 30  # min
+    SleepAlarmInterval = 30  # min
+
     def __init__(self):
         self.abode = None
         self.devices = None
         self.filesystem = None
         self.network = None
         self.scheduler = None
+
+        self.state_ = EyrieState.Manual
 
     def init(self, abode: Abode, devices: DeviceSet, filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
         self.abode = abode
@@ -32,6 +74,42 @@ class EyrieController:
         self.init_presets(devices, filesystem)
         self.init_alarms()
 
+        self.restore_automatic_control()
+
+    ### State Machine ###
+    @property
+    def state(self):
+        return self.state_
+
+    def leave_automatic_control(self):
+        self.state_ = EyrieState.Manual
+
+    def restore_automatic_control(self):
+        # Get our current minutes offset.
+        now = datetime.now()
+        current_minutes = now.hour * 60 + now.minute
+
+        # Find current day of week.
+        weekday = datetime.today().weekday()
+        weekday_name = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][weekday]
+
+        # Get alarm start and end times for that day.
+        wakeup_job = self.find_scheduler_job(self.get_alarm('wakeup', weekday_name))
+        wakeup_minutes = self.alarm_to_minutes(wakeup_job, now) if wakeup_job else self.DefaultWakeupTime
+        sleep_job = self.find_scheduler_job(self.get_alarm('sleep', weekday_name))
+        sleep_minutes = self.alarm_to_minutes(sleep_job, now) if sleep_job else self.DefaultSleepTime
+
+        # Find our state based on the time.
+        if current_minutes < wakeup_minutes or current_minutes > sleep_minutes:
+            self.state_ = EyrieState.Sleep
+        elif current_minutes < (wakeup_minutes + self.WakeupAlarmInterval):
+            self.state_ = EyrieState.WakingUp
+        elif current_minutes > (sleep_minutes + self.SleepAlarmInterval):
+            self.state_ = EyrieState.Bedtime
+        else:
+            self.state_ = EyrieState.Daytime
+
+    ### ALARMS ###
     @staticmethod
     def alarm_name(name, day):
         return 'alarm_{}_{}'.format(name, day)
@@ -47,6 +125,20 @@ class EyrieController:
         globals()[global_name] = alarm_func
 
     @staticmethod
+    def alarm_to_minutes(job, dateval):
+        total = 0
+        for field in job.trigger.fields:
+            if field.name == 'hour':
+                value = field.get_next_value(dateval)
+                if value:
+                    total += 60 * int(value)
+            if field.name == 'minute':
+                value = field.get_next_value(dateval)
+                if value:
+                    total += int(value)
+        return total
+
+    @staticmethod
     def map_filesystem_to_scheduler_day(day):
         return {'monday': 'mon',
                 'tuesday': 'tue',
@@ -56,7 +148,7 @@ class EyrieController:
                 'saturday': 'sat',
                 'sunday': 'sun'}[day]
 
-    def find_job(self, alarm_func):
+    def find_scheduler_job(self, alarm_func):
         jobs = self.scheduler.get_jobs()
         for job in jobs:
             if job.func == alarm_func:
@@ -64,7 +156,10 @@ class EyrieController:
         return None
 
     def build_alarms(self):
-        # Install custom alarm callbacks on the global.
+        """
+        Build alarm functions and put them on the global. This is separate from normal init
+        because it has to be done very early in init, before initializing apscheduler.
+        """
         for name_ in ['wakeup', 'sleep']:
             for day_ in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
                 def make_alarm(controller, name, day):
@@ -74,6 +169,10 @@ class EyrieController:
                 make_alarm(self, name_, day_)
 
     def init_alarms(self):
+        """
+        Binds the callable alarm functions we made earlier into the system. Apscheduler should
+        have picked up any existing schedules automatically.
+        """
         def alarms_help() -> str:
             return "Values are: 'off' or |24-hour-time|.\nExample: '7:30' or '16:42'.\n"
 
@@ -87,7 +186,7 @@ class EyrieController:
                     """Closure to capture the right values for loop vars name and day."""
                     def read_alarm() -> str:
                         alarm_func = controller.get_alarm(name, day)
-                        job = controller.find_job(alarm_func)
+                        job = controller.find_scheduler_job(alarm_func)
                         value = 'off'
                         if job is not None:
                             value = str(job.trigger)
@@ -96,7 +195,7 @@ class EyrieController:
                     def write_alarm(data: str):
                         data = data.strip()
                         alarm_func = controller.get_alarm(name, day)
-                        existing_job = controller.find_job(alarm_func)
+                        existing_job = controller.find_scheduler_job(alarm_func)
 
                         if data == 'off':
                             if existing_job:
@@ -115,6 +214,9 @@ class EyrieController:
                 alarm_dir.add_entry(day_, make_alarm_file(self, name_, day_))
 
     def trigger_alarm(self, name, day):
+        """
+        Alarm trampoline into the controller.
+        """
         if name == 'wakeup':
             return self.on_alarm_wakeup()
         return self.on_alarm_sleep()
@@ -129,7 +231,13 @@ class EyrieController:
             device.on = True
             device.hsv = (0, 34495, 232)
 
+    ### PRESETS ###
     def apply_preset(self, name: str, match: str):
+        if name == 'auto':
+            self.restore_automatic_control()
+            return
+        self.leave_automatic_control()
+
         devices = self.devices.select(match)
         if name == 'off':
             devices.set('on', False)
@@ -145,7 +253,6 @@ class EyrieController:
             bed = devices.select('#bed')
             bed.set('on', False).set('hsv', (0, 34495, 232))
             (devices - bed).set('on', True).set('hsv', (0, 47000, 255))
-        return True
 
     def init_presets(self, devices: DeviceSet, filesystem: FileSystem):
         preset_state = {
@@ -153,23 +260,26 @@ class EyrieController:
             '@office': 'unset'
         }
 
-        def make_preset_reader(match: str):
+        def make_preset_file(controller, match: str):
             def read_lighting_preset() -> str:
-                return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
-                    preset_state[match])
-            return read_lighting_preset
+                name = preset_state[match]
 
-        def make_preset_writer(controller, match: str):
+                # Presets are only useful in Manual mode -- the controller state superceeds the state here.
+                if controller.state != EyrieState.Manual:
+                    name = 'auto:{}'.format(EyrieState.to_string(controller.state))
+
+                return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low, auto\n".format(name)
+
             def write_lighting_preset(data: str):
                 data = data.strip()
-                if not controller.apply_preset(data, match):
-                    return
+                controller.apply_preset(data, match)
                 preset_state[match] = data
-            return write_lighting_preset
+
+            return File(read_lighting_preset, write_lighting_preset)
 
         presets = filesystem.root().add_entry("presets", Directory())
         bedroom = presets.add_entry("bedroom", Directory())
-        bedroom.add_entry("lighting", File(make_preset_reader('@bedroom'), make_preset_writer(self, '@bedroom')))
+        bedroom.add_entry("lighting", make_preset_file(self, '@bedroom'))
         office = presets.add_entry("office", Directory())
-        office.add_entry("lighting", File(make_preset_reader('@office'), make_preset_writer(self, '@office')))
+        office.add_entry("lighting", make_preset_file(self, '@office'))
 
