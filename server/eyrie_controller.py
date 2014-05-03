@@ -5,6 +5,7 @@ __author__ = 'terrence'
 
 import mcp.network as network
 from mcp.abode import Abode
+from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, Directory, File
 
 import logging
@@ -21,7 +22,7 @@ class EyrieController:
         self.network = None
         self.scheduler = None
 
-    def init(self, abode: Abode, devices: [object], filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
+    def init(self, abode: Abode, devices: DeviceSet, filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
         self.abode = abode
         self.devices = devices
         self.filesystem = filesystem
@@ -119,18 +120,32 @@ class EyrieController:
         return self.on_alarm_sleep()
 
     def on_alarm_wakeup(self):
-        for name, device in self.devices.items():
-            if name.startswith('hue-'):
-                device.on = True
-                device.hsv = (255, 34495, 232)
+        for device in self.devices.select("$hue"):
+            device.on = True
+            device.hsv = (255, 34495, 232)
 
     def on_alarm_sleep(self):
-        for name, device in self.devices.items():
-            if name.startswith('hue-'):
-                device.on = True
-                device.hsv = (0, 34495, 232)
+        for device in self.devices.select("$hue"):
+            device.on = True
+            device.hsv = (0, 34495, 232)
 
-    def apply_preset(self, name: str):
+    def apply_preset(self, name: str, room_name: str):
+        devices = self.devices.select("@" + room_name)
+        if name == 'off':
+            devices.set('on', False)
+        elif name == 'on':
+            devices.set('on', True).set('hsv', (255, 34495, 232))
+        elif name == 'low':
+            devices.set('on', True).set('hsv', (0, 34495, 232))
+        elif name == 'read':
+            bed = devices.select('#bed')
+            bed.set('on', True).set('hsv', (255, 34495, 232))
+            (devices - bed).set('on', True).set('hsv', (0, 34495, 232))
+        elif name == 'sleep':
+            bed = devices.select('#bed')
+            bed.set('on', False).set('hsv', (0, 34495, 232))
+            (devices - bed).set('on', True).set('hsv', (0, 47000, 255))
+        """
         states = {
             'off':
                 {'hue-bedroom-bed': {'on': False},
@@ -160,25 +175,32 @@ class EyrieController:
             device = self.devices[device_name]
             for prop, value in presets.items():
                 setattr(device, prop, value)
+        """
         return True
 
-    def init_presets(self, devices, filesystem: FileSystem):
-        bedroom_lighting_preset = "unset"
+    def init_presets(self, devices: DeviceSet, filesystem: FileSystem):
+        preset_state = {
+            'bedroom': 'unset',
+            'office': 'unset'
+        }
 
-        def read_lighting_preset() -> str:
-            return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
-                bedroom_lighting_preset)
+        def make_preset_reader(room_name: str):
+            def read_lighting_preset() -> str:
+                return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
+                    preset_state[room_name])
+            return read_lighting_preset
 
-        def make_preset_writer(controller):
+        def make_preset_writer(controller, room_name: str):
             def write_lighting_preset(data: str):
-                nonlocal bedroom_lighting_preset
                 data = data.strip()
-                if not controller.apply_preset(data):
+                if not controller.apply_preset(data, room_name):
                     return
-                bedroom_lighting_preset = data
+                preset_state[room_name] = data
             return write_lighting_preset
 
         presets = filesystem.root().add_entry("presets", Directory())
         bedroom = presets.add_entry("bedroom", Directory())
-        bedroom.add_entry("lighting", File(read_lighting_preset, make_preset_writer(self)))
+        bedroom.add_entry("lighting", File(make_preset_reader('bedroom'), make_preset_writer(self, 'bedroom')))
+        office = presets.add_entry("office", Directory())
+        office.add_entry("lighting", File(make_preset_reader('office'), make_preset_writer(self, 'office')))
 

@@ -8,6 +8,7 @@ import mcp
 import mcp.network as network
 from mcp.abode import Abode
 from mcp.actuators.hue import HueBridge, HueLight
+from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, Directory, File
 from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.sensors.listener import Listener, ListenerEvent
@@ -115,7 +116,7 @@ def build_abode(filesystem: FileSystem):
 
 
 def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, filesystem: FileSystem):
-    devices = {}
+    devices = DeviceSet()
 
     for name in ['rpi-nerve-bedroom', 'rpi-nerve-office', 'rpi-nerve-livingroom']:
         path = name.replace('rpi-nerve-', '/eyrie/')
@@ -132,7 +133,7 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         nerve.listen_humidity(property_forwarder(path, 'humidity'))
         nerve.listen_motion(property_forwarder(path, 'motion'))
         bus.add_sensor(nerve.remote)
-        devices[nerve.name] = nerve
+        devices.add(nerve)
 
     bedroom_huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
     bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
@@ -145,10 +146,10 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
     directory = filesystem.root().add_entry("actuators", Directory())
     for light in (bed_hue, desk_hue, dresser_hue, office_hue1, office_hue2):
         reflector.add_hue_light(directory, light)
-        devices[light.name] = light
+        devices.add(light)
 
     # Add listeners.
-    for (name, machine) in [('listener-bedroom', 'lemur'), ('listener-avahi', 'avahi-wifi')]:
+    for (name, machine) in [('listener-bedroom-chimp', 'lemur'), ('listener-livingroom-avahi', 'avahi-wifi')]:
         def command_forwarder(controller: EyrieController):
             def on_command(event: ListenerEvent):
                 log.warning("Received command: {}".format(event.command))
@@ -157,7 +158,7 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         listener = Listener(name, (machine, network.Bus.DefaultSensorPort))
         listener.listen_for_commands(command_forwarder(controller))
         bus.add_sensor(listener.remote)
-        devices[listener.name] = listener
+        devices.add(listener)
 
     return devices
 

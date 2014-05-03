@@ -6,6 +6,11 @@ __author__ = 'terrence'
 import logging
 
 
+class Device:
+    def __init__(self):
+        self.name = 'unset-unset-unset'
+
+
 def enable_logging(level):
     log_level = getattr(logging, level)
     logging.basicConfig(

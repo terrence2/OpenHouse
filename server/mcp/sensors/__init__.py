@@ -3,10 +3,8 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 __author__ = 'terrence'
 
+from mcp import Device
 
-class Sensor:
-    def is_sensor(self):
-        return True
 
-    def is_actuator(self):
-        return False
+class Sensor(Device):
+    pass
