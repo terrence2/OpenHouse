@@ -47,13 +47,17 @@ class DeviceSet:
         return DeviceSet({device for device in self.devices_ if device.device_name == device_name})
 
     def select(self, match: str) -> {Device}:
+        if not match:
+            return DeviceSet()
+        if match == "*":
+            return self
         if match[0] == '$':
             return self.select_type_(match[1:])
         elif match[0] == '@':
             return self.select_room_(match[1:])
         elif match[0] == '#':
             return self.select_name_(match[1:])
-        return set()
+        return DeviceSet()
 
     def set(self, prop_name: str, prop_value) -> {Device}:
         for device in self.devices_:

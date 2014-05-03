@@ -153,7 +153,7 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         def command_forwarder(controller: EyrieController):
             def on_command(event: ListenerEvent):
                 log.warning("Received command: {}".format(event.command))
-                controller.apply_preset(event.command.lower())
+                controller.apply_preset(event.command.lower(), "*")
             return on_command
         listener = Listener(name, (machine, network.Bus.DefaultSensorPort))
         listener.listen_for_commands(command_forwarder(controller))

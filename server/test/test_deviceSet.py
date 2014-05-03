@@ -1,3 +1,6 @@
+# This Source Code Form is subject to the terms of the GNU General Public
+# License, version 3. If a copy of the GPL was not distributed with this file,
+# You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from unittest import TestCase
 
 __author__ = 'terrence'
@@ -48,9 +51,13 @@ class TestDeviceSet(TestCase):
 
         self.assertEqual(f00.name, "foo-room0-name0")
 
-        devices.select("@room0").set('propname', 'newvalue')
+        devices.select("*").set('propname', 'value0')
+        for dev in devices:
+            self.assertEqual(dev.propname, "value0")
+
+        devices.select("@room0").set('propname', 'value1')
         for dev in (f00, f01, f02, r00, r01, r02, z00, z01, z02):
-            self.assertEqual(dev.propname, 'newvalue')
+            self.assertEqual(dev.propname, "value1")
 
         devices.select("$foo").set('propname', 'value2')
         for dev in (f00, f01, f02, f10, f11, f12, f20, f21, f22):
@@ -77,4 +84,7 @@ class TestDeviceSet(TestCase):
             self.assertEqual(dev.propname, 'before')
         for dev in (f00, f01, f02, r00, r01, r02):
             self.assertEqual(dev.propname, 'value5')
+
+        self.assertFalse(devices.select(""))
+        self.assertFalse(devices.select(None))
 

@@ -129,8 +129,8 @@ class EyrieController:
             device.on = True
             device.hsv = (0, 34495, 232)
 
-    def apply_preset(self, name: str, room_name: str):
-        devices = self.devices.select("@" + room_name)
+    def apply_preset(self, name: str, match: str):
+        devices = self.devices.select(match)
         if name == 'off':
             devices.set('on', False)
         elif name == 'on':
@@ -149,27 +149,27 @@ class EyrieController:
 
     def init_presets(self, devices: DeviceSet, filesystem: FileSystem):
         preset_state = {
-            'bedroom': 'unset',
-            'office': 'unset'
+            '@bedroom': 'unset',
+            '@office': 'unset'
         }
 
-        def make_preset_reader(room_name: str):
+        def make_preset_reader(match: str):
             def read_lighting_preset() -> str:
                 return "Current Value is: {} -- Possible Values are: on, off, sleep, read, low\n".format(
-                    preset_state[room_name])
+                    preset_state[match])
             return read_lighting_preset
 
-        def make_preset_writer(controller, room_name: str):
+        def make_preset_writer(controller, match: str):
             def write_lighting_preset(data: str):
                 data = data.strip()
-                if not controller.apply_preset(data, room_name):
+                if not controller.apply_preset(data, match):
                     return
-                preset_state[room_name] = data
+                preset_state[match] = data
             return write_lighting_preset
 
         presets = filesystem.root().add_entry("presets", Directory())
         bedroom = presets.add_entry("bedroom", Directory())
-        bedroom.add_entry("lighting", File(make_preset_reader('bedroom'), make_preset_writer(self, 'bedroom')))
+        bedroom.add_entry("lighting", File(make_preset_reader('@bedroom'), make_preset_writer(self, '@bedroom')))
         office = presets.add_entry("office", Directory())
-        office.add_entry("lighting", File(make_preset_reader('office'), make_preset_writer(self, 'office')))
+        office.add_entry("lighting", File(make_preset_reader('@office'), make_preset_writer(self, '@office')))
 
