@@ -19,10 +19,9 @@ class ListenerEvent:
 
 class Listener(Sensor):
     def __init__(self, name: str, address: (str, int)):
-        super().__init__()
+        super().__init__(name)
 
         # The bus protocol requires these properties:
-        self.name = name
         self.address = address
         self.remote = network.Sensor(self)
 

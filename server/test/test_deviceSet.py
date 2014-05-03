@@ -8,8 +8,7 @@ from mcp import Device
 
 class MyDev(Device):
     def __init__(self, name):
-        super().__init__()
-        self.name = name
+        super().__init__(name)
         self.propname = 'initial'
 
 

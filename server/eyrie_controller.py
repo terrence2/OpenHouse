@@ -145,37 +145,6 @@ class EyrieController:
             bed = devices.select('#bed')
             bed.set('on', False).set('hsv', (0, 34495, 232))
             (devices - bed).set('on', True).set('hsv', (0, 47000, 255))
-        """
-        states = {
-            'off':
-                {'hue-bedroom-bed': {'on': False},
-                 'hue-bedroom-desk': {'on': False},
-                 'hue-bedroom-dresser': {'on': False}},
-            'on':
-                {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
-                 'hue-bedroom-desk': {'on': True, 'hsv': (255, 34495, 232)},
-                 'hue-bedroom-dresser': {'on': True, 'hsv': (255, 34495, 232)}},
-            'read':
-                {'hue-bedroom-bed': {'on': True, 'hsv': (255, 34495, 232)},
-                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
-                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
-            'sleep':
-                {'hue-bedroom-bed': {'on': False},
-                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 47000, 255)},
-                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 47000, 255)}},
-            'low':
-                {'hue-bedroom-bed': {'on': True, 'hsv': (0, 34495, 232)},
-                 'hue-bedroom-desk': {'on': True, 'hsv': (0, 34495, 232)},
-                 'hue-bedroom-dresser': {'on': True, 'hsv': (0, 34495, 232)}},
-            }
-        if name not in states:
-            return False
-        state = states[name]
-        for device_name, presets in state.items():
-            device = self.devices[device_name]
-            for prop, value in presets.items():
-                setattr(device, prop, value)
-        """
         return True
 
     def init_presets(self, devices: DeviceSet, filesystem: FileSystem):

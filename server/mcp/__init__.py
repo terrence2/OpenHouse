@@ -7,8 +7,9 @@ import logging
 
 
 class Device:
-    def __init__(self):
-        self.name = 'unset-unset-unset'
+    def __init__(self, name):
+        self.name = name
+        self.device_type, self.room_name, self.device_name = name.split('-')
 
 
 def enable_logging(level):

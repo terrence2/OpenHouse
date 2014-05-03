@@ -16,26 +16,17 @@ class DeviceSet:
         @roomname
     """
 
-    class DeviceRef:
-        """
-        Pre-sorts the device name for faster search later.
-        """
-        def __init__(self, device: Device):
-            self.device = device
-            self.device_type, self.room_name, self.device_name = device.name.split('-')
-            assert all(part != 'unset' for part in device.name.split('-'))
-
     def __init__(self, devices: {Device}=None):
         self.devices_ = devices or set()
 
     def add(self, device: Device):
         """Add one device to the set."""
-        self.devices_.add(self.DeviceRef(device))
+        self.devices_.add(device)
         return device
 
     def __iter__(self):
-        for ref in self.devices_:
-            yield ref.device
+        for device in self.devices_:
+            yield device
 
     def __len__(self):
         return len(self.devices_)
@@ -44,7 +35,7 @@ class DeviceSet:
         return DeviceSet(self.devices_ - other.devices_)
 
     def __str__(self):
-        return "{" + ", ".join(d.device.name for d in self.devices_) + "}"
+        return "{" + ", ".join(device.name for device in self.devices_) + "}"
 
     def select_type_(self, device_type: str) -> {Device}:
         return DeviceSet({device for device in self.devices_ if device.device_type == device_type})
@@ -65,6 +56,6 @@ class DeviceSet:
         return set()
 
     def set(self, prop_name: str, prop_value) -> {Device}:
-        for ref in self.devices_:
-            setattr(ref.device, prop_name, prop_value)
+        for device in self.devices_:
+            setattr(device, prop_name, prop_value)
         return self
