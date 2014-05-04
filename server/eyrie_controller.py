@@ -55,6 +55,16 @@ class EyrieController:
     WakeupAlarmInterval = 30  # min
     SleepAlarmInterval = 30  # min
 
+    SleepColor = (0, 47000, 255)  # hsv
+    DaylightHue = 34495
+    DaylightV = 232
+
+    @classmethod
+    def daylight(cls, brightness: float) -> (int, int, int):
+        assert brightness >= 0
+        assert brightness <= 1
+        return int(255 * brightness), cls.DaylightHue, cls.DaylightV
+
     def __init__(self):
         self.abode = None
         self.devices = None
@@ -74,7 +84,20 @@ class EyrieController:
         self.init_presets(devices, filesystem)
         self.init_alarms()
 
+        self.abode.lookup('/eyrie/bedroom').listen('motion', 'propertyChanged', self.on_motion)
+        self.abode.lookup('/eyrie/office').listen('motion', 'propertyChanged', self.on_motion)
+        self.abode.lookup('/eyrie/livingroom').listen('motion', 'propertyChanged', self.on_motion)
+
         self.restore_automatic_control()
+
+    def on_motion(self, event):
+        if self.state_ != EyrieState.Daytime:
+            return
+        devices = self.devices.select('$hue').select('@' + event.target.name)
+        if event.property_value:
+            devices.set('on', True).set('hsv', self.daylight(1))
+        else:
+            devices.set('on', True).set('hsv', self.daylight(0))
 
     ### State Machine ###
     @property
@@ -108,6 +131,39 @@ class EyrieController:
             self.state_ = EyrieState.Bedtime
         else:
             self.state_ = EyrieState.Daytime
+
+        # Do our best to set up auto mode correctly.
+        self.reboot_state_from_nothing()
+
+    def reboot_state_from_nothing(self):
+        """
+        This is for stateless restart into auto mode. Most state is edge triggered, so this is a bit of a hack and
+        may or may not line up perfectly with what we'd get by just running the machine normally.
+        """
+        assert self.state_ != EyrieState.Manual
+
+        if self.state_ == EyrieState.Sleep:
+            self.enter_sleep_state()
+
+        elif self.state_ == EyrieState.Daytime:
+            # FIXME: currently we turn on everything and let normal events stabilize us later.
+            #        Instead we should be snooping the motion state directly.
+            self.devices.select('$hue').set('on', True).set('hsv', self.daylight(1))
+
+        elif self.state_ == EyrieState.WakingUp:
+            # FIXME: build the animation in such a way that we can re-enter it from the middle.
+            self.devices.select('$hue').set('on', True).set('hsv', self.daylight(1))
+
+        elif self.state_ == EyrieState.Bedtime:
+            # FIXME: build the animation in such a way that we can re-enter it from the middle.
+            self.enter_sleep_state()
+
+    def enter_sleep_state(self):
+        assert self.state_ == EyrieState.Sleep
+        bed_light = self.devices.select('$hue').select('@bedroom').select('#bed')
+        bed_light.set('on', False)
+        (self.devices.select('$hue') - bed_light).set('on', True).set('hsv', self.SleepColor)
+
 
     ### ALARMS ###
     @staticmethod

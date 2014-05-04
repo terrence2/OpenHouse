@@ -170,4 +170,3 @@ class Abode(Area):
             parts = parts[1:]
         return area
 
-
