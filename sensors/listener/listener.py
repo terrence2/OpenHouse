@@ -57,7 +57,7 @@ class CaptureSpokenCommands(object):
     def __init__(self, card, prefix, signal_phrases, commands, callback,
                  hmm_directory='/usr/share/pocketsphinx/model/hmm/en_US/hub4wsj_sc_8k',
                  record_rate=TranscribeRate):
-        # The native record rate for cases where this is non-native.
+        # The hardware record rate for cases where it cannot be adjusted to sphinx's expected rate.
         self.record_rate_ = record_rate
         self.record_period_ = self.record_rate_ // self.PeriodsPerSecond
 
@@ -136,12 +136,12 @@ class CaptureSpokenCommands(object):
                 continue
 
             # Transcribe audio -> text.
-            command_text = self.transcribe_command(command_audio)
+            command_text, score = self.transcribe_command(command_audio)
             if not command_text:
                 continue
 
             # Match text -> commands.
-            command = self.figure_out_what_was_said(command_text)
+            command = self.figure_out_what_was_said(command_text, score)
             if not command:
                 continue
 
@@ -214,15 +214,27 @@ class CaptureSpokenCommands(object):
         fp.seek(0)
         rv = self.decoder_greeting.decode_raw(fp)
         assert rv == len(command_audio) / 2
-        best_hyp, _, _ = self.decoder_greeting.get_hyp()
-        print("Hypothesis: {}".format(best_hyp))
-        return best_hyp
+        best_hyp, _, score = self.decoder_greeting.get_hyp()
+        print("Hypothesis: {} @ {}".format(best_hyp, score))
+        return best_hyp, score
 
-    def figure_out_what_was_said(self, text):
-        if not any([text.startswith(phrase) for phrase in self.signal_phrases_]):
+    def figure_out_what_was_said(self, text, score):
+        # Find which signal phrase was used.
+        signal_phrase = None
+        for phrase in self.signal_phrases_:
+            if text.startswith(phrase):
+                signal_phrase = phrase
+        if signal_phrase is None:
             print("No Command: must start with one of {}.".format(self.signal_phrases_))
             return None
-        close_matches = difflib.get_close_matches(text, self.commands_)
+
+        # Check the number of words in the match. If it is like 1, then just discard.
+        words = text[len(signal_phrase):].strip().split(' ')
+        if len(words) < 2:
+            print("No Command: only one word.")
+            return None
+
+        close_matches = difflib.get_close_matches(text, self.commands_, 1, 0.85)
         if not close_matches:
             print("No Command: no good matches with commands for {}.".format(close_matches))
             return None
