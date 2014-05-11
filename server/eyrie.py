@@ -122,8 +122,9 @@ def build_abode(filesystem: FileSystem):
 def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, filesystem: FileSystem):
     devices = DeviceSet()
 
-    for name in ['rpi-nerve-bedroom', 'rpi-nerve-office', 'rpi-nerve-livingroom']:
-        path = name.replace('rpi-nerve-', '/eyrie/')
+    for name, path in [('nerve-bedroom-north', '/eyrie/bedroom'),
+                       ('nerve-office-north', '/eyrie/office'),
+                       ('nerve-livingroom-south', '/eyrie/livingroom')]:
         log.info("Building nerve: {} at {}".format(name, path))
         nerve = Nerve(name, (name, network.Bus.DefaultSensorPort))
 
@@ -153,7 +154,7 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         devices.add(light)
 
     # Add listeners.
-    for (name, machine) in [('listener-bedroom-chimp', 'lemur'), ('listener-livingroom-avahi', 'avahi-wifi')]:
+    for (name, machine) in [('listener-bedroom-chimp', 'lemur')]:
         def command_forwarder(controller: EyrieController):
             def on_command(event: ListenerEvent):
                 log.warning("Received command: {}".format(event.command))
