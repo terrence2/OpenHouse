@@ -31,7 +31,8 @@ def map_abode_to_filesystem(abode: Abode, fs: FileSystem) -> [Directory]:
     return directories
 
 
-def add_properties(directory: Directory, area: Area, properties: [str]):
+def add_rw_abode_properties(directory: Directory, area: Area, properties: [str]):
+    """Install the given properties on |directory| to pass through to get/set on |area|."""
     for prop in properties:
         def read_prop(bound_prop=prop) -> str:
             try:
@@ -44,6 +45,14 @@ def add_properties(directory: Directory, area: Area, properties: [str]):
             area.set(bound_prop, data.strip())
 
         directory.add_entry(prop, File(read_prop, write_prop))
+
+
+def add_ro_object_properties(directory: Directory, obj: object, properties: [str]):
+    """Install the given properties on |directory| to pass through to getattr on |obj|."""
+    for prop in properties:
+        def read_attr(bound_prop=prop) -> str:
+            return lambda: getattr(obj, bound_prop)
+        directory.add_entry(prop, File(read_attr, None))
 
 
 def add_hue_light(parent: Directory, hue: HueLight):

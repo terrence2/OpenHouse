@@ -9,6 +9,7 @@ import mcp.network as network
 from mcp.abode import Abode
 from mcp.actuators.hue import HueBridge, HueLight
 from mcp.devices import DeviceSet
+from mcp.environment import Environment
 from mcp.filesystem import FileSystem, Directory, File
 from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.sensors.listener import Listener, ListenerEvent
@@ -105,16 +106,24 @@ Z is floor-to-ceiling.
 """
 
 
-def build_abode(filesystem: FileSystem):
+def build_abode(filesystem: FileSystem, environment: Environment):
     abode = Abode("eyrie")
     office = abode.create_room('office', Coord(0, 0), Size('10ft', '13ft', '8ft'))
     bedroom = abode.create_room('bedroom', Coord('13ft', 0), Size('12ft', '10ft', '8ft'))
     livingroom = abode.create_room('livingroom', Coord(0, '13ft'), Size('13ft', '19ft9in', '8ft'))
     entry = livingroom.create_subarea('entry', Coord(0, 0), Size('42in', '42in', '8ft'))
 
+    # Create a directory structure out of abode.
     directories = reflector.map_abode_to_filesystem(abode, filesystem)
+
+    # Add sensor nodes to the filesystem -- we cannot auto-detect their presence, since these will only get put
+    # in the abode when we start receiving sensor data.
     for area in (office, bedroom, livingroom):
-        reflector.add_properties(directories[area], area, ('temperature', 'humidity', 'motion'))
+        reflector.add_rw_abode_properties(directories[area], area, ('temperature', 'humidity', 'motion'))
+
+    # Show our environment data on the top-level abode node.
+    reflector.add_ro_object_properties(directories[abode], environment,
+                                       ('sunrise_twilight', 'sunrise', 'sunset', 'sunset_twilight'))
 
     return abode
 
@@ -205,9 +214,10 @@ def main():
                            'apscheduler.jobstore.default.path': os.path.join(args.db_path, 'scheduled_jobs.db')})
     filesystem = FileSystem('/things')
     bus = network.Bus(llfuse.lock)
+    environment = Environment()
 
     # Raw data.
-    abode = build_abode(filesystem)
+    abode = build_abode(filesystem, environment)
     devices = add_devices(abode, bus, controller, filesystem)
 
     # Side channel data recording.

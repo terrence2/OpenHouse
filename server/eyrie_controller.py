@@ -18,6 +18,7 @@ log = logging.getLogger('manager')
 
 class EyrieState:
     Manual = 0
+
     WakingUp = 1
     Daytime = 2
     Bedtime = 3
@@ -61,9 +62,17 @@ class EyrieController:
 
     @classmethod
     def daylight(cls, brightness: float) -> (int, int, int):
+        """Return an HSV tuple for pleasant light at the given relative brightness."""
         assert brightness >= 0
         assert brightness <= 1
         return int(255 * brightness), cls.DaylightHue, cls.DaylightV
+
+    @classmethod
+    def daylight_with_ambient(cls):
+        """
+        Return an HSV tuple for pleasant light, dimming the light when it is light outside, unless it is overcast.
+        """
+
 
     def __init__(self):
         self.abode = None
@@ -93,6 +102,10 @@ class EyrieController:
     def on_motion(self, event):
         if self.state_ != EyrieState.Daytime:
             return
+
+        #color = int(event.property_value) * self.adjustment_for_ambient()
+        #properties = event.target.set('hsv', self.daylight())
+
         devices = self.devices.select('$hue').select('@' + event.target.name)
         if event.property_value:
             devices.set('on', True).set('hsv', self.daylight(1))
