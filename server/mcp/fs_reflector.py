@@ -51,7 +51,7 @@ def add_ro_object_properties(directory: Directory, obj: object, properties: [str
     """Install the given properties on |directory| to pass through to getattr on |obj|."""
     for prop in properties:
         def read_attr(bound_prop=prop) -> str:
-            return lambda: getattr(obj, bound_prop)
+            return str(getattr(obj, bound_prop)) + "\n"
         directory.add_entry(prop, File(read_attr, None))
 
 
