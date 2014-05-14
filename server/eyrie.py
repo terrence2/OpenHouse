@@ -149,18 +149,18 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         bus.add_sensor(nerve.remote)
         devices.add(nerve)
 
-    bedroom_huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
-    bed_hue = HueLight('hue-bedroom-bed', bedroom_huebridge, 1)
-    desk_hue = HueLight('hue-bedroom-desk', bedroom_huebridge, 2)
-    dresser_hue = HueLight('hue-bedroom-dresser', bedroom_huebridge, 3)
-    office_hue1 = HueLight('hue-office-ceiling1', bedroom_huebridge, 4)
-    office_hue2 = HueLight('hue-office-ceiling2', bedroom_huebridge, 5)
+    huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
+    devices.add(HueLight('hue-bedroom-bed', huebridge, 1))
+    devices.add(HueLight('hue-bedroom-desk', huebridge, 6))
+    devices.add(HueLight('hue-bedroom-dresser', huebridge, 3))
+    devices.add(HueLight('hue-office-ceiling1', huebridge, 4))
+    devices.add(HueLight('hue-office-ceiling2', huebridge, 5))
+    devices.add(HueLight('hue-livingroom-torch', huebridge, 2))
 
     # Insert controllable devices into the filesystem and device list.
     directory = filesystem.root().add_entry("actuators", Directory())
-    for light in (bed_hue, desk_hue, dresser_hue, office_hue1, office_hue2):
+    for light in devices.select("$hue"):
         reflector.add_hue_light(directory, light)
-        devices.add(light)
 
     # Add listeners.
     for (name, machine) in [('listener-bedroom-chimp', 'lemur')]:

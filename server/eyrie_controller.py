@@ -326,7 +326,8 @@ class EyrieController:
     def init_presets(self, devices: DeviceSet, filesystem: FileSystem):
         preset_state = {
             '@bedroom': 'unset',
-            '@office': 'unset'
+            '@office': 'unset',
+            '@livingroom': 'unset'
         }
 
         def make_preset_file(controller, match: str):
@@ -347,8 +348,7 @@ class EyrieController:
             return File(read_lighting_preset, write_lighting_preset)
 
         presets = filesystem.root().add_entry("presets", Directory())
-        bedroom = presets.add_entry("bedroom", Directory())
-        bedroom.add_entry("lighting", make_preset_file(self, '@bedroom'))
-        office = presets.add_entry("office", Directory())
-        office.add_entry("lighting", make_preset_file(self, '@office'))
+        for key in preset_state.keys():
+            dir_node = presets.add_entry(key.strip('@'), Directory())
+            dir_node.add_entry("lighting", make_preset_file(self, key))
 
