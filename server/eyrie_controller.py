@@ -73,7 +73,6 @@ class EyrieController:
         Return an HSV tuple for pleasant light, dimming the light when it is light outside, unless it is overcast.
         """
 
-
     def __init__(self):
         self.abode = None
         self.devices = None

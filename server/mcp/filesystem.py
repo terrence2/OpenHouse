@@ -195,9 +195,12 @@ class FileSystem(llfuse.Operations):
         except KeyError:
             raise llfuse.FUSEError(errno.ENOENT)
 
-    def run(self):
+    def run(self, debug=False):
         # Setup our fuse interaction, but don't process requests yet.
-        llfuse.init(self, self.mount_path, ['fsname=thingfs', 'nonempty', 'debug'])
+        opts = ['fsname=thingfs', 'nonempty']
+        if debug:
+            opts.append('debug')
+        llfuse.init(self, self.mount_path, opts)
         self.ready_ = True
 
         try:

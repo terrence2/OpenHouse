@@ -25,22 +25,20 @@ class Nerve(Sensor):
         self.remote = network.Sensor(self)
 
         # Callbacks for the events we can send.
-        self.on_temperature_ = None
-        self.on_humidity_ = None
-        self.on_motion_ = None
+        self.on_temperature_ = self.fake_listener_
+        self.on_humidity_ = self.fake_listener_
+        self.on_motion_ = self.fake_listener_
 
-        #return str(self.last_temperature * 9.0 / 5.0 + 32.0) + "\n"
+    def fake_listener_(self, evt: NerveEvent):
+        log.warning("nerve {} dropping event {}".format(self.name, evt.name))
 
     def listen_temperature(self, callback: callable):
-        assert self.on_temperature_ is None
         self.on_temperature_ = callback
 
     def listen_humidity(self, callback: callable):
-        assert self.on_humidity_ is None
         self.on_humidity_ = callback
 
     def listen_motion(self, callback: callable):
-        assert self.on_motion_ is None
         self.on_motion_ = callback
 
     def on_message(self, json):
@@ -50,7 +48,7 @@ class Nerve(Sensor):
         msg_type = json['type']
         if msg_type == 'TEMP_HUMIDITY':
             temp, humidity = float(json['temp']), float(json['humidity'])
-            log.info("from {} -> temperature: {}, humidity: {}".format(self.name, temp, humidity))
+            log.debug("from {} -> temperature: {}, humidity: {}".format(self.name, temp, humidity))
             if self.on_temperature_:
                 self.on_temperature_(NerveEvent('temperature', temp))
             if self.on_humidity_:
@@ -58,7 +56,7 @@ class Nerve(Sensor):
 
         elif msg_type == 'MOVEMENT':
             state = bool(json['state'])
-            log.info("from {} -> motion state: {}".format(self.name, state))
+            log.debug("from {} -> motion state: {}".format(self.name, state))
             if self.on_motion_:
                 self.on_motion_(NerveEvent('motion', bool(json['state'])))
 

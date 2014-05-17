@@ -158,7 +158,7 @@ class Bus(Thread):
         except KeyError:
             log.exception("received message from unknown sensor")
 
-        log.info("Received message from sensor: {}".format(sensor.name))
+        log.debug("Received message from sensor: {}".format(sensor.name))
 
         try:
             data = socket.recv_json()

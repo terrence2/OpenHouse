@@ -13,10 +13,21 @@ class Device:
 
 
 def enable_logging(level):
-    log_level = getattr(logging, level)
-    logging.basicConfig(
-        format='%(asctime)s:%(levelname)s:%(name)s:%(message)s',
-        filename='mcp-eventlog.log', level=log_level)
-    log = logging.getLogger('home')
-    return log
+    # File logger captures everything.
+    fh = logging.FileHandler('mcp-events.log')
+    fh.setLevel(logging.DEBUG)
 
+    # Console output level is configurable.
+    ch = logging.StreamHandler()
+    ch.setLevel(getattr(logging, level))
+
+    # Set an output format.
+    formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+
+    # Add handlers to root.
+    root = logging.getLogger('')
+    root.setLevel(logging.DEBUG)
+    root.addHandler(ch)
+    root.addHandler(fh)

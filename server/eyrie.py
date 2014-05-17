@@ -21,6 +21,7 @@ from eyrie_controller import EyrieController
 from apscheduler.scheduler import Scheduler
 import llfuse
 
+import logging
 import os
 import os.path
 import subprocess
@@ -137,10 +138,10 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         nerve = devices.add(Nerve(name, (name, network.Bus.DefaultSensorPort)))
         path = '/eyrie/{}'.format(nerve.room_name)
 
-        def property_forwarder(path: str, propname: str):
+        def property_forwarder(path_inner: str, prop_inner: str):
             def handler(evt: NerveEvent):
-                log.info("Forwarding message to: {}[{}]".format(path, propname))
-                abode.lookup(path).set(propname, evt.value)
+                log.info("{}[{}] = {}".format(path_inner, prop_inner, evt.value))
+                abode.lookup(path_inner).set(prop_inner, evt.value)
             return handler
 
         nerve.listen_temperature(property_forwarder(path, 'temperature'))
@@ -183,7 +184,7 @@ def add_data_recorders(abode: Abode, args):
 
         def recorder(event):
             assert event.property_name == input_name
-            log.info("Recording {} for {} - {}".format(input_name, room_name, int(event.property_value)))
+            log.debug("Recording {} for {} - {}".format(input_name, room_name, int(event.property_value)))
             subprocess.check_output(["rrdtool", "update", database_file, "--",
                                      "N:{}".format(int(event.property_value))])
         return recorder
@@ -194,14 +195,17 @@ def add_data_recorders(abode: Abode, args):
 
 
 def main():
-    global log
-    log = mcp.enable_logging(level='DEBUG')
-
     import argparse
     parser = argparse.ArgumentParser(description='Master Control Program')
     parser.add_argument('--db-path', default=os.path.expanduser("~/.local/var/db/mcp/"),
                         help='Where to store our data.')
+    parser.add_argument('--log-level', '-l', default='INFO',
+                        help="Set the log level (default: INFO).")
     args = parser.parse_args()
+
+    global log
+    mcp.enable_logging(level=args.log_level)
+    log = logging.getLogger('eyrie')
 
     # The controller has to come first so that it can initialize the alarms that the scheduler
     # is going to be looking for in the global scope when we create it. We also want to be
