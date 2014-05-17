@@ -228,7 +228,7 @@ def main():
     add_data_recorders(abode, args)
 
     # Finally, really initialize our controller.
-    controller.init(abode, devices, filesystem, bus, scheduler)
+    controller.init(abode, devices, environment, filesystem, bus, scheduler)
 
     bus.start()
     scheduler.start()

@@ -6,9 +6,10 @@ __author__ = 'terrence'
 import mcp.network as network
 from mcp.abode import Abode
 from mcp.devices import DeviceSet
+from mcp.environment import Environment
 from mcp.filesystem import FileSystem, Directory, File
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from apscheduler.scheduler import Scheduler
@@ -76,21 +77,24 @@ class EyrieController:
     def __init__(self):
         self.abode = None
         self.devices = None
+        self.environment = None
         self.filesystem = None
         self.network = None
         self.scheduler = None
 
         self.state_ = EyrieState.Manual
 
-    def init(self, abode: Abode, devices: DeviceSet, filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
+    def init(self, abode: Abode, devices: DeviceSet, environment: Environment, filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
         self.abode = abode
         self.devices = devices
+        self.environment = environment
         self.filesystem = filesystem
         self.network = bus
         self.scheduler = scheduler
 
-        self.init_presets(devices, filesystem)
+        self.init_presets()
         self.init_alarms()
+        self.init_test_hook()
 
         self.abode.lookup('/eyrie/bedroom').listen('motion', 'propertyChanged', self.on_motion)
         self.abode.lookup('/eyrie/office').listen('motion', 'propertyChanged', self.on_motion)
@@ -322,7 +326,7 @@ class EyrieController:
             bed.set('on', False).set('hsv', (0, 34495, 232))
             (devices - bed).set('on', True).set('hsv', (0, 47000, 255))
 
-    def init_presets(self, devices: DeviceSet, filesystem: FileSystem):
+    def init_presets(self):
         preset_state = {
             '@bedroom': 'unset',
             '@office': 'unset',
@@ -346,8 +350,30 @@ class EyrieController:
 
             return File(read_lighting_preset, write_lighting_preset)
 
-        presets = filesystem.root().add_entry("presets", Directory())
+        presets = self.filesystem.root().add_entry("presets", Directory())
         for key in preset_state.keys():
             dir_node = presets.add_entry(key.strip('@'), Directory())
             dir_node.add_entry("lighting", make_preset_file(self, key))
 
+    def test_hook_read(self) -> str:
+        """
+        starttime = datetime.now()
+        endtime = starttime + timedelta(seconds=60)
+
+        def tick(self):
+            nonlocal job
+            now = datetime.now()
+            if now > endtime:
+                self.scheduler.unschedule_job(job)
+            print(endtime - starttime)
+        self.scheduler.add_interval_job(tick, seconds=1)
+        job = tick.job
+        """
+
+        return "Ran\n"
+
+    def test_hook_write(self, data: str):
+        pass
+
+    def init_test_hook(self):
+        self.filesystem.root().add_entry("testing", File(self.test_hook_read, self.test_hook_write))
