@@ -131,11 +131,11 @@ def build_abode(filesystem: FileSystem, environment: Environment):
 def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, filesystem: FileSystem):
     devices = DeviceSet()
 
-    for name, path in [('nerve-bedroom-north', '/eyrie/bedroom'),
-                       ('nerve-office-north', '/eyrie/office'),
-                       ('nerve-livingroom-south', '/eyrie/livingroom')]:
-        log.info("Building nerve: {} at {}".format(name, path))
-        nerve = Nerve(name, (name, network.Bus.DefaultSensorPort))
+    for unique in ('bedroom-north', 'office-north', 'livingroom-south'):
+        name = 'nerve-{}'.format(unique)
+        log.info("Building nerve: {}".format(name))
+        nerve = devices.add(Nerve(name, (name, network.Bus.DefaultSensorPort)))
+        path = '/eyrie/{}'.format(nerve.room_name)
 
         def property_forwarder(path: str, propname: str):
             def handler(evt: NerveEvent):
@@ -147,7 +147,6 @@ def add_devices(abode: Abode, bus: network.Bus, controller: EyrieController, fil
         nerve.listen_humidity(property_forwarder(path, 'humidity'))
         nerve.listen_motion(property_forwarder(path, 'motion'))
         bus.add_sensor(nerve.remote)
-        devices.add(nerve)
 
     huebridge = HueBridge('hue-bedroom', 'MasterControlProgram')
     devices.add(HueLight('hue-bedroom-bed', huebridge, 1))
