@@ -8,6 +8,8 @@ from mcp.abode import Abode
 from mcp.devices import DeviceSet
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem, Directory, File
+from mcp.animation import IntVectorAnimation, Ticker
+import llfuse
 
 from datetime import datetime, timedelta
 import logging
@@ -84,6 +86,9 @@ class EyrieController:
 
         self.state_ = EyrieState.Manual
 
+        self.animation_ = None
+        self.ticker_ = Ticker(self.animation_tick, 0.5, llfuse.lock)
+
     def init(self, abode: Abode, devices: DeviceSet, environment: Environment, filesystem: FileSystem, bus: network.Bus, scheduler: Scheduler):
         self.abode = abode
         self.devices = devices
@@ -101,6 +106,8 @@ class EyrieController:
         self.abode.lookup('/eyrie/livingroom').listen('motion', 'propertyChanged', self.on_motion)
 
         self.restore_automatic_control()
+
+        self.ticker_.start()
 
     def on_motion(self, event):
         if self.state_ != EyrieState.Daytime:
@@ -356,24 +363,21 @@ class EyrieController:
             dir_node.add_entry("lighting", make_preset_file(self, key))
 
     def test_hook_read(self) -> str:
-        """
-        starttime = datetime.now()
-        endtime = starttime + timedelta(seconds=60)
-
-        def tick(self):
-            nonlocal job
-            now = datetime.now()
-            if now > endtime:
-                self.scheduler.unschedule_job(job)
-            print(endtime - starttime)
-        self.scheduler.add_interval_job(tick, seconds=1)
-        job = tick.job
-        """
-
         return "Ran\n"
 
     def test_hook_write(self, data: str):
-        pass
+        self.animation_ = IntVectorAnimation(60, self.daylight(0), self.daylight(1))
+        self.devices.select('$hue').select('@bedroom').set('hsv', self.animation_.initial())
+
+    def animation_tick(self):
+        if not self.animation_:
+            return
+
+        print("TICK: {}".format(self.animation_.current()))
+        self.devices.select('$hue').select('@bedroom').set('hsv', self.animation_.current())
+
+        if self.animation_.is_over():
+            self.animation_ = None
 
     def init_test_hook(self):
         self.filesystem.root().add_entry("testing", File(self.test_hook_read, self.test_hook_write))

@@ -4,17 +4,17 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 __author__ = 'terrence'
 
-import mcp
-import mcp.network as network
 from mcp.abode import Abode
 from mcp.actuators.hue import HueBridge, HueLight
 from mcp.devices import DeviceSet
+from mcp.dimension import Coord, Size
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem, Directory, File
-from mcp.sensors.nerve import Nerve, NerveEvent
 from mcp.sensors.listener import Listener, ListenerEvent
-from mcp.dimension import Coord, Size
+from mcp.sensors.nerve import Nerve, NerveEvent
+import mcp
 import mcp.fs_reflector as reflector
+import mcp.network as network
 
 from eyrie_controller import EyrieController
 
