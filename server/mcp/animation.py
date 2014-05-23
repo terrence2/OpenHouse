@@ -6,19 +6,19 @@ from threading import Thread
 import time
 
 
-class Ticker(Thread):
+class AnimationController(Thread):
     """
     The dumbest possible interval scheduler. It just sleeps for interval and calls the callback in a loop. No
     provisions are made for drift... or for anything else.
     """
-    def __init__(self, callback, interval, lock):
+    def __init__(self, interval, lock):
         super().__init__()
         self.daemon = True
 
-        self.callback_ = callback
         self.interval_ = interval
         self.lock_ = lock
         self.want_exit_ = False
+        self.state_ = None
 
     def exit(self):
         with self.lock_:
@@ -32,7 +32,17 @@ class Ticker(Thread):
                 if self.want_exit_:
                     return
 
-                self.callback_()
+                self._apply_animation()
+
+    def _apply_animation(self):
+        if not self.state_:
+            return
+
+        #print("TICK: {}".format(self.animation_.current()))
+        #self.devices.select('$hue').select('@bedroom').set('bhs', self.animation_.current())
+
+        if self.state_.is_over():
+            self.state_ = None
 
 
 class Animation:
