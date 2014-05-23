@@ -95,7 +95,7 @@ def add_hue_light(parent: Directory, hue: HueLight):
                                          + str(len(data)) + ':' + data)
             else:
                 r, g, b = [int(p) for p in data.strip().split()]
-            self.rgb = (r, g, b)
+            hue.rgb = (r, g, b)
         except Exception as e:
             log.warn(str(e))
             return

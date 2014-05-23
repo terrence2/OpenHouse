@@ -14,6 +14,7 @@ class DeviceSet:
     Supported selectors are:
         $devicetype
         @roomname
+        #devicename
     """
 
     def __init__(self, devices: {Device}=None):
@@ -33,6 +34,9 @@ class DeviceSet:
 
     def __sub__(self, other):
         return DeviceSet(self.devices_ - other.devices_)
+
+    def __add__(self, other):
+        return DeviceSet(self.devices_ | other.devices_)
 
     def __str__(self):
         return "{" + ", ".join(device.name for device in self.devices_) + "}"
