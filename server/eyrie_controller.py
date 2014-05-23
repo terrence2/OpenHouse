@@ -1,10 +1,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
-
 import mcp.network as network
 from mcp.abode import Abode
+from mcp.color import BHS
 from mcp.devices import DeviceSet
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem, Directory, File
@@ -59,22 +58,28 @@ class EyrieController:
     WakeupAlarmInterval = 30  # min
     SleepAlarmInterval = 30  # min
 
-    SleepColor = (0, 47000, 255)  # hsv
     DaylightHue = 34495
-    DaylightV = 232
+    DaylightSat = 232
+    MoonlightHue = 47000
+    MoonlightSat = 255
 
     @classmethod
-    def daylight(cls, brightness: float) -> (int, int, int):
-        """Return an HSV tuple for pleasant light at the given relative brightness."""
+    def daylight(cls, brightness: float) -> BHS:
+        """Return a BHS for pleasant light at the given relative brightness."""
         assert brightness >= 0
         assert brightness <= 1
-        return int(255 * brightness), cls.DaylightHue, cls.DaylightV
+        return BHS(255 * brightness, cls.DaylightHue, cls.DaylightSat)
 
     @classmethod
     def daylight_with_ambient(cls):
         """
-        Return an HSV tuple for pleasant light, dimming the light when it is light outside, unless it is overcast.
+        Return a BHS for pleasant light, dimming the light when it is light outside, unless it is overcast.
         """
+
+    @classmethod
+    def moonlight(cls, brightness: float) -> BHS:
+        """Return a BHS for pleasant light to sleep by."""
+        return BHS(255 * brightness, cls.MoonlightHue, cls.MoonlightSat)
 
     def __init__(self):
         self.abode = None
@@ -113,14 +118,11 @@ class EyrieController:
         if self.state_ != EyrieState.Daytime:
             return
 
-        #color = int(event.property_value) * self.adjustment_for_ambient()
-        #properties = event.target.set('hsv', self.daylight())
-
         devices = self.devices.select('$hue').select('@' + event.target.name)
         if event.property_value:
-            devices.set('on', True).set('hsv', self.daylight(1))
+            devices.set('on', True).set('bhs', self.daylight(1))
         else:
-            devices.set('on', True).set('hsv', self.daylight(0))
+            devices.set('on', True).set('bhs', self.daylight(0))
 
     ### State Machine ###
     @property
@@ -171,11 +173,11 @@ class EyrieController:
         elif self.state_ == EyrieState.Daytime:
             # FIXME: currently we turn on everything and let normal events stabilize us later.
             #        Instead we should be snooping the motion state directly.
-            self.devices.select('$hue').set('on', True).set('hsv', self.daylight(1))
+            self.devices.select('$hue').set('on', True).set('bhs', self.daylight(1))
 
         elif self.state_ == EyrieState.WakingUp:
             # FIXME: build the animation in such a way that we can re-enter it from the middle.
-            self.devices.select('$hue').set('on', True).set('hsv', self.daylight(1))
+            self.devices.select('$hue').set('on', True).set('bhs', self.daylight(1))
 
         elif self.state_ == EyrieState.Bedtime:
             # FIXME: build the animation in such a way that we can re-enter it from the middle.
@@ -185,7 +187,7 @@ class EyrieController:
         assert self.state_ == EyrieState.Sleep
         bed_light = self.devices.select('$hue').select('@bedroom').select('#bed')
         bed_light.set('on', False)
-        (self.devices.select('$hue') - bed_light).set('on', True).set('hsv', self.SleepColor)
+        (self.devices.select('$hue') - bed_light).set('on', True).set('bhs', self.moonlight(0))
 
 
     ### ALARMS ###
@@ -303,12 +305,12 @@ class EyrieController:
     def on_alarm_wakeup(self):
         for device in self.devices.select("$hue"):
             device.on = True
-            device.hsv = (255, 34495, 232)
+            device.bhs = BHS(255, 34495, 232)
 
     def on_alarm_sleep(self):
         for device in self.devices.select("$hue"):
             device.on = True
-            device.hsv = (0, 34495, 232)
+            device.bhs = (0, 34495, 232)
 
     ### PRESETS ###
     def apply_preset(self, name: str, match: str):
@@ -321,17 +323,17 @@ class EyrieController:
         if name == 'off':
             devices.set('on', False)
         elif name == 'on':
-            devices.set('on', True).set('hsv', (255, 34495, 232))
+            devices.set('on', True).set('bhs', self.daylight(1))
         elif name == 'low':
-            devices.set('on', True).set('hsv', (0, 34495, 232))
+            devices.set('on', True).set('bhs', self.daylight(0))
         elif name == 'read':
             bed = devices.select('#bed')
-            bed.set('on', True).set('hsv', (255, 34495, 232))
-            (devices - bed).set('on', True).set('hsv', (0, 34495, 232))
+            bed            .set('on', True).set('bhs', self.daylight(1))
+            (devices - bed).set('on', True).set('bhs', self.daylight(0))
         elif name == 'sleep':
             bed = devices.select('#bed')
-            bed.set('on', False).set('hsv', (0, 34495, 232))
-            (devices - bed).set('on', True).set('hsv', (0, 47000, 255))
+            bed            .set('on', False).set('bhs', self.moonlight(0))
+            (devices - bed).set('on', True).set('bhs', self.moonlight(0))
 
     def init_presets(self):
         preset_state = {
@@ -367,14 +369,14 @@ class EyrieController:
 
     def test_hook_write(self, data: str):
         self.animation_ = IntVectorAnimation(60, self.daylight(0), self.daylight(1))
-        self.devices.select('$hue').select('@bedroom').set('hsv', self.animation_.initial())
+        self.devices.select('$hue').select('@bedroom').set('bhs', self.animation_.initial())
 
     def animation_tick(self):
         if not self.animation_:
             return
 
         print("TICK: {}".format(self.animation_.current()))
-        self.devices.select('$hue').select('@bedroom').set('hsv', self.animation_.current())
+        self.devices.select('$hue').select('@bedroom').set('bhs', self.animation_.current())
 
         if self.animation_.is_over():
             self.animation_ = None

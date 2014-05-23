@@ -1,12 +1,12 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
-
+import colorsys
 import http
 import http.client
 import json
 from mcp.actuators import Actuator
+from mcp.color import BHS, RGB, Mired
 
 
 class HueBridge:
@@ -37,14 +37,10 @@ class HueLight(Actuator):
     """
     An individually controllable Philips Hue light.
     """
-    def __init__(self, name:str, bridge:HueBridge, hue_light_id:int):
+    def __init__(self, name: str, bridge: HueBridge, hue_light_id: int):
         super().__init__(name)
         self.hue_bridge = bridge
         self.hue_light_id = hue_light_id
-
-        """
-        self._fs_colortemp = File(self.read_colortemp, self.write_colortemp)
-        """
 
     # ON
     @property
@@ -56,29 +52,29 @@ class HueLight(Actuator):
     def on(self, value: bool):
         self.hue_bridge.request("PUT", self.state_url(), {'on': bool(value)})
 
-    # HSV
+    # BHS
     @property
-    def hsv(self) -> (int, int, int):
+    def bhs(self) -> BHS:
         data = self.hue_bridge.request("GET", "")
         state = self.state_from(data)
-        return (state['bri'], state['hue'], state['sat'])
+        return BHS(state['bri'], state['hue'], state['sat'])
 
-    @hsv.setter
-    def hsv(self, value: (int, int, int)):
+    @bhs.setter
+    def bhs(self, value: BHS):
         self.hue_bridge.request("PUT", self.state_url(),
-                            {'bri': value[0],
-                             'hue': value[1],
-                             'sat': value[2]})
+                                {'bri': value.b,
+                                 'hue': value.h,
+                                 'sat': value.s})
 
     # RGB
     @property
-    def rgb(self) -> (int, int, int):
+    def rgb(self) -> RGB:
         data = self.hue_bridge.request("GET", "")
         state = self.state_from(data)
-        return self.bhs_to_rgb((state['bri'], state['hue'], state['sat']))
+        return self.bhs_to_rgb(BHS(state['bri'], state['hue'], state['sat']))
 
     @rgb.setter
-    def rgb(self, data: (int, int, int)):
+    def rgb(self, data: RGB):
         bri, hue, sat = self.rgb_to_bhs(data)
         self.hue_bridge.request("PUT", self.state_url(),
                                 {'bri': bri,
@@ -87,20 +83,14 @@ class HueLight(Actuator):
 
     # Color Temperature
     @property
-    def colortemp(self) -> int:
+    def colortemp(self) -> Mired:
         """Mired color temperature."""
         data = self.hue_bridge.request("GET", "")
-        return int(self.state_from(data)['ct'])
+        return Mired(self.state_from(data)['ct'])
 
     @colortemp.setter
-    def colortemp(self, data: int):
-        self.hue_bridge.request("PUT", self.state_url(), {'ct': data})
-
-    def read_colortemp(self) -> str:
-        return "{} in [153,500]".format(self.colortemp)
-
-    def write_colortemp(self, data: str):
-        self.colortemp = int(data.strip())
+    def colortemp(self, data: Mired):
+        self.hue_bridge.request("PUT", self.state_url(), {'ct': data.ct})
 
     # Utility
     def state_url(self):
@@ -109,16 +99,19 @@ class HueLight(Actuator):
     def state_from(self, data):
         return data['lights'][str(self.hue_light_id)]['state']
 
-    def rgb_to_bhs(self, rgb):
-        r, g, b = [p / 256 for p in rgb]
+    def rgb_to_bhs(self, rgb: RGB) -> BHS:
+        r = rgb.r / 256
+        g = rgb.g / 256
+        b = rgb.b / 256
         hue, light, sat = colorsys.rgb_to_hls(r, g, b)
-        return (int(light * 256), int(hue * 2**16), int(sat * 256))
+        return BHS(light * 256, hue * 2**16, sat * 256)
 
-    def bhs_to_rgb(self, bhs):
-        bri, hue, sat = [p / 256 for p in bhs]
-        hue /= 256
+    def bhs_to_rgb(self, bhs: BHS) -> RGB:
+        bri = bhs.b / 256
+        hue = bhs.h / (2**16)
+        sat = bhs.s / 256
         r, g, b = colorsys.hls_to_rgb(hue, bri, sat)
-        return [int(p * 256) for p in (r, g, b)]
+        return RGB(r * 256, g * 256, b * 256)
 
 
 

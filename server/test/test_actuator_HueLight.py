@@ -5,8 +5,7 @@ import math
 import time
 from unittest import TestCase
 from mcp.actuators.hue import HueLight, HueBridge
-
-__author__ = 'terrence'
+from mcp.color import BHS, Mired
 
 
 class TestHueLight(TestCase):
@@ -28,13 +27,13 @@ class TestHueLight(TestCase):
     def test_colortemp(self):
         slices = 10
         for v in range(153, 500, math.ceil((500 - 153) / slices)):
-            self.light.colortemp = v
-            self.assertEqual(v, self.light.colortemp)
+            self.light.colortemp = Mired(v)
+            self.assertEqual(Mired(v), self.light.colortemp)
             time.sleep(0.01)
 
         for v in range(500, 153, -math.ceil((500 - 153) / slices)):
-            self.light.colortemp = v
-            self.assertEqual(v, self.light.colortemp)
+            self.light.colortemp = Mired(v)
+            self.assertEqual(Mired(v), self.light.colortemp)
             time.sleep(0.01)
 
     """
