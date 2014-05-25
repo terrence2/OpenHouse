@@ -2,9 +2,10 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from eyrie.abode import build_abode, bind_abode_to_filesystem
+from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
 from eyrie.alarms import populate_alarms
 from eyrie.database import bind_abode_to_database
-from eyrie.devices import build_sensors, build_actuators, bind_actuators_to_filesystem
+from eyrie.sensors import build_sensors\
 
 from mcp.animation import AnimationController
 from mcp.environment import Environment
@@ -37,7 +38,7 @@ class Eyrie:
         self.sensors = build_sensors(self.abode, self.environment, self.network, self.scheduler)
 
         # The view.
-        self.actuators = build_actuators(self.filesystem)
+        self.actuators = build_actuators()
 
         # Data-binding and or controller.
         # TODO: Implement a controller state.py with StateMachine. Hook up abode events to update the state.
