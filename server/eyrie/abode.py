@@ -100,6 +100,8 @@ def bind_abode_to_filesystem(abode: Abode, fs: FileSystem):
     Note: it is generally most useful to do this after sensors and other inputs have
           bound themselves to the abode with properties.
     """
+    writable_properties = {'control'}
+
     def add_subareas(area: Area, area_dir: Directory):
         """Add sub-areas from the given area to the given directory. Recurse as needed."""
         for name in area.subarea_names():
@@ -110,9 +112,16 @@ def bind_abode_to_filesystem(abode: Abode, fs: FileSystem):
         for property_name in area.property_names():
             def read_attr(bound_prop=property_name) -> str:
                 return str(area.get(bound_prop)) + "\n"
-            area_dir.add_entry(property_name, File(read_attr, None))
 
-    abode_dir = fs.root().add_entry('abode', Directory())
+            def write_attr(data: str, bound_prop=property_name):
+                data = data.strip()
+                area.set(bound_prop, data)
+
+            node = File(read_attr, None)
+            if property_name in writable_properties:
+                node = File(read_attr, write_attr)
+            area_dir.add_entry(property_name, node)
+
+    abode_dir = fs.root().add_entry(abode.name, Directory())
     add_subareas(abode, abode_dir)
-
 

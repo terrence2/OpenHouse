@@ -18,6 +18,16 @@ class State:
     def to_string(state: int) -> str:
         return ['manual', 'wakeup', 'daytime', 'bedtime', 'sleep'][state]
 
+    @staticmethod
+    def from_string(name: str) -> int:
+        return {
+            'manual': State.Manual,
+            'wakeup': State.Wakeup,
+            'daytime': State.Daytime,
+            'bedtime': State.Bedtime,
+            'sleep': State.Sleep,
+        }[name]
+
 
 class StateEvent:
     def __init__(self, prior: int, new: int):
@@ -91,6 +101,9 @@ class StateMachine:
         if self.state_ != State.Manual:
             log.info("SKIP Leave Manual: not in state Manual.")
             return False
+        if state == State.Manual:
+            log.info("SKIP Leave Manual: already in manual mode.")
+            return False
         self.state_ = state
         callbacks = {
             State.Wakeup: self.on_wakeup_,
@@ -124,3 +137,36 @@ class StateMachine:
 
     def sleep(self):
         return self._transition("Sleep", State.Sleep, self.on_sleep_)
+
+    def enter_state(self, state: int) -> bool:
+        """
+        Enter a programmatically obtained state.
+        """
+        log.info("enter_state({}) requested".format(State.to_string(state)))
+
+        # If currently in manual, we cannot automatically leave for another state.
+        if self.state_ == State.Manual:
+            log.info("Skipping state change because we are in manual right now.")
+            return
+
+        if state == State.Manual:
+            return self.enter_manual()
+        elif state == State.Wakeup:
+            return self.wakeup()
+        elif state == State.Daytime:
+            return self.daytime()
+        elif state == State.Bedtime:
+            return self.bedtime()
+        elif state == State.Sleep:
+            return self.sleep()
+
+        return False
+
+    def enter_user_state(self, state: int) -> bool:
+        """
+        Like enter_state, but done at direct user request, so leaving manual is okay.
+        """
+        if self.state_ == State.Manual:
+            return self.leave_manual(state)
+        self.enter_state(state)
+
