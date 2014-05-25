@@ -34,8 +34,14 @@ class Eyrie:
         self.animator = AnimationController(0.5, llfuse.lock)
 
         # The model.
+        # TODO: Rework build_abode to only create the abode. Then make build_sensors inject the property names.
+        # TODO: Then we can walk the abode and reflect all properties to the fs without having to tell it what to create.
+        # TODO: Make the listener update the abode, rather than having it poke the controller directly.
         self.abode = build_abode(self.filesystem, self.environment)
         self.sensors = build_sensors(self.abode, self.network, self)
+
+        # TODO: Implement a controller state.py with StateMachine. Hook up abode events to update the state.
+        # TODO: Then hook up state-changed events to poke the outputs.
 
         # The views.
         add_data_recorders(self.abode, db_path)
