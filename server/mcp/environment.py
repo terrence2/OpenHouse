@@ -95,7 +95,10 @@ class Environment:
         self.update_sunrise_sunset()
         return self.sunset_twilight_
 
+
 if __name__ == '__main__':
     env = Environment()
-    print(env.sunrise)
-    print(env.sunset)
+    print("Twilight:", env.sunrise_twilight)
+    print("Sunrise:", env.sunrise)
+    print("Sunset:", env.sunset)
+    print("Twilight:", env.sunset_twilight)
