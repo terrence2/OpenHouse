@@ -6,7 +6,7 @@ import logging
 log = logging.getLogger('state')
 
 
-class EyrieState:
+class State:
     Manual = 0
 
     Wakeup = 1
@@ -25,13 +25,13 @@ class StateEvent:
         self.new_state = new
 
     def __str__(self):
-        return "StateEvent({} -> {})".format(EyrieState.to_string(self.prior_state),
-                                             EyrieState.to_string(self.new_state))
+        return "StateEvent({} -> {})".format(State.to_string(self.prior_state),
+                                             State.to_string(self.new_state))
 
 
 class StateMachine:
     def __init__(self):
-        self.state_ = EyrieState.Manual
+        self.state_ = State.Manual
 
         self.on_enter_manual_ = []  # [callable]
         self.on_leave_manual_ = []  # [callable]
@@ -77,34 +77,33 @@ class StateMachine:
         results = [callback(event) for callback in callbacks]
         return [bool(result) or result is None for result in results]
 
-
     def enter_manual(self):
         log.info("Manual mode requested")
-        if self.state_ == EyrieState.Manual:
+        if self.state_ == State.Manual:
             log.info("SKIP Manual: already in state Manual.")
             return False
         prior = self.state_
-        self.state_ = EyrieState.Manual
-        return all(self._dispatch(self.on_enter_manual_, StateEvent(prior, EyrieState.Manual)))
+        self.state_ = State.Manual
+        return all(self._dispatch(self.on_enter_manual_, StateEvent(prior, State.Manual)))
 
     def leave_manual(self, state: int):
-        log.info("Auto:{} mode requested".format(EyrieState.to_string(state)))
-        if self.state_ != EyrieState.Manual:
+        log.info("Auto:{} mode requested".format(State.to_string(state)))
+        if self.state_ != State.Manual:
             log.info("SKIP Leave Manual: not in state Manual.")
             return False
         self.state_ = state
         callbacks = {
-            EyrieState.Wakeup: self.on_wakeup_,
-            EyrieState.Daytime: self.on_daytime_,
-            EyrieState.Bedtime: self.on_bedtime_,
-            EyrieState.Sleep: self.on_sleep_
+            State.Wakeup: self.on_wakeup_,
+            State.Daytime: self.on_daytime_,
+            State.Bedtime: self.on_bedtime_,
+            State.Sleep: self.on_sleep_
         }[state]
-        event = StateEvent(EyrieState.Manual, state)
+        event = StateEvent(State.Manual, state)
         return all(self._dispatch(self.on_leave_manual_, event) + self._dispatch(callbacks, event))
 
     def _transition(self, name: str, state: int, callbacks: [callable]) -> bool:
         log.info("{} requested".format(name))
-        if self.state_ == EyrieState.Manual:
+        if self.state_ == State.Manual:
             log.info("SKIP {}: in manual control mode.".format(name))
             return False
         if self.state_ == state:
@@ -115,13 +114,13 @@ class StateMachine:
         return all(self._dispatch(callbacks, StateEvent(prior, state)))
 
     def wakeup(self):
-        return self._transition("Wakeup", EyrieState.Wakeup, self.on_wakeup_)
+        return self._transition("Wakeup", State.Wakeup, self.on_wakeup_)
 
     def daytime(self):
-        return self._transition("Daytime", EyrieState.Daytime, self.on_daytime_)
+        return self._transition("Daytime", State.Daytime, self.on_daytime_)
 
     def bedtime(self):
-        return self._transition("Bedtime", EyrieState.Bedtime, self.on_bedtime_)
+        return self._transition("Bedtime", State.Bedtime, self.on_bedtime_)
 
     def sleep(self):
-        return self._transition("Sleep", EyrieState.Sleep, self.on_sleep_)
+        return self._transition("Sleep", State.Sleep, self.on_sleep_)
