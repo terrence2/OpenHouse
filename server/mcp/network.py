@@ -112,10 +112,12 @@ class Bus(Thread):
         return socket
 
     def add_actuator(self, actuator: Actuator):
+        assert not hasattr(sensor, 'remote')
         actuator.socket = self.connect_(actuator.address, zmq.REQ)
         self.actuators[actuator.socket] = actuator
 
     def add_sensor(self, sensor: Sensor):
+        assert not hasattr(sensor, 'remote')
         sensor.socket = self.connect_(sensor.address, zmq.SUB)
         sensor.socket.setsockopt(zmq.SUBSCRIBE, b'')
         self.sensors[sensor.socket] = sensor

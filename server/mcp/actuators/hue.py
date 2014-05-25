@@ -83,13 +83,13 @@ class HueLight(Actuator):
 
     # Color Temperature
     @property
-    def colortemp(self) -> Mired:
+    def mired(self) -> Mired:
         """Mired color temperature."""
         data = self.hue_bridge.request("GET", "")
         return Mired(self.state_from(data)['ct'])
 
-    @colortemp.setter
-    def colortemp(self, data: Mired):
+    @mired.setter
+    def mired(self, data: Mired):
         self.hue_bridge.request("PUT", self.state_url(), {'ct': data.ct})
 
     # Utility

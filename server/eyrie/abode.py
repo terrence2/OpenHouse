@@ -1,10 +1,8 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from mcp.abode import Abode
-from mcp.environment import Environment
-from mcp.filesystem import FileSystem
-from mcp.fs_reflector import map_abode_to_filesystem, add_ro_object_properties, add_rw_abode_properties
+from mcp.abode import Abode, Area
+from mcp.filesystem import FileSystem, File, Directory
 from mcp.dimension import Coord, Size
 
 house = \
@@ -86,25 +84,35 @@ house = \
     """
 
 
-def build_abode(filesystem: FileSystem, environment: Environment):
+def build_abode() -> Abode:
     abode = Abode("eyrie")
     office = abode.create_room('office', Coord(0, 0), Size('10ft', '13ft', '8ft'))
     bedroom = abode.create_room('bedroom', Coord('13ft', 0), Size('12ft', '10ft', '8ft'))
     livingroom = abode.create_room('livingroom', Coord(0, '13ft'), Size('13ft', '19ft9in', '8ft'))
     entry = livingroom.create_subarea('entry', Coord(0, 0), Size('42in', '42in', '8ft'))
-
-    # Create a directory structure out of abode.
-    directories = map_abode_to_filesystem(abode, filesystem)
-
-    # Add sensor nodes to the filesystem -- we cannot auto-detect their presence, since these will only get put
-    # in the abode when we start receiving sensor data.
-    for area in (office, bedroom, livingroom):
-        add_rw_abode_properties(directories[area], area, ('temperature', 'humidity', 'motion'))
-
-    # Show our environment data on the top-level abode node.
-    add_ro_object_properties(directories[abode], environment,
-                             ('sunrise_twilight', 'sunrise', 'sunset', 'sunset_twilight'))
-
     return abode
+
+
+def bind_abode_to_filesystem(abode: Abode, fs: FileSystem):
+    """
+    Create a directory hierarchy that mirrors the abode layout.
+
+    Note: it is generally most useful to do this after sensors and other inputs have
+          bound themselves to the abode with properties.
+    """
+    def add_subareas(area: Area, area_dir: Directory):
+        """Add sub-areas from the given area to the given directory. Recurse as needed."""
+        for name in area.subarea_names():
+            subarea_dir = area_dir.add_entry(name, Directory())
+            subarea = area.subarea(name)
+            add_subareas(subarea, subarea_dir)
+
+        for property_name in area.property_names():
+            def read_attr(bound_prop=property_name) -> str:
+                return str(area.get(bound_prop)) + "\n"
+            area_dir.add_entry(property_name, File(read_attr, None))
+
+    abode_dir = fs.root().add_entry('abode', Directory())
+    add_subareas(abode, abode_dir)
 
 

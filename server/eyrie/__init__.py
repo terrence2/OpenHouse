@@ -1,12 +1,12 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from eyrie.abode import build_abode
+from eyrie.abode import build_abode, bind_abode_to_filesystem
 from eyrie.alarms import populate_alarms
-from eyrie.database import add_data_recorders
-from eyrie.devices import build_sensors, build_actuators
+from eyrie.database import bind_abode_to_database
+from eyrie.devices import build_sensors, build_actuators, bind_actuators_to_filesystem
 
-from mcp.animation import AnimationController, Animation
+from mcp.animation import AnimationController
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem
 from mcp.network import Bus as NetworkBus
@@ -15,7 +15,6 @@ from apscheduler.scheduler import Scheduler
 
 import llfuse
 
-import argparse
 import os
 import os.path
 
@@ -34,18 +33,20 @@ class Eyrie:
         self.animator = AnimationController(0.5, llfuse.lock)
 
         # The model.
-        # TODO: Rework build_abode to only create the abode. Then make build_sensors inject the property names.
-        # TODO: Then we can walk the abode and reflect all properties to the fs without having to tell it what to create.
-        # TODO: Make the listener update the abode, rather than having it poke the controller directly.
-        self.abode = build_abode(self.filesystem, self.environment)
-        self.sensors = build_sensors(self.abode, self.network, self)
+        self.abode = build_abode()
+        self.sensors = build_sensors(self.abode, self.environment, self.network, self.scheduler)
 
+        # The view.
+        self.actuators = build_actuators(self.filesystem)
+
+        # Data-binding and or controller.
         # TODO: Implement a controller state.py with StateMachine. Hook up abode events to update the state.
         # TODO: Then hook up state-changed events to poke the outputs.
-
-        # The views.
-        add_data_recorders(self.abode, db_path)
-        self.actuators = build_actuators(self.filesystem)
+        #bind_model_to_state()
+        #bind_state_to_view()
+        bind_abode_to_database(self.abode, db_path)
+        bind_abode_to_filesystem(self.abode, self.filesystem)
+        bind_actuators_to_filesystem(self.actuators, self.filesystem)
 
     def run(self):
         # Off-main-thread.

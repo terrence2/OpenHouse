@@ -27,6 +27,9 @@ class BHS(DerivingEq):
     def s(self):
         return clamp(int(self.s_), 0, 255)
 
+    def __str__(self):
+        return "B:{0.b}, H:{0.h}, S:{0.s}".format(self)
+
 
 class RGB(DerivingEq):
     """Red, green, blue triple."""
@@ -47,6 +50,9 @@ class RGB(DerivingEq):
     def b(self):
         return clamp(int(self.b_), 0, 255)
 
+    def __str__(self):
+        return "R:{0.r}, G:{0.g}, B:{0.b} | #{0.r:02X}{0.g:02X}{0.b:02X}".format(self)
+
 
 class Mired(DerivingEq):
     """Mired style color temperature."""
@@ -56,3 +62,6 @@ class Mired(DerivingEq):
     @property
     def ct(self):
         return clamp(self.ct_, 153, 500)
+
+    def __str__(self):
+        return "Mired:{}".format(self.ct)

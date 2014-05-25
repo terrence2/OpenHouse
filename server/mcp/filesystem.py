@@ -73,10 +73,14 @@ class File(Node):
         self.write_function_ = write_function
 
     def read(self) -> str:
-        return self.read_function_()
+        if self.read_function_:
+            return self.read_function_()
+        return ""
 
     def write(self, data: str):
-        self.write_function_(data)
+        if self.write_function_:
+            return self.write_function_(data)
+        return errno.EPERM
 
 
 class Directory(Node):
@@ -180,7 +184,9 @@ class FileSystem(llfuse.Operations):
     def write(self, fh, offset, buf):
         node = self.inode_to_node_[fh]
         data = buf.decode("UTF-8")
-        node.write(data)
+        res = node.write(data)
+        if isinstance(res, int):
+            raise llfuse.FUSEError(res)
         return len(buf)
 
     def setattr(self, inode, attr):

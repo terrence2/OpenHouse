@@ -3,49 +3,34 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from datetime import datetime, timedelta
 from threading import Thread
-import time
-
-
-class AnimationController(Thread):
-    """
-    The dumbest possible interval scheduler. It just sleeps for interval and calls the callback in a loop. No
-    provisions are made for drift... or for anything else.
-    """
-    def __init__(self, interval, lock):
-        super().__init__()
-        self.daemon = True
-
-        self.interval_ = interval
-        self.lock_ = lock
-        self.want_exit_ = False
-        self.state_ = None
-
-    def exit(self):
-        with self.lock_:
-            self.want_exit_ = True
-
-    def run(self):
-        while True:
-            time.sleep(self.interval_)
-
-            with self.lock_:
-                if self.want_exit_:
-                    return
-
-                self._apply_animation()
-
-    def _apply_animation(self):
-        if not self.state_:
-            return
-
-        #print("TICK: {}".format(self.animation_.current()))
-        #self.devices.select('$hue').select('@bedroom').set('bhs', self.animation_.current())
-
-        if self.state_.is_over():
-            self.state_ = None
+import os
+import select
 
 
 class Animation:
+    def __init__(self):
+        super().__init__()
+        self.is_over = False
+
+    def animate(self):
+        raise NotImplementedError("Animations must override animate.")
+
+
+class NullAnimation(Animation):
+    def animate(self):
+        pass
+
+
+class CallbackAnimation(Animation):
+    def __init__(self, callback: callable):
+        super().__init__()
+        self.callback_ = callback
+
+    def animate(self):
+        self.is_over = self.callback_() is False
+
+
+class OldAnimation:
     """
     Represents an animation state.
     """
@@ -73,10 +58,46 @@ class Animation:
         return self.interpolate(fraction)
 
 
-class VectorAnimation(Animation):
-    def interpolate(self, fraction: float):
-        return [a + ((b - a) * fraction) for a, b in zip(self.initial_, self.terminal_)]
+class AnimationController(Thread):
+    """
+    A simple interval scheduler.
+    """
+    def __init__(self, interval, lock):
+        super().__init__()
+        self.daemon = True
 
-class IntVectorAnimation(Animation):
-    def interpolate(self, fraction: float):
-        return [int(a + ((b - a) * fraction)) for a, b in zip(self.initial_, self.terminal_)]
+        self.read_fd_, self.write_fd_ = os.pipe()
+        self.interval_ = interval
+        self.lock_ = lock
+        self.want_exit_ = False
+        self.state_ = NullAnimation()
+
+    def exit(self):
+        with self.lock_:
+            self.want_exit_ = True
+            os.write(self.write_fd_, b"\0")
+
+    def run(self):
+        while True:
+            readable, _, _ = select.select([self.read_fd_], [], [], self.interval_)
+            if readable:
+                os.read(self.read_fd_, 4096)
+
+            with self.lock_:
+                if self.want_exit_:
+                    return
+
+                self._apply_animation()
+
+    def _apply_animation(self):
+        self.state_.animate()
+
+        if self.state_.is_over:
+            self.state_ = NullAnimation()
+
+    def animate(self, animation: Animation):
+        with self.lock_:
+            self.state_ = animation
+            os.write(self.write_fd_, b"\0")
+
+
