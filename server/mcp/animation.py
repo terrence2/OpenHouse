@@ -96,12 +96,16 @@ class AnimationController(Thread):
             self.state_ = NullAnimation()
 
     def animate(self, animation: Animation):
-        with self.lock_:
-            self.state_ = animation
-            os.write(self.write_fd_, b"\0")
+        """
+        Must be called with lock held.
+        """
+        self.state_ = animation
+        os.write(self.write_fd_, b"\0")
 
     def cancel_ongoing_animation(self):
-        with self.lock_:
-            self.state_ = NullAnimation()
-            os.write(self.write_fd_, b"\0")
+        """
+        Must be called with lock held.
+        """
+        self.state_ = NullAnimation()
+        os.write(self.write_fd_, b"\0")
 
