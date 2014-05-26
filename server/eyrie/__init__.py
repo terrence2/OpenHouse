@@ -3,7 +3,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from eyrie.abode import build_abode, bind_abode_to_filesystem, bind_abode_to_state
 from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
-from eyrie.alarms import populate_alarms
+from eyrie.alarms import populate_alarms_and_bind_to_state, bind_alarms_to_filesystem
 from eyrie.state import EyrieStateMachine
 from eyrie.database import bind_abode_to_database
 from eyrie.presets import bind_preset_states_to_real_world
@@ -27,7 +27,7 @@ class Eyrie:
         # Pre-init tasks. This has to be done before apscheduler init, since it's database of saved
         # tasks requires the callee functions to be right on some module's global.
         self.state = EyrieStateMachine('manual:unset')
-        populate_alarms(self.state)
+        populate_alarms_and_bind_to_state(self.state)
 
         # Platform services.
         self.scheduler = Scheduler({'apscheduler.jobstore.default.class': 'apscheduler.jobstores.shelve_store:ShelveJobStore',
@@ -44,15 +44,14 @@ class Eyrie:
         # The view.
         self.actuators = build_actuators()
 
-        # Data-binding for monitoring.
+        # Data-binding for monitoring and direct control.
         bind_abode_to_database(self.abode, db_path)
         bind_abode_to_filesystem(self.abode, self.filesystem)
         bind_actuators_to_filesystem(self.actuators, self.filesystem)
+        bind_alarms_to_filesystem(self.scheduler, self.filesystem)
         # Data-binding for direct control.
         bind_abode_to_state(self.abode, self.state)
         bind_preset_states_to_real_world(self.state, self.actuators)
-        # Data-binding for automatic state transitions.
-        #bind_alarms_to_state(self.state)
         # Data-binding for automatic management of the world based directly on senor readings.
         #bind_abode_to_real_world_obeying_state(self.abode, self.actuators, self.state)
 
@@ -73,7 +72,3 @@ class Eyrie:
         self.network.join()
         self.animator.join()
         self.scheduler.shutdown()
-
-    def trigger_alarm(self, name: str, day: str):
-        """Callback for aps scheduler wakeup/sleep alarms."""
-        pass
