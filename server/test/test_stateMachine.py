@@ -9,16 +9,11 @@ from mcp.state import StickyNestedStateMachine, StateEvent
 class MyStateMachine(StickyNestedStateMachine):
     States = {
         'auto': {
-            'wakeup',
             'daytime',
-            'bedtime',
-            'sleep'
         },
         'manual': {
             'on',
-            'low',
             'off',
-            'sleep'
         }
     }
     StickyState = 'manual'
@@ -94,3 +89,5 @@ class TestStateMachine(TestCase):
         self.assertEqual(daytime, 0)
         self.assertEqual(manualon, 0)
         self.assertEqual(manualoff, 0)
+
+        self.assertSetEqual(machine.all_states(), {'manual:on', 'manual:off', 'auto:daytime'})

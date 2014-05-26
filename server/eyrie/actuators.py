@@ -10,6 +10,29 @@ from mcp.filesystem import FileSystem, File, Directory
 
 log = logging.getLogger("actuators")
 
+DaylightHue = 34495
+DaylightSat = 232
+MoonlightHue = 47000
+MoonlightSat = 255
+
+
+def daylight(brightness: float) -> BHS:
+    """Return a BHS for pleasant light at the given relative brightness."""
+    assert brightness >= 0
+    assert brightness <= 1
+    return BHS(255 * brightness, DaylightHue, DaylightSat)
+
+
+with_ambient = """
+def daylight_with_ambient(cls):
+    Return a BHS for pleasant light, dimming the light when it is light outside, unless it is overcast.
+"""
+
+
+def moonlight(brightness: float) -> BHS:
+    """Return a BHS for pleasant light to sleep by."""
+    return BHS(255 * brightness, MoonlightHue, MoonlightSat)
+
 
 def build_actuators() -> DeviceSet:
     actuators = DeviceSet()

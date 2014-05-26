@@ -4,6 +4,7 @@
 from eyrie.abode import build_abode, bind_abode_to_filesystem, bind_abode_to_state
 from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
 from eyrie.alarms import populate_alarms_and_bind_to_state, bind_alarms_to_filesystem
+from eyrie.automatic import bind_abode_to_real_world_obeying_state
 from eyrie.state import EyrieStateMachine
 from eyrie.database import bind_abode_to_database
 from eyrie.presets import bind_preset_states_to_real_world
@@ -53,7 +54,7 @@ class Eyrie:
         bind_abode_to_state(self.abode, self.state)
         bind_preset_states_to_real_world(self.state, self.actuators)
         # Data-binding for automatic management of the world based directly on senor readings.
-        #bind_abode_to_real_world_obeying_state(self.abode, self.actuators, self.state)
+        bind_abode_to_real_world_obeying_state(self.abode, self.actuators, self.animator, self.state)
 
     def run(self):
         # Off-main-thread.

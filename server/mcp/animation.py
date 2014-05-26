@@ -100,4 +100,8 @@ class AnimationController(Thread):
             self.state_ = animation
             os.write(self.write_fd_, b"\0")
 
+    def cancel_ongoing_animation(self):
+        with self.lock_:
+            self.state_ = NullAnimation()
+            os.write(self.write_fd_, b"\0")
 

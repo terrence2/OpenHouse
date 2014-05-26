@@ -69,6 +69,9 @@ class StickyNestedStateMachine:
     def current_state(self) -> NestedState:
         return self.state_
 
+    def all_states(self) -> {str}:
+        return {"{}:{}".format(key, value) for key, values in self.States.items() for value in values}
+
     def valid_state(self, state: NestedState):
         return state.left in self.States and state.right in self.States[state.left]
 
