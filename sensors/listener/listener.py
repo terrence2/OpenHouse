@@ -274,17 +274,17 @@ def main():
         sock.send_json({'command': command})
 
     commands = {
-        'HEY EYRIE TURN ON THE LIGHTS': 'ON',
-        'HEY EYRIE TURN THE LIGHTS ON': 'ON',
-        'HEY EYRIE TURN OFF THE LIGHTS': 'OFF',
-        'HEY EYRIE TURN THE LIGHTS OFF': 'OFF',
-        'HEY EYRIE ITS SLEEP TIME': 'SLEEP',
-        'HEY EYRIE ITS SLEEPY TIME': 'SLEEP',
-        'HEY EYRIE ITS BED TIME': 'SLEEP',
-        'HEY EYRIE ITS TIME FOR BED': 'SLEEP',
-        'HEY EYRIE ITS TIME TO SLEEP': 'SLEEP',
-        'HEY EYRIE TIME TO SLEEP': 'SLEEP',
-        'HEY EYRIE LOWER THE LIGHTS': 'LOW',
+        'HEY EYRIE TURN ON THE LIGHTS': 'manual:on',
+        'HEY EYRIE TURN THE LIGHTS ON': 'manual:on',
+        'HEY EYRIE TURN OFF THE LIGHTS': 'manual:off',
+        'HEY EYRIE TURN THE LIGHTS OFF': 'manual:off',
+        'HEY EYRIE ITS SLEEP TIME': 'manual:sleep',
+        'HEY EYRIE ITS SLEEPY TIME': 'manual:sleep',
+        'HEY EYRIE ITS BED TIME': 'manual:sleep',
+        'HEY EYRIE ITS TIME FOR BED': 'manual:sleep',
+        'HEY EYRIE ITS TIME TO SLEEP': 'manual:sleep',
+        'HEY EYRIE TIME TO SLEEP': 'manual:sleep',
+        'HEY EYRIE LOWER THE LIGHTS': 'manual:low',
     }
     listener = CaptureSpokenCommands(args.capture_device, args.corpus_prefix, ["HEY EYRIE", "EYRIE"],
                                      commands, on_command, record_rate=args.busted_capture_rate)
