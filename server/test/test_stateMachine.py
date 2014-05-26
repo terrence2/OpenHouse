@@ -3,99 +3,94 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from unittest import TestCase
 
-from mcp.state import StateMachine, State
+from mcp.state import StickyNestedStateMachine, StateEvent
+
+
+class MyStateMachine(StickyNestedStateMachine):
+    States = {
+        'auto': {
+            'wakeup',
+            'daytime',
+            'bedtime',
+            'sleep'
+        },
+        'manual': {
+            'on',
+            'low',
+            'off',
+            'sleep'
+        }
+    }
+    StickyState = 'manual'
 
 
 class TestStateMachine(TestCase):
-    def test_current(self):
-        n_enter_manual = 0
-        n_leave_manual = 0
-        n_wakeup = 0
-        n_daytime = 0
-        n_bedtime = 0
-        n_sleep = 0
+    def test_new(self):
+        machine = MyStateMachine("auto:daytime")
+        self.assertEqual(machine.current, "auto:daytime")
+        self.assertEqual(machine.current_state.left, "auto")
+        self.assertEqual(machine.current_state.right, "daytime")
 
-        def on_enter_manual(event):
-            self.assertIs(event.new_state, State.Manual)
-            nonlocal n_enter_manual
-            n_enter_manual += 1
+        daytime = 0
+        manualon = 0
+        manualoff = 0
 
-        def on_leave_manual(event):
-            self.assertIs(event.prior_state, State.Manual)
-            nonlocal n_leave_manual
-            n_leave_manual += 1
+        def enter_auto_daytime(event: StateEvent):
+            nonlocal daytime
+            daytime += 1
 
-        def on_wakeup(event):
-            self.assertIs(event.new_state, State.Wakeup)
-            nonlocal n_wakeup
-            n_wakeup += 1
+        def leave_auto_daytime(event: StateEvent):
+            nonlocal daytime
+            daytime -= 1
 
-        def on_daytime(event):
-            self.assertIs(event.new_state, State.Daytime)
-            nonlocal n_daytime
-            n_daytime += 1
+        def enter_manual_on(event: StateEvent):
+            nonlocal manualon
+            manualon += 1
 
-        def on_bedtime(event):
-            self.assertIs(event.new_state, State.Bedtime)
-            nonlocal n_bedtime
-            n_bedtime += 1
+        def leave_manual_on(event: StateEvent):
+            nonlocal manualon
+            manualon -= 1
 
-        def on_sleep(event):
-            self.assertIs(event.new_state, State.Sleep)
-            nonlocal n_sleep
-            n_sleep += 1
+        def enter_manual_off(event: StateEvent):
+            nonlocal manualoff
+            manualoff += 1
 
-        state = StateMachine()
-        self.assertEqual(state.current, State.Manual)
+        def leave_manual_off(event: StateEvent):
+            nonlocal manualoff
+            manualoff -= 1
 
-        state.listen_enter_manual(on_enter_manual)
-        state.listen_leave_manual(on_leave_manual)
-        state.listen_wakeup(on_wakeup)
-        state.listen_daytime(on_daytime)
-        state.listen_bedtime(on_bedtime)
-        state.listen_sleep(on_sleep)
+        machine.listen_enter_state("auto:daytime", enter_auto_daytime)
+        machine.listen_exit_state("auto:daytime", leave_auto_daytime)
+        machine.listen_enter_state("manual:on", enter_manual_on)
+        machine.listen_exit_state("manual:on", leave_manual_on)
+        machine.listen_enter_state("manual:off", enter_manual_off)
+        machine.listen_exit_state("manual:off", leave_manual_off)
 
-        state.leave_manual(State.Wakeup)
-        self.assertEqual(state.current, State.Wakeup)
-        self.assertEqual(n_leave_manual, 1)
-        self.assertEqual(n_wakeup, 1)
+        self.assertTrue(machine.change_state("manual:on"))
+        self.assertEqual(daytime, -1)
+        self.assertEqual(manualon, 1)
+        self.assertEqual(manualoff, 0)
 
-        state.daytime()
-        self.assertEqual(state.current, State.Daytime)
-        self.assertEqual(n_daytime, 1)
+        # Re-entering the same state should not re-trigger.
+        self.assertFalse(machine.change_state("manual:on"))
+        self.assertEqual(daytime, -1)
+        self.assertEqual(manualon, 1)
+        self.assertEqual(manualoff, 0)
 
-        state.bedtime()
-        self.assertEqual(state.current, State.Bedtime)
-        self.assertEqual(n_bedtime, 1)
+        # Now that we are in manual, we should be sticky.
+        self.assertFalse(machine.change_state("auto:daytime"))
+        self.assertEqual(daytime, -1)
+        self.assertEqual(manualon, 1)
+        self.assertEqual(manualoff, 0)
 
-        state.sleep()
-        self.assertEqual(state.current, State.Sleep)
-        self.assertEqual(n_sleep, 1)
+        # But switching to other manual modes should be okay.
+        self.assertTrue(machine.change_state("manual:off"))
+        self.assertEqual(daytime, -1)
+        self.assertEqual(manualon, 0)
+        self.assertEqual(manualoff, 1)
 
-        # Don't re-fire on same transition.
-        state.sleep()
-        self.assertEqual(state.current, State.Sleep)
-        self.assertEqual(n_sleep, 1)
-
-        # Don't add multi-callbacks.
-        state.listen_wakeup(on_wakeup)
-        state.listen_wakeup(on_wakeup)
-        state.listen_wakeup(on_wakeup)
-        state.listen_wakeup(on_wakeup)
-        state.listen_wakeup(on_wakeup)
-        state.wakeup()
-        self.assertEqual(state.current, State.Wakeup)
-        self.assertEqual(n_wakeup, 2)
-
-        # Manual-mode is sticky.
-        state.enter_manual()
-        self.assertEqual(state.current, State.Manual)
-        self.assertEqual(n_enter_manual, 1)
-
-        state.wakeup()
-        self.assertEqual(state.current, State.Manual)
-        self.assertEqual(n_wakeup, 2)
-
-        state.daytime()
-        self.assertEqual(state.current, State.Manual)
-        self.assertEqual(n_daytime, 1)
+        # And we need user action to switch back.
+        self.assertTrue(machine.change_user_state("auto:daytime"))
+        self.assertEqual(daytime, 0)
+        self.assertEqual(manualon, 0)
+        self.assertEqual(manualoff, 0)

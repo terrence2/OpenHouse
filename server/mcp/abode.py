@@ -103,12 +103,12 @@ class Area:
             return
         if event_name not in self.listeners_[prop_name]:
             return
-        event = Event(event_name, self, prop_name, prop_value)
+        event = AbodeEvent(event_name, self, prop_name, prop_value)
         for callback in self.listeners_[prop_name][event_name]:
             callback(event)
 
 
-class Event:
+class AbodeEvent:
     def __init__(self, event_name: str, target: Area, prop_name: str, prop_value: object):
         self.event_name = event_name
         self.target = target

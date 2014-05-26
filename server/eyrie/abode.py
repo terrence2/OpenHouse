@@ -1,10 +1,15 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from mcp.abode import Abode, Area
+import logging
+
+from eyrie.state import EyrieStateMachine
+
+from mcp.abode import Abode, Area, AbodeEvent
 from mcp.filesystem import FileSystem, File, Directory
 from mcp.dimension import Coord, Size
 
+log = logging.getLogger('eyrie-abode')
 house = \
     """
     Horizontal: 4/ft
@@ -93,7 +98,7 @@ def build_abode() -> Abode:
     return abode
 
 
-def bind_abode_to_filesystem(abode: Abode, fs: FileSystem):
+def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
     """
     Create a directory hierarchy that mirrors the abode layout.
 
@@ -122,6 +127,23 @@ def bind_abode_to_filesystem(abode: Abode, fs: FileSystem):
                 node = File(read_attr, write_attr)
             area_dir.add_entry(property_name, node)
 
-    abode_dir = fs.root().add_entry(abode.name, Directory())
+    abode_dir = filesystem.root().add_entry(abode.name, Directory())
     add_subareas(abode, abode_dir)
 
+
+def bind_abode_to_state(abode: Abode, state: EyrieStateMachine):
+    """
+    Reflect changes to the abode's control property in the state machine. The state machine
+    is responsible for handling all the intricacies here, so we can just pass through
+    with appropriate filtering for bad values. This allows bad values to sit in the abode
+    that aren't reflected in the state, but this is fine as the actual outputs are not affected.
+    """
+    def state_changed(event: AbodeEvent):
+        log.info("Requested new state: {} -> {}".format(state.current, event.property_value))
+        try:
+            if not state.change_user_state(event.property_value):
+                log.warning("Failed to enter new state.")
+        except AssertionError:
+            log.exception("Invalid state specified.")
+
+    abode.listen('control', 'propertyChanged', state_changed)

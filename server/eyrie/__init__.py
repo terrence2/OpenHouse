@@ -1,18 +1,18 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from eyrie.abode import build_abode, bind_abode_to_filesystem
+from eyrie.abode import build_abode, bind_abode_to_filesystem, bind_abode_to_state
 from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
 from eyrie.alarms import populate_alarms
-from eyrie.control_state import bind_abode_to_control_state
+from eyrie.state import EyrieStateMachine
 from eyrie.database import bind_abode_to_database
-from eyrie.sensors import build_sensors\
+from eyrie.presets import bind_preset_states_to_real_world
+from eyrie.sensors import build_sensors
 
 from mcp.animation import AnimationController
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem
 from mcp.network import Bus as NetworkBus
-from mcp.state import StateMachine
 
 from apscheduler.scheduler import Scheduler
 
@@ -22,14 +22,12 @@ import os
 import os.path
 
 
-def bind_state_to_real_world(state: StateMachine, sensors: DeviceSet):
-    pass
-
-
 class Eyrie:
     def __init__(self, db_path: str):
-        # Pre-init tasks.
-        populate_alarms(self)
+        # Pre-init tasks. This has to be done before apscheduler init, since it's database of saved
+        # tasks requires the callee functions to be right on some module's global.
+        self.state = EyrieStateMachine('manual:unset')
+        populate_alarms(self.state)
 
         # Platform services.
         self.scheduler = Scheduler({'apscheduler.jobstore.default.class': 'apscheduler.jobstores.shelve_store:ShelveJobStore',
@@ -38,7 +36,6 @@ class Eyrie:
         self.network = NetworkBus(llfuse.lock)
         self.environment = Environment()
         self.animator = AnimationController(0.5, llfuse.lock)
-        self.state = StateMachine()
 
         # The model.
         self.abode = build_abode()
@@ -47,14 +44,17 @@ class Eyrie:
         # The view.
         self.actuators = build_actuators()
 
-        # Data-binding and or controller.
-        # TODO: Implement a controller state.py with StateMachine. Hook up abode events to update the state.
-        # TODO: Then hook up state-changed events to poke the outputs.
+        # Data-binding for monitoring.
         bind_abode_to_database(self.abode, db_path)
         bind_abode_to_filesystem(self.abode, self.filesystem)
         bind_actuators_to_filesystem(self.actuators, self.filesystem)
-        bind_abode_to_control_state(self.abode, self.state, None)
-        bind_state_to_real_world(self.state, self.sensors)
+        # Data-binding for direct control.
+        bind_abode_to_state(self.abode, self.state)
+        bind_preset_states_to_real_world(self.state, self.actuators)
+        # Data-binding for automatic state transitions.
+        #bind_alarms_to_state(self.state)
+        # Data-binding for automatic management of the world based directly on senor readings.
+        #bind_abode_to_real_world_obeying_state(self.abode, self.actuators, self.state)
 
     def run(self):
         # Off-main-thread.
