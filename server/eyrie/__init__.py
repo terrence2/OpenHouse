@@ -5,7 +5,7 @@ from eyrie.abode import build_abode, bind_abode_to_filesystem, bind_abode_to_sta
 from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
 from eyrie.alarms import populate_alarms_and_bind_to_state, bind_alarms_to_filesystem
 from eyrie.automatic import bind_abode_to_real_world_obeying_state
-from eyrie.state import EyrieStateMachine
+from eyrie.state import EyrieStateMachine, bind_state_to_filesystem
 from eyrie.database import bind_abode_to_database
 from eyrie.presets import bind_preset_states_to_real_world
 from eyrie.sensors import build_sensors
@@ -50,6 +50,7 @@ class Eyrie:
         bind_abode_to_filesystem(self.abode, self.filesystem)
         bind_actuators_to_filesystem(self.actuators, self.filesystem)
         bind_alarms_to_filesystem(self.scheduler, self.filesystem)
+        bind_state_to_filesystem(self.state, self.filesystem)
         # Data-binding for direct control.
         bind_abode_to_state(self.abode, self.state)
         bind_preset_states_to_real_world(self.state, self.actuators)

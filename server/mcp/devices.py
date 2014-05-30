@@ -67,3 +67,9 @@ class DeviceSet:
         for device in self.devices_:
             setattr(device, prop_name, prop_value)
         return self
+
+    def get(self, prop_name: str):
+        assert len(self.devices_) == 1
+        for device in self.devices_:
+            return getattr(device, prop_name)
+

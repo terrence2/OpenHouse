@@ -105,7 +105,7 @@ def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
     Note: it is generally most useful to do this after sensors and other inputs have
           bound themselves to the abode with properties.
     """
-    writable_properties = {'control'}
+    writable_properties = {'user_control'}
 
     def add_subareas(area: Area, area_dir: Directory):
         """Add sub-areas from the given area to the given directory. Recurse as needed."""
@@ -122,9 +122,10 @@ def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
                 data = data.strip()
                 area.set(bound_prop, data)
 
-            node = File(read_attr, None)
             if property_name in writable_properties:
                 node = File(read_attr, write_attr)
+            else:
+                node = File(read_attr, None)
             area_dir.add_entry(property_name, node)
 
     abode_dir = filesystem.root().add_entry(abode.name, Directory())
@@ -133,10 +134,11 @@ def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
 
 def bind_abode_to_state(abode: Abode, state: EyrieStateMachine):
     """
-    Reflect changes to the abode's control property in the state machine. The state machine
-    is responsible for handling all the intricacies here, so we can just pass through
-    with appropriate filtering for bad values. This allows bad values to sit in the abode
-    that aren't reflected in the state, but this is fine as the actual outputs are not affected.
+    Allow the user to indicate control preferences by poking /things/eyrie/user_control.
+
+    The state machine is responsible for handling all the intricacies here, so we can
+    just pass through with a bit of filtering for bad values. If the user input is not
+    a valid state, it's just set on /eyrie[user_control] and not reflected in the state.
     """
     def state_changed(event: AbodeEvent):
         log.info("Requested new state: {} -> {}".format(state.current, event.property_value))
@@ -146,4 +148,4 @@ def bind_abode_to_state(abode: Abode, state: EyrieStateMachine):
         except AssertionError:
             log.exception("Invalid state specified.")
 
-    abode.listen('control', 'propertyChanged', state_changed)
+    abode.listen('user_control', 'propertyChanged', state_changed)

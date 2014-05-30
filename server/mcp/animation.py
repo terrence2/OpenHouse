@@ -30,6 +30,37 @@ class CallbackAnimation(Animation):
         self.is_over = self.callback_() is False
 
 
+class LinearAnimation(Animation):
+    def __init__(self, start, end, duration: float, tick_callback: callable, finish_callback: callable):
+        """
+        |start| and |end| must support __sub__ and __mul__ for interpolation.
+        """
+        super().__init__()
+        self.start_ = start
+        self.end_ = end
+        self.extent_ = self.end_ - self.start_
+        self.tick_callback_ = tick_callback
+        self.finish_callback_ = finish_callback
+
+        self.duration_ = timedelta(seconds=duration)
+        self.start_time_ = datetime.now()
+        self.end_time_ = self.start_time_ + self.duration_
+
+    def animate(self):
+        now = datetime.now()
+
+        if now >= self.end_time_:
+            self.tick_callback_(self.end_)
+            self.is_over = True
+            self.finish_callback_()
+            return
+
+        elapsed = now - self.start_time_
+        fraction = elapsed.total_seconds() / self.duration_.total_seconds()
+        value = self.start_ + (self.extent_ * fraction)
+        self.tick_callback_(value)
+
+
 class OldAnimation:
     """
     Represents an animation state.

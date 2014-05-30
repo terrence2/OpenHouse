@@ -63,7 +63,7 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, s
         network.add_sensor(nerve.remote)
 
     # Listeners.
-    abode.set('control', 'auto:daytime')
+    abode.set('user_control', 'auto:daytime')
     for (room_name, machine) in [('bedroom', 'lemur')]:
         name = 'listener-{}-{}'.format(room_name, machine)
         log.info("Building listener: {}".format(name))
@@ -72,8 +72,8 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, s
 
         # Forward the commands to the control property.
         def property_forwarder(event: ListenerEvent):
-            log.info("/eyrie[control] = {}".format(event.command))
-            abode.set('control', event.command)
+            log.info("/eyrie[user_control] = {}".format(event.command))
+            abode.set('user_control', event.command)
         listener.listen_for_commands(property_forwarder)
 
         # Put on the network.
