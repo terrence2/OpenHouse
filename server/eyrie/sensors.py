@@ -1,11 +1,10 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from apscheduler.scheduler import Scheduler
-
 import logging
 
 from mcp.abode import Abode, Area
+from mcp.cronish import Cronish
 from mcp.environment import Environment
 from mcp.network import Bus as NetworkBus
 from mcp.devices import DeviceSet
@@ -15,25 +14,7 @@ from mcp.sensors.nerve import Nerve, NerveEvent
 log = logging.getLogger("sensors")
 
 
-# Unfortunately, apscheduler doesn't really handle closures. Instead we have
-# to communicate on the global: ugly and fragile.
-# Dataflow Requirements:
-#   * build_sensors must be called before apschduler is started.
-#   * build_sensors must inject the two globals we require.
-#   * build_sensors must add a job for this functions.
-#   * When apscheduler starts, it will call this and expect the globals to be present.
-environment_for_update_ = None
-abode_for_update_ = None
-def update_environment_on_abode():
-    assert environment_for_update_ is not None
-    assert abode_for_update_ is not None
-    abode_for_update_.set('sunrise_twilight', environment_for_update_.sunrise_twilight)
-    abode_for_update_.set('sunrise', environment_for_update_.sunrise)
-    abode_for_update_.set('sunset', environment_for_update_.sunset)
-    abode_for_update_.set('sunset_twilight', environment_for_update_.sunset_twilight)
-
-
-def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, scheduler: Scheduler) -> DeviceSet:
+def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, cronish: Cronish) -> DeviceSet:
     sensors = DeviceSet()
 
     # Nerves.
@@ -80,12 +61,13 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, s
         network.add_sensor(listener.remote)
 
     # Environment.
-    # See comment above update_environment_on_abode for details on why this is insane.
-    global abode_for_update_
-    global environment_for_update_
-    abode_for_update_ = abode
-    environment_for_update_ = environment
-    update_environment_on_abode()
-    scheduler.add_interval_job(update_environment_on_abode, hours=12)
+    def update_environment_on_abode():
+        abode.set('sunrise_twilight', environment.sunrise_twilight)
+        abode.set('sunrise', environment.sunrise)
+        abode.set('sunset', environment.sunset)
+        abode.set('sunset_twilight', environment.sunset_twilight)
+    cronish.register_task('update_environment_on_abode', update_environment_on_abode)
+    cronish.update_task_time('update_environment_on_abode',
+                             days_of_week={0, 1, 2, 3, 4, 5, 6}, hours={0}, minutes=set())
 
     return sensors

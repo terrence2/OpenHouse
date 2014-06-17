@@ -95,7 +95,7 @@ class StickyNestedStateMachine:
         if self.state_ == new_state:
             log.info("Skipping change state {} -> {}: same state".format(self.state_, new_state))
             return False
-        log.info("State change: {} -> {}".format(self.state_, new_state))
+        log.info("switching state: {} -> {}".format(self.state_, new_state))
         event = StateEvent(self.state_, new_state)
         self.dispatch_exit_(str(self.state_), event)
         self.state_ = new_state
@@ -106,6 +106,7 @@ class StickyNestedStateMachine:
         """
         Receive a callback when leaving the given state.
         """
+        log.debug("listen for exit-state: {}")
         assert self.valid_state(NestedState(state))
         self.exit_callbacks_[state].append(callback)
 
@@ -113,6 +114,7 @@ class StickyNestedStateMachine:
         """
         Receive a callback when entering the given state.
         """
+        log.debug("listen for enter-state: {}")
         assert self.valid_state(NestedState(state))
         self.enter_callbacks_[state].append(callback)
 
@@ -122,12 +124,14 @@ class StickyNestedStateMachine:
         """
         new_state = NestedState(state)
         if not self.allow_transition_(self.state_, new_state):
-            log.info("Skipping change state {} -> {}: transition not allowed".format(self.state_, new_state))
+            log.info("change_state skipping change state {} -> {}: transition not allowed".format(self.state_, new_state))
             return False
+        log.debug("change_state triggering _switch_state for {} -> {}".format(self.state_, new_state))
         return self.switch_state_(new_state)
 
-    def change_user_state(self, state: str) -> bool:
+    def change_user_state(self, new_state: str) -> bool:
         """
         Switch to a new state. Does not check if the transition is allowed.
         """
-        return self.switch_state_(NestedState(state))
+        log.debug("change_user_state triggering _switch_state for {} -> {}".format(self.state_, new_state))
+        return self.switch_state_(NestedState(new_state))

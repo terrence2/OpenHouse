@@ -61,34 +61,6 @@ class LinearAnimation(Animation):
         self.tick_callback_(value)
 
 
-class OldAnimation:
-    """
-    Represents an animation state.
-    """
-    def __init__(self, duration: float, initial, terminal):
-        self.duration_ = timedelta(seconds=duration)
-        self.starttime_ = datetime.now()
-        self.endtime_ = self.starttime_ + self.duration_
-        self.initial_ = initial
-        self.terminal_ = terminal
-
-    def initial(self):
-        return self.initial_
-
-    def is_over(self):
-        return datetime.now() > self.endtime_
-
-    def interpolate(self, fraction: float):
-        """Knows how to handle numbers. Needs to be subclassed to handle other types."""
-        return self.initial_ + ((self.terminal_ - self.initial_) * fraction)
-
-    def current(self):
-        now = min(self.endtime_, datetime.now())
-        elapsed = now - self.starttime_
-        fraction = elapsed.total_seconds() / self.duration_.total_seconds()
-        return self.interpolate(fraction)
-
-
 class AnimationController(Thread):
     """
     A simple interval scheduler.
