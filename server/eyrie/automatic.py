@@ -10,6 +10,9 @@ from mcp.color import BHS
 from mcp.devices import DeviceSet
 from mcp.state import StateEvent
 
+import logging
+
+log = logging.getLogger('auto')
 
 WakeupFadeTime = 30 * 60  # 30 min
 SleepFadeTime = 30 * 60  # 30 min
@@ -17,7 +20,7 @@ SleepFadeTime = 30 * 60  # 30 min
 
 def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, animation: AnimationController,
                                            state: EyrieStateMachine):
-    # Disable any ongoing animation when we leave a mode. At the very least we'll want a different animation.
+    # Disable any ongoing animation when we leave a state. At the very least we'll want a different animation.
     def on_leave_state(_: StateEvent):
         animation.cancel_ongoing_animation()
     for name in state.all_states():
@@ -32,8 +35,11 @@ def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, a
     # Hook the motion detectors directly up to the light state.
     def on_motion(event: AbodeEvent):
         if state.current != 'auto:daytime':
+            log.debug("skipping motion update -- state is {}, not auto:daytime".format(state.current))
             return
-        actuators.select('@' + event.target.name).set('bhs', daylight(1)).set('on', True)
+        new_lighting = daylight(int(event.property_value))
+        log.debug("motion updating lighting state in {} to {}".format(event.target.name, new_lighting))
+        actuators.select('@' + event.target.name).set('bhs', new_lighting).set('on', True)
     abode.lookup("/eyrie/bedroom").listen("motion", "propertyChanged", on_motion)
     abode.lookup("/eyrie/livingroom").listen("motion", "propertyChanged", on_motion)
     abode.lookup("/eyrie/office").listen("motion", "propertyChanged", on_motion)

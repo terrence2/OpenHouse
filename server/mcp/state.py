@@ -106,7 +106,7 @@ class StickyNestedStateMachine:
         """
         Receive a callback when leaving the given state.
         """
-        log.debug("listen for exit-state: {}")
+        log.debug("listen for exit-state: {}".format(state))
         assert self.valid_state(NestedState(state))
         self.exit_callbacks_[state].append(callback)
 
@@ -114,7 +114,7 @@ class StickyNestedStateMachine:
         """
         Receive a callback when entering the given state.
         """
-        log.debug("listen for enter-state: {}")
+        log.debug("listen for enter-state: {}".format(state))
         assert self.valid_state(NestedState(state))
         self.enter_callbacks_[state].append(callback)
 
