@@ -1,1 +1,0 @@
-Listen on the network for control packets and dispatch to an arduino to do the work.
