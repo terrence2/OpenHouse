@@ -46,7 +46,12 @@ def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, a
 
     # TODO: make these visually appealing. Just a fade in/out right now for simplicity.
     # Hook wakeup/bedtime to turn the lights on slowly.
-    def on_enter_wakeup(_: StateEvent):
+    def on_enter_wakeup(evt: StateEvent):
+        # Don't cycle us backwards if the user already pushed us forwards.
+        if evt.prior_state == 'auto:daytime' and abode.get('user_control') == 'auto:daytime':
+            state.change_user_state('auto:daytime')
+            return
+
         # Move to the expected sleep state, but also turn on the bedside lamp.
         lights = actuators.select('$hue').select('@bedroom')
         lights.set('bhs', moonlight(0)).set('on', True)
@@ -60,7 +65,12 @@ def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, a
         animation.animate(LinearAnimation(moonlight(0), daylight(1), WakeupFadeTime, tick, finish))
     state.listen_enter_state('auto:wakeup', on_enter_wakeup)
 
-    def on_enter_bedtime(_: StateEvent):
+    def on_enter_bedtime(evt: StateEvent):
+        # Don't cycle us backwards if the user already pushed us forwards.
+        if evt.prior_state == 'auto:sleep' and abode.get('user_control') == 'auto:sleep':
+            state.change_user_state('auto:sleep')
+            return
+
         # The expected daytime state is less certain than the nighttime state, so just
         # fade from the initial state. In particular, leave the bedside lamp alone in case
         # we happen to be reading.

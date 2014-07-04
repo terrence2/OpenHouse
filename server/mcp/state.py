@@ -92,9 +92,6 @@ class StickyNestedStateMachine:
             self.dispatch_(self.exit_callbacks_[state], event)
 
     def switch_state_(self, new_state: NestedState):
-        if self.state_ == new_state:
-            log.info("Skipping change state {} -> {}: same state".format(self.state_, new_state))
-            return False
         log.info("switching state: {} -> {}".format(self.state_, new_state))
         event = StateEvent(self.state_, new_state)
         self.dispatch_exit_(str(self.state_), event)
@@ -125,6 +122,9 @@ class StickyNestedStateMachine:
         new_state = NestedState(state)
         if not self.allow_transition_(self.state_, new_state):
             log.info("change_state skipping change state {} -> {}: transition not allowed".format(self.state_, new_state))
+            return False
+        if self.state_ == new_state:
+            log.info("Skipping change state {} -> {}: same state".format(self.state_, new_state))
             return False
         log.debug("change_state triggering _switch_state for {} -> {}".format(self.state_, new_state))
         return self.switch_state_(new_state)

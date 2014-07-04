@@ -148,4 +148,4 @@ def bind_abode_to_state(abode: Abode, state: EyrieStateMachine):
         except AssertionError:
             log.exception("Invalid state specified.")
 
-    abode.listen('user_control', 'propertyChanged', state_changed)
+    abode.listen('user_control', 'propertyTouched', state_changed)
