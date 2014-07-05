@@ -79,25 +79,34 @@ class StickyNestedStateMachine:
         return old_state.left != self.StickyState or new_state.left == self.StickyState
 
     @staticmethod
-    def dispatch_(callbacks: [callable], event: StateEvent):
-        for callback in callbacks:
-            callback(event)
+    def dispatch_(callbacks: [callable], event: StateEvent) -> bool:
+        """
+        Call all callbacks, return False if any callbacks returned False.
+        All callbacks are called, regardless of the result of any specific callback.
+        """
+        results = [callback(event) for callback in callbacks]
+        return any((res is False for res in results))
 
-    def dispatch_enter_(self, state: str, event: StateEvent):
+    def dispatch_enter_(self, state: str, event: StateEvent) -> bool:
         if state in self.enter_callbacks_:
-            self.dispatch_(self.enter_callbacks_[state], event)
+            return self.dispatch_(self.enter_callbacks_[state], event)
 
-    def dispatch_exit_(self, state: str, event: StateEvent):
+    def dispatch_exit_(self, state: str, event: StateEvent) -> bool:
         if state in self.exit_callbacks_:
-            self.dispatch_(self.exit_callbacks_[state], event)
+            return self.dispatch_(self.exit_callbacks_[state], event)
 
-    def switch_state_(self, new_state: NestedState):
+    def switch_state_(self, new_state: NestedState) -> bool:
         log.info("switching state: {} -> {}".format(self.state_, new_state))
         event = StateEvent(self.state_, new_state)
-        self.dispatch_exit_(str(self.state_), event)
+
+        # Dispatch exit events. Abort state change if any returned false.
+        if not self.dispatch_exit_(str(self.state_), event):
+            log.info("ABORTED state change {} -> {} because of False exit callback.")
+            return False
+
         self.state_ = new_state
-        self.dispatch_enter_(str(self.state_), event)
-        return True
+
+        return self.dispatch_enter_(str(self.state_), event)
 
     def listen_exit_state(self, state: str, callback: callable):
         """

@@ -21,7 +21,17 @@ SleepFadeTime = 30 * 60  # 30 min
 def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, animation: AnimationController,
                                            state: EyrieStateMachine):
     # Disable any ongoing animation when we leave a state. At the very least we'll want a different animation.
-    def on_leave_state(_: StateEvent):
+    def on_leave_state(evt: StateEvent):
+        if (evt.prior_state == 'auto:daytime' and
+                evt.new_state == 'auto:wakeup' and
+                abode.get('user_control') == 'auto:daytime'):
+            log.info("ABORT attempting to move from auto:daytime to auto:wakeup under auto control.")
+            return False
+        elif (evt.prior_state == 'auto:sleep' and
+                evt.new_state == 'auto:bedtime' and
+                abode.get('user_control') == 'auto:sleep'):
+            log.info("ABORT attempting to move from auto:sleep to auto:bedtime under auto control.")
+            return False
         animation.cancel_ongoing_animation()
     for name in state.all_states():
         state.listen_exit_state(name, on_leave_state)
@@ -47,11 +57,6 @@ def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, a
     # TODO: make these visually appealing. Just a fade in/out right now for simplicity.
     # Hook wakeup/bedtime to turn the lights on slowly.
     def on_enter_wakeup(evt: StateEvent):
-        # Don't cycle us backwards if the user already pushed us forwards.
-        if evt.prior_state == 'auto:daytime' and abode.get('user_control') == 'auto:daytime':
-            state.change_user_state('auto:daytime')
-            return
-
         # Move to the expected sleep state, but also turn on the bedside lamp.
         lights = actuators.select('$hue').select('@bedroom')
         lights.set('bhs', moonlight(0)).set('on', True)
@@ -66,11 +71,6 @@ def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, a
     state.listen_enter_state('auto:wakeup', on_enter_wakeup)
 
     def on_enter_bedtime(evt: StateEvent):
-        # Don't cycle us backwards if the user already pushed us forwards.
-        if evt.prior_state == 'auto:sleep' and abode.get('user_control') == 'auto:sleep':
-            state.change_user_state('auto:sleep')
-            return
-
         # The expected daytime state is less certain than the nighttime state, so just
         # fade from the initial state. In particular, leave the bedside lamp alone in case
         # we happen to be reading.
