@@ -85,15 +85,17 @@ class StickyNestedStateMachine:
         All callbacks are called, regardless of the result of any specific callback.
         """
         results = [callback(event) for callback in callbacks]
-        return any((res is False for res in results))
+        return not any((res is False for res in results))
 
     def dispatch_enter_(self, state: str, event: StateEvent) -> bool:
         if state in self.enter_callbacks_:
             return self.dispatch_(self.enter_callbacks_[state], event)
+        return True
 
     def dispatch_exit_(self, state: str, event: StateEvent) -> bool:
         if state in self.exit_callbacks_:
             return self.dispatch_(self.exit_callbacks_[state], event)
+        return True
 
     def switch_state_(self, new_state: NestedState) -> bool:
         log.info("switching state: {} -> {}".format(self.state_, new_state))
@@ -101,7 +103,7 @@ class StickyNestedStateMachine:
 
         # Dispatch exit events. Abort state change if any returned false.
         if not self.dispatch_exit_(str(self.state_), event):
-            log.info("ABORTED state change {} -> {} because of False exit callback.")
+            log.info("ABORTED state change {} -> {} because of False exit callback.".format(self.state_, new_state))
             return False
 
         self.state_ = new_state
