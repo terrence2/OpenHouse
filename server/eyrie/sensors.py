@@ -8,10 +8,19 @@ from mcp.cronish import Cronish
 from mcp.environment import Environment
 from mcp.network import Bus as NetworkBus
 from mcp.devices import DeviceSet
+from mcp.sensors import SensorEvent
 from mcp.sensors.listener import Listener, ListenerEvent
-from mcp.sensors.nerve import Nerve, NerveEvent
+from mcp.sensors.nerve import Nerve
+from mcp.actuators.wemo import WeMoSensorBridge, WeMoMotion, WeMoSwitch
 
 log = logging.getLogger("sensors")
+
+
+def _make_property_forwarder(room: Area, property_name: str):
+    def handler(event: SensorEvent):
+        log.info("{}[{}] = {}".format(room.name, property_name, event.value))
+        room.set(property_name, event.value)
+    return handler
 
 
 def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, cronish: Cronish) -> DeviceSet:
@@ -28,20 +37,31 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
         # Put the properties on the abode with a default unset value so that we can know about them.
         room.set('temperature', 'unset')
         room.set('humidity', 'unset')
-        room.set('motion', 'unset')
+        room.set('nerve_motion', 'unset')
 
         # Forward updates to the sensor to the abode properties we just attached.
-        def make_property_forwarder(bound_room: Area, bound_property_name: str):
-            def handler(event: NerveEvent):
-                log.info("{}[{}] = {}".format(bound_room.name, bound_property_name, event.value))
-                bound_room.set(bound_property_name, event.value)
-            return handler
-        nerve.listen_temperature(make_property_forwarder(room, 'temperature'))
-        nerve.listen_humidity(make_property_forwarder(room, 'humidity'))
-        nerve.listen_motion(make_property_forwarder(room, 'motion'))
+        nerve.listen_temperature(_make_property_forwarder(room, 'temperature'))
+        nerve.listen_humidity(_make_property_forwarder(room, 'humidity'))
+        nerve.listen_motion(_make_property_forwarder(room, 'nerve_motion'))
 
         # Put on the network.
         network.add_sensor(nerve.remote)
+
+    # WeMo motion.
+    wemo_bridge = WeMoSensorBridge('wemo-bridge')
+
+    wemo_motion = wemo_bridge.add_device(WeMoMotion('wemomotion-office-desk', wemo_bridge))
+    room = abode.lookup('/eyrie/office')
+    room.set('wemo_motion_desk', wemo_motion.get_state())
+    wemo_motion.listen_motion(_make_property_forwarder(room, 'wemo_motion_desk'))
+
+    wemo_switch = wemo_bridge.add_device(WeMoSwitch('wemoswitch-office-fountain', wemo_bridge))
+    room = abode.lookup('/eyrie/office')
+    room.set('wemo_switch_fountain', wemo_switch.get_state())
+    wemo_switch.listen_switch_state(_make_property_forwarder(room, 'wemo_switch_fountain'))
+
+
+    network.add_sensor(wemo_bridge.remote)
 
     # Listeners.
     abode.set('user_control', 'auto:daytime')

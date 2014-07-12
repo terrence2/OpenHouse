@@ -12,7 +12,7 @@ class Device:
         self.device_type, self.room_name, self.device_name = name.split('-')
 
 
-def enable_logging(level):
+def enable_logging(level: str):
     # File logger captures everything.
     fh = logging.FileHandler('mcp-events.log')
     fh.setLevel(logging.DEBUG)

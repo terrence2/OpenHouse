@@ -1,19 +1,12 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
-
 import logging
+
 from mcp import network
-from mcp.sensors import Sensor
+from mcp.sensors import Sensor, SensorEvent, MotionEvent, TemperatureEvent, HumidityEvent
 
 log = logging.getLogger('nerve')
-
-
-class NerveEvent:
-    def __init__(self, name, value):
-        self.name = name
-        self.value = value
 
 
 class Nerve(Sensor):
@@ -29,7 +22,7 @@ class Nerve(Sensor):
         self.on_humidity_ = self.fake_listener_
         self.on_motion_ = self.fake_listener_
 
-    def fake_listener_(self, evt: NerveEvent):
+    def fake_listener_(self, evt: SensorEvent):
         log.warning("nerve {} dropping event {}".format(self.name, evt.name))
 
     def listen_temperature(self, callback: callable):
@@ -50,15 +43,15 @@ class Nerve(Sensor):
             temp, humidity = float(json['temp']), float(json['humidity'])
             log.debug("from {} -> temperature: {}, humidity: {}".format(self.name, temp, humidity))
             if self.on_temperature_:
-                self.on_temperature_(NerveEvent('temperature', temp))
+                self.on_temperature_(TemperatureEvent(temp))
             if self.on_humidity_:
-                self.on_humidity_(NerveEvent('humidity', humidity))
+                self.on_humidity_(HumidityEvent(humidity))
 
         elif msg_type == 'MOVEMENT':
             state = bool(json['state'])
             log.debug("from {} -> motion state: {}".format(self.name, state))
             if self.on_motion_:
-                self.on_motion_(NerveEvent('motion', bool(json['state'])))
+                self.on_motion_(MotionEvent(bool(json['state'])))
 
         else:
             log.error("Unrecognized message type from Nerve {}: {}".format(self.name, msg_type))

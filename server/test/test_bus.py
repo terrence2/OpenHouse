@@ -7,7 +7,6 @@ import time
 import threading
 import zmq
 
-__author__ = 'terrence'
 
 class FakeActuator:
     def __init__(self):

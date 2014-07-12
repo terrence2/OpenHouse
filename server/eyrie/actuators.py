@@ -7,6 +7,8 @@ from mcp.actuators.hue import HueBridge, HueLight
 from mcp.color import BHS, RGB, Mired
 from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, File, Directory
+#from mcp.network import Bus
+#from mcp.actuators.wemo import WeMoBridge, WeMoSwitch
 
 log = logging.getLogger("actuators")
 
@@ -38,14 +40,18 @@ def build_actuators() -> DeviceSet:
     actuators = DeviceSet()
 
     # Hue Lights
-    bridge = HueBridge('hue-bedroom', 'MasterControlProgram')
-    actuators.add(HueLight('hue-bedroom-bed', bridge, 1))
-    actuators.add(HueLight('hue-bedroom-desk', bridge, 6))
-    actuators.add(HueLight('hue-bedroom-dresser', bridge, 7))
-    actuators.add(HueLight('hue-bedroom-torch', bridge, 3))
-    actuators.add(HueLight('hue-office-ceiling1', bridge, 4))
-    actuators.add(HueLight('hue-office-ceiling2', bridge, 5))
-    actuators.add(HueLight('hue-livingroom-torch', bridge, 2))
+    hue_bridge = HueBridge('hue-bridge', 'MasterControlProgram')
+    actuators.add(HueLight('hue-bedroom-bed', hue_bridge, 1))
+    actuators.add(HueLight('hue-bedroom-desk', hue_bridge, 6))
+    actuators.add(HueLight('hue-bedroom-dresser', hue_bridge, 7))
+    actuators.add(HueLight('hue-bedroom-torch', hue_bridge, 3))
+    actuators.add(HueLight('hue-office-ceiling1', hue_bridge, 4))
+    actuators.add(HueLight('hue-office-ceiling2', hue_bridge, 5))
+    actuators.add(HueLight('hue-livingroom-torch', hue_bridge, 2))
+
+    # WeMo Switches
+    #wemo_bridge = WeMoBridge('wemo-bridge')
+    #actuators.add(WeMoSwitch('wemo-office-fountain', wemo_bridge))
 
     return actuators
 

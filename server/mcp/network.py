@@ -1,8 +1,6 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
-
 try:
     from enum import Enum
 except ImportError:
@@ -112,7 +110,7 @@ class Bus(Thread):
         return socket
 
     def add_actuator(self, actuator: Actuator):
-        assert not hasattr(sensor, 'remote')
+        assert not hasattr(actuator, 'remote')
         actuator.socket = self.connect_(actuator.address, zmq.REQ)
         self.actuators[actuator.socket] = actuator
 
