@@ -88,10 +88,22 @@ class Network(Thread):
                     return
 
                 target = data['target']
-                device = self.devices[target]
+                try:
+                    device = self.devices[target]
+                except KeyError:
+                    log.error('unknown target device: {}'.format(target))
+                    continue
+
                 if data['type'] == 'get_state':
                     result = {'state': device.get_state()}
                     self.rep_socket.send_json(result)
+                elif data['type'] == 'set_state':
+                    state = bool(data['state'])
+                    device.set_state(state)
+                    result = {'state': device.get_state()}
+                    self.rep_socket.send_json(result)
+                else:
+                    log.error("unhandled message type: {} for {}".format(data['type'], target))
 
 
 if __name__ == '__main__':

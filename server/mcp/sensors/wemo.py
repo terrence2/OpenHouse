@@ -6,10 +6,9 @@ import logging
 import zmq
 
 from mcp import network
-from mcp.actuators import Actuator
 from mcp.sensors import Sensor, MotionEvent, SwitchEvent
 
-log = logging.getLogger('wemo')
+log = logging.getLogger('wemo-sensor')
 
 
 class WeMoSensorBridge:
@@ -22,9 +21,9 @@ class WeMoSensorBridge:
     def __init__(self, address_without_port: str):
         self.address_without_port = address_without_port
 
-        # When sensors need to get their state, we want to do so synchronously.
+        # When we need to get a device's state, we want to do so synchronously.
         # Make a separate connection for our own sync use in addition to the
-        # one made by network.Bus for teh WeMoActuatorBridge.
+        # one made by network.Bus.
         self.ctx = zmq.Context()
         self.request_socket = self.ctx.socket(zmq.REQ)
         req_address = "tcp://{}:{}".format(self.address_without_port, self.ReplyPort)

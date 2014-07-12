@@ -7,8 +7,8 @@ from mcp.actuators.hue import HueBridge, HueLight
 from mcp.color import BHS, RGB, Mired
 from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, File, Directory
-#from mcp.network import Bus
-#from mcp.actuators.wemo import WeMoBridge, WeMoSwitch
+from mcp.network import Bus as NetworkBus
+from mcp.actuators.wemo import WeMoActuatorBridge, WeMoSwitch
 
 log = logging.getLogger("actuators")
 
@@ -36,7 +36,7 @@ def moonlight(brightness: float) -> BHS:
     return BHS(255 * brightness, MoonlightHue, MoonlightSat)
 
 
-def build_actuators() -> DeviceSet:
+def build_actuators(network: NetworkBus) -> DeviceSet:
     actuators = DeviceSet()
 
     # Hue Lights
@@ -50,11 +50,15 @@ def build_actuators() -> DeviceSet:
     actuators.add(HueLight('hue-livingroom-torch', hue_bridge, 2))
 
     # WeMo Switches
-    #wemo_bridge = WeMoBridge('wemo-bridge')
-    #actuators.add(WeMoSwitch('wemo-office-fountain', wemo_bridge))
+    wemo_bridge = WeMoActuatorBridge('wemo-bridge')
+    wemo_switch = actuators.add(WeMoSwitch('wemoswitch-office-fountain', wemo_bridge))
+    network.add_device(wemo_switch.remote)
 
     return actuators
 
+def _is_truthy(data: str) -> bool:
+    normalized = data.strip().lower()
+    return normalized == 'true' or normalized == 'on' or normalized == '1'
 
 def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
     subdir = parent.add_entry(hue.name, Directory())
@@ -62,7 +66,7 @@ def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
     def read_on() -> str:
         return str(hue.on) + "\n"
     def write_on(data: str):
-        hue.on = data.strip() == "True"
+        hue.on = _is_truthy(data)
     subdir.add_entry("on", File(read_on, write_on))
 
     def read_bhs() -> str:
@@ -117,3 +121,13 @@ def bind_actuators_to_filesystem(actuators: DeviceSet, filesystem: FileSystem):
     directory = filesystem.root().add_entry("actuators", Directory())
     for light in actuators.select("$hue"):
         _bind_hue_light_to_filesystem(directory, light)
+
+    for switch in actuators.select("$wemoswitch"):
+        def make_file(bound_switch):
+            def _read() -> str:
+                return str(bound_switch.on) + '\n'
+            def _write(data: str):
+                bound_switch.on = _is_truthy(data)
+            return File(_read, _write)
+        directory.add_entry(switch.name, make_file(switch))
+

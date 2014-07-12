@@ -11,7 +11,7 @@ from mcp.devices import DeviceSet
 from mcp.sensors import SensorEvent
 from mcp.sensors.listener import Listener, ListenerEvent
 from mcp.sensors.nerve import Nerve
-from mcp.actuators.wemo import WeMoSensorBridge, WeMoMotion, WeMoSwitch
+from mcp.sensors.wemo import WeMoSensorBridge, WeMoMotion, WeMoSwitch
 
 log = logging.getLogger("sensors")
 
@@ -59,7 +59,6 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
     room = abode.lookup('/eyrie/office')
     room.set('wemo_switch_fountain', wemo_switch.get_state())
     wemo_switch.listen_switch_state(_make_property_forwarder(room, 'wemo_switch_fountain'))
-
 
     network.add_sensor(wemo_bridge.remote)
 
