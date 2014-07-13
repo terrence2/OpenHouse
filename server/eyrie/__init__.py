@@ -5,10 +5,11 @@ from eyrie.abode import build_abode, bind_abode_to_filesystem, bind_abode_to_sta
 from eyrie.actuators import build_actuators, bind_actuators_to_filesystem
 from eyrie.alarms import bind_alarms_to_state, bind_alarms_to_filesystem
 from eyrie.automatic import bind_abode_to_real_world_obeying_state
-from eyrie.state import EyrieStateMachine, bind_state_to_filesystem
 from eyrie.database import bind_abode_to_database
+from eyrie.presence import bind_abode_to_presence
 from eyrie.presets import bind_preset_states_to_real_world
 from eyrie.sensors import build_sensors
+from eyrie.state import EyrieStateMachine, bind_state_to_filesystem
 
 from mcp.animation import AnimationController
 from mcp.cronish import Cronish
@@ -17,9 +18,6 @@ from mcp.filesystem import FileSystem
 from mcp.network import Bus as NetworkBus
 
 import llfuse
-
-import os
-import os.path
 
 
 class Eyrie:
@@ -41,6 +39,7 @@ class Eyrie:
 
         # Data-binding for monitoring and direct control.
         bind_abode_to_database(self.abode, db_path)
+        bind_abode_to_presence(self.abode, self.cronish)
         bind_abode_to_filesystem(self.abode, self.filesystem)
         bind_actuators_to_filesystem(self.actuators, self.filesystem)
         bind_alarms_to_filesystem(self.cronish, self.filesystem)

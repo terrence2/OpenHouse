@@ -3,6 +3,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import logging
 
+from mcp.actuators import Actuator
 from mcp.actuators.hue import HueBridge, HueLight
 from mcp.color import BHS, RGB, Mired
 from mcp.devices import DeviceSet
@@ -56,65 +57,65 @@ def build_actuators(network: NetworkBus) -> DeviceSet:
 
     return actuators
 
+
 def _is_truthy(data: str) -> bool:
     normalized = data.strip().lower()
     return normalized == 'true' or normalized == 'on' or normalized == '1'
 
+
+def _make_file(entity: Actuator, property_name: str, parser: callable):
+    def _read() -> str:
+        return str(getattr(entity, property_name)) + '\n'
+
+    def _write(data: str):
+        try:
+            new_value = parser(data)
+        except Exception:
+            log.exception("failed to write property {} to {}; value was {}".format(property_name, entity, data))
+            return
+        setattr(entity, property_name, new_value)
+
+    return File(_read, _write)
+
+
 def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
     subdir = parent.add_entry(hue.name, Directory())
 
-    def read_on() -> str:
-        return str(hue.on) + "\n"
-    def write_on(data: str):
-        hue.on = _is_truthy(data)
-    subdir.add_entry("on", File(read_on, write_on))
+    subdir.add_entry('on', _make_file(hue, 'on', _is_truthy))
 
-    def read_bhs() -> str:
-        return "{}\n".format(str(hue.bhs))
-    def write_bhs(data: str):
-        try:
-            parts = data.strip().split()
-            parts = [int(p) for p in parts]
-            hue.bhs = BHS(*parts)
-        except Exception:
-            log.exception("failed to write bhs data")
-            return
-    subdir.add_entry("bhs", File(read_bhs, write_bhs))
+    def _parse_bhs(data: str):
+        parts = data.strip().split()
+        parts = [int(p) for p in parts]
+        return BHS(*parts)
+    subdir.add_entry('bhs', _make_file(hue, 'bhs', _parse_bhs))
 
-    def read_rgb() -> str:
-        return "{}\n".format(str(hue.rgb))
-    def write_rgb(data: str):
+    def _parse_rgb(data: str):
         data = data.strip()
-        try:
-            if data.startswith('#'):
-                if len(data) == 4:
-                    r = int(data[1], 16) * 16
-                    g = int(data[2], 16) * 16
-                    b = int(data[3], 16) * 16
-                elif len(data) == 7:
-                    r = int(data[1:3], 16)
-                    g = int(data[3:5], 16)
-                    b = int(data[5:7], 16)
-                else:
-                    raise AssertionError("HTML format must have 3 or 6 chars: "
-                                         + str(len(data)) + ':' + data)
+        if data.startswith('#'):
+            if len(data) == 4:
+                r = int(data[1], 16) * 16
+                g = int(data[2], 16) * 16
+                b = int(data[3], 16) * 16
+            elif len(data) == 7:
+                r = int(data[1:3], 16)
+                g = int(data[3:5], 16)
+                b = int(data[5:7], 16)
             else:
-                r, g, b = [int(p) for p in data.strip().split()]
-            hue.rgb = RGB(r, g, b)
-        except Exception:
-            log.exception("failed to write rgb data")
-            return
-    subdir.add_entry("rgb", File(read_rgb, write_rgb))
+                raise AssertionError("HTML format must have 3 or 6 chars: "
+                                     + str(len(data)) + ':' + data)
+        else:
+            r, g, b = [int(p) for p in data.strip().split()]
+        return RGB(r, g, b)
+    subdir.add_entry('rgb', _make_file(hue, 'rgb', _parse_rgb))
 
-    def read_mired() -> str:
-        return "{}\n".format(hue.mired)
-    def write_mired(data: str):
-        try:
-            hue.mired = Mired(int(data))
-        except Exception:
-            log.exception("failed to write mired data")
-            return
-    subdir.add_entry("mired", File(read_mired, write_mired))
+    def _parse_mired(data: str):
+        return Mired(int(data))
+    subdir.add_entry('mired', _make_file(hue, 'mired', _parse_mired))
+
+
+def _bind_wemo_switch_to_filesystem(parent: Directory, switch: WeMoSwitch):
+    subdir = parent.add_entry(switch.name, Directory())
+    subdir.add_entry('on', _make_file(switch, 'on', _is_truthy))
 
 
 def bind_actuators_to_filesystem(actuators: DeviceSet, filesystem: FileSystem):
@@ -123,11 +124,5 @@ def bind_actuators_to_filesystem(actuators: DeviceSet, filesystem: FileSystem):
         _bind_hue_light_to_filesystem(directory, light)
 
     for switch in actuators.select("$wemoswitch"):
-        def make_file(bound_switch):
-            def _read() -> str:
-                return str(bound_switch.on) + '\n'
-            def _write(data: str):
-                bound_switch.on = _is_truthy(data)
-            return File(_read, _write)
-        directory.add_entry(switch.name, make_file(switch))
+        _bind_wemo_switch_to_filesystem(directory, switch)
 
