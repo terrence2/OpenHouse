@@ -18,7 +18,7 @@ log = logging.getLogger("sensors")
 
 def _make_property_forwarder(room: Area, property_name: str):
     def handler(event: SensorEvent):
-        log.info("{}[{}] = {}".format(room.name, property_name, event.value))
+        log.debug("{}[{}] = {}".format(room.name, property_name, event.value))
         room.set(property_name, event.value)
     return handler
 
@@ -48,12 +48,24 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
         network.add_sensor(nerve.remote)
 
     # WeMo motion.
-    wemo_bridge = WeMoSensorBridge('wemo-bridge')
+    # FIXME: install this somewhere permanent.
+    wemo_bridge = WeMoSensorBridge('127.0.0.1')
 
-    wemo_motion = wemo_bridge.add_device(WeMoMotion('wemomotion-office-desk', wemo_bridge))
-    room = abode.lookup('/eyrie/office')
-    room.set('wemo_motion_desk', wemo_motion.get_state())
-    wemo_motion.listen_motion(_make_property_forwarder(room, 'wemo_motion_desk'))
+    wemo_motion_sensors = {
+        'office': ['desk', 'west', 'east'],
+        'kitchen': ['sink', 'west'],
+        'utility': ['north'],
+        'livingroom': ['north'],
+        'bedroom': ['desk', 'south']
+    }
+    for room_name, sensor_names in wemo_motion_sensors.items():
+        room = abode.lookup('/eyrie/{}'.format(room_name))
+        for sensor_name in sensor_names:
+            wemo_motion = wemo_bridge.add_device(WeMoMotion('wemomotion-{}-{}'.format(room_name, sensor_name),
+                                                            wemo_bridge))
+            property_name = 'wemo_motion_{}'.format(sensor_name)
+            room.set(property_name, wemo_motion.get_state())
+            wemo_motion.listen_motion(_make_property_forwarder(room, property_name))
 
     wemo_switch = wemo_bridge.add_device(WeMoSwitch('wemoswitch-office-fountain', wemo_bridge))
     room = abode.lookup('/eyrie/office')

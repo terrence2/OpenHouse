@@ -30,7 +30,7 @@ house = \
     |                                        |        .                                                |
     |         Office                         |        .                 Bedroom                        |
     |            10ftx13ft                   |________.                    12ftx10ft                   |
-    |                                        .        |                                                |
+    |                 (+2ft for closet)      .        |                       (+2ft for closet)        |
     |                                        .        |                                                |
     |                                        .        |                                                |
     |                                        .        |                                                |
@@ -41,7 +41,7 @@ house = \
     |                                        +________+@@@@@@@@@@--------------------------------------+
     |                                        @                         @                               |
     |                                        @        Hall             @                               |
-    |                                        @          76" x 31"      @                               |
+    |                                        @          7' x 6'        @                               |
     |                                        @                         @                               |
     |@@@@@@-------------------------------------------+          +-----+                               |
     @                                                 @          @     |                               |
@@ -49,13 +49,13 @@ house = \
     @  Entry                                          @          @     |                               |
     @    42" x 42"                                    @          @     |                               |
     @                                                 @          @     |                               |
-    +--------------                                   +          +-----+-------------------------------+
+    +--------------                                   +@@@@@@@@@@+-----+-------------------------------+
     |                                                 |                                                |
     |                                                 |                                                |
     |                                                 |                                                |
     |                                                 |                                                |
-    |                                                 |                                                |
-    |                                                 |                                                |
+    |                                                 |          Kitchen                               |
+    |                                                 |             12'x8'                             |
     |     Living Room                                 |                                                |
     |        13' x 19'9"                              |                                                |
     |                                                 |                                                |
@@ -73,8 +73,8 @@ house = \
     |                                                                                 |                |
     |                                                                                 |                |
     |                                                                                 |                |
-    |                                                                                 |                |
-    |                                                                                 |                |
+    |                                                      Dining Room                |   Utility      |
+    |                                                         7'6"x8'6"               |     4'6"x8'6"  |
     |                                                                                 |                |
     |                                                                                 |                |
     |                                                                                 |                |
@@ -90,11 +90,23 @@ house = \
 
 
 def build_abode() -> Abode:
-    abode = Abode("eyrie")
-    office = abode.create_room('office', Coord(0, 0), Size('10ft', '13ft', '8ft'))
-    bedroom = abode.create_room('bedroom', Coord('13ft', 0), Size('12ft', '10ft', '8ft'))
+    abode = Abode('eyrie')
+    office = abode.create_room('office', Coord(0, 0), Size('12ft', '13ft', '8ft'))
+    if True:
+        office.create_subarea('closet', Coord('10ft', '5ft'), Size('2ft6in', '5ft', '8ft'))
+    bedroom = abode.create_room('bedroom', Coord('13ft', 0), Size('14ft', '10ft', '8ft'))
+    if True:
+        bedroom.create_subarea('closet', Coord(0, '5ft'), Size('2ft6in', '5ft', '8ft'))
     livingroom = abode.create_room('livingroom', Coord(0, '13ft'), Size('13ft', '19ft9in', '8ft'))
-    entry = livingroom.create_subarea('entry', Coord(0, 0), Size('42in', '42in', '8ft'))
+    if True:
+        livingroom.create_subarea('entry', Coord(0, 0), Size('42in', '42in', '8ft'))
+    hall = abode.create_room('hall', Coord('10ft', '10ft'), Size('76in', '31in', '8ft'))
+    if True:
+        hall.create_subarea('closet', Coord('5ft6in', '31in'), Size('1ft', '3ft', '8ft'))
+    kitchen = abode.create_room('kitchen', Coord('13ft', '16ft'), Size('8ft', '12ft', '8ft'))
+    utility = abode.create_room('utility', Coord('20ft6in', '24ft'), Size('4ft6in', '8ft6in', '8ft'))
+    diningroom = abode.create_room('diningroom', Coord('13ft', '24ft'), Size('7ft6in', '8ft6in', '8ft'))
+
     return abode
 
 
@@ -110,7 +122,7 @@ def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
     def add_subareas(area: Area, area_dir: Directory):
         """Add sub-areas from the given area to the given directory. Recurse as needed."""
         for name in area.subarea_names():
-            subarea_dir = area_dir.add_entry(name, Directory())
+            subarea_dir = area_dir.add_subdir(name, Directory())
             subarea = area.subarea(name)
             add_subareas(subarea, subarea_dir)
 
@@ -126,9 +138,9 @@ def bind_abode_to_filesystem(abode: Abode, filesystem: FileSystem):
                 node = File(read_attr, write_attr)
             else:
                 node = File(read_attr, None)
-            area_dir.add_entry(property_name, node)
+            area_dir.add_file(property_name, node)
 
-    abode_dir = filesystem.root().add_entry(abode.name, Directory())
+    abode_dir = filesystem.root().add_subdir(abode.name, Directory())
     add_subareas(abode, abode_dir)
 
 

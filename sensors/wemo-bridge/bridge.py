@@ -119,9 +119,9 @@ if __name__ == '__main__':
         log.info("Found device: {}".format(sender.name))
         net.add_device(sender)
 
-    #@receiver(subscription)
-    #def subscription(sender, **kwargs):
-    #    log.info("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
+    @receiver(subscription)
+    def subscription(sender, **kwargs):
+        log.info("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
 
     # Kick off threads.
     net.start()
@@ -129,6 +129,10 @@ if __name__ == '__main__':
 
     env.discover(10)
     log.info("Finished discovery.")
+    log.info("Discovered {} devices:".format(len(net.devices)))
+    devnames = sorted(net.devices.keys())
+    for name in devnames:
+        log.info("-- {}".format(name))
 
     @receiver(statechange)
     def state_update_event(sender, **kwargs):

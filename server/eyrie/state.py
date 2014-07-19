@@ -34,4 +34,4 @@ def bind_state_to_filesystem(state: EyrieStateMachine, filesystem: FileSystem):
     """
     def read_state() -> str:
         return state.current + "\n"
-    filesystem.root().add_entry('state', File(read_state, None))
+    filesystem.root().add_file('state', File(read_state, None))

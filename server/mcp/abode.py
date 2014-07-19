@@ -1,9 +1,11 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
+import logging
 
 from mcp.dimension import Coord, Size
+
+log = logging.getLogger('abode')
 
 
 class Area:
@@ -77,10 +79,13 @@ class Area:
         Update the value of a property on this area.
         """
         if prop_name not in self.properties_:
+            log.info("ADD {}[{}]".format(self.name, prop_name))
             self.properties_[prop_name] = None
             self.send_event(prop_name, 'propertyAdded', prop_value)
         if prop_value != self.properties_[prop_name]:
+            log.info("CHANGE {}[{}] = {} -> {}".format(self.name, prop_name, self.properties_[prop_name], prop_value))
             self.send_event(prop_name, 'propertyChanged', prop_value)
+        log.debug("TOUCH {}[{}] = {}".format(self.name, prop_name, prop_value))
         self.properties_[prop_name] = prop_value
         self.send_event(prop_name, 'propertyTouched', prop_value)
 

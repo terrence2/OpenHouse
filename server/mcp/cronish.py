@@ -128,7 +128,7 @@ class Cronish(Thread):
 
     def update_task_time(self, name: str, days_of_week: {int}, hours: {int}, minutes: {int}):
         self.tasks_[name].set_time(days_of_week, hours, minutes)
-        log.info("Updated task '{}' to {}".format(name, str(self.tasks_[name])))
+        log.debug("Updated task '{}' to {}".format(name, str(self.tasks_[name])))
         self._save_tasks(self.database_filename, self.tasks_)
 
     def get_task(self, name: str) -> _Task:

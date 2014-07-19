@@ -43,7 +43,10 @@ class WeMoSensorBridge:
         source = wrapper['source']
         message = wrapper['message']
         log.debug("got message for {}: {}".format(source, message))
-        self.devices[source].on_message(message)
+        try:
+            self.devices[source].on_message(message)
+        except KeyError:
+            log.warning("unknown device: {}".format(source))
 
     def add_device(self, device: Sensor) -> Sensor:
         self.devices[device.name] = device

@@ -1,8 +1,6 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = "terrence"
-
 try:
     from enum import Enum
 except ImportError:
@@ -13,6 +11,8 @@ import errno
 import faulthandler
 import logging
 import stat
+
+from datetime import datetime
 
 from pprint import pprint
 
@@ -45,7 +45,14 @@ class Node:
         # We represent stat bitfields like st_mode split out and use properties to combine them for display.
         self.permission_ = 0o600
         self.mode_ = NodeType.Unknown
-        self.nlink_ = 2
+        self.nlink = 2
+        self.ctime = datetime.now()
+        self.mtime = datetime.now()
+        self.atime = datetime.now()
+
+    def poke(self):
+        """Update the atime."""
+        self.atime_ = datetime.now()
 
     @property
     def mode(self):
@@ -53,16 +60,22 @@ class Node:
         return self.permission_ | self.mode_
 
     @property
-    def nlink(self):
-        return self.nlink_
-
-    @property
     def type(self) -> NodeType:
         return self.mode_
 
 
 class File(Node):
-    def __init__(self, read_function: callable, write_function: callable):
+    def __init__(self, read_function: callable, write_function: callable, fixed_size: int=-1):
+        """
+        A virtual file. Provide a read function and a write function to do whatever is needed.
+
+        fixed_size:int -- Normally the stat struct's size is filled with the size of the string
+                          returned by a call to |read_function|. If calling the |read_function|
+                          has side-effects or is slow for some other reason, it is best to
+                          provide |fixed_size|, which will be used instead. Note: having an
+                          incorrect size will break some tools, but generally not badly enough
+                          to make them unusable.
+        """
         super().__init__()
 
         # Required overrides.
@@ -72,12 +85,23 @@ class File(Node):
         self.read_function_ = read_function
         self.write_function_ = write_function
 
+        self.fixed_size_ = fixed_size
+
+    def guess_size(self) -> int:
+        if self.fixed_size_ != -1:
+            return self.fixed_size_
+        if not self.read_function_:
+            return 0
+        return len(self.read_function_().encode('UTF-8'))
+
     def read(self) -> str:
+        self.poke()
         if self.read_function_:
             return self.read_function_()
         return ""
 
     def write(self, data: str):
+        self.poke()
         if self.write_function_:
             return self.write_function_(data)
         return errno.EPERM
@@ -95,18 +119,33 @@ class Directory(Node):
             '.': self,
         }
 
-    def add_entry(self, name: str, node: Node) -> Node:
+    def add_file(self, name: str, node: File) -> File:
+        self.poke()
         self.entries_[name] = node
-        if node.type == NodeType.Directory:
-            self.nlink_ += 1
-            node.entries_['..'] = self
         return node
 
+    def add_subdir(self, name: str, directory):
+        self.poke()
+        self.entries_[name] = directory
+        self.nlink += 1
+        directory.entries_['..'] = self
+        return directory
+
     def lookup(self, name: str) -> Node:
+        self.poke()
         return self.entries_[name]
 
     def listdir(self) -> [str]:
+        self.poke()
         return list(self.entries_.keys())
+
+    def guess_size(self) -> int:
+        return sum((len(k) + 1 for k in self.entries_.keys()))
+
+    def read(self):
+        return errno.EINVAL
+    def write(self, data):
+        return errno.EINVAL
 
 
 class FileSystem(llfuse.Operations):
@@ -127,7 +166,7 @@ class FileSystem(llfuse.Operations):
         # Map the inodes the system gives us to the relevant nodes.
         self.inode_to_node_ = {1: self.root_}  # ino:int => object
 
-    def root(self):
+    def root(self) -> Directory:
         return self.root_
 
     def _getattr(self, node: Node):
@@ -140,12 +179,12 @@ class FileSystem(llfuse.Operations):
         entry.st_uid = 1000
         entry.st_gid = 1000
         entry.st_rdev = 0
-        entry.st_size = 4096
         entry.st_blksize = 4096
-        entry.st_blocks = 1
-        entry.st_atime = 0
-        entry.st_mtime = 0
-        entry.st_ctime = 0
+        entry.st_size = node.guess_size()
+        entry.st_blocks = entry.st_size // entry.st_blksize + (1 if entry.st_size % entry.st_blksize > 0 else 0)
+        entry.st_atime = int(node.atime.timestamp())
+        entry.st_mtime = int(node.mtime.timestamp())
+        entry.st_ctime = int(node.ctime.timestamp())
         entry.st_mode = node.mode
         entry.st_nlink = node.nlink
         return entry

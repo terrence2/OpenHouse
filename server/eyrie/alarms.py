@@ -46,14 +46,14 @@ def bind_alarms_to_state(cronish: Cronish, state: EyrieStateMachine):
 
 
 def bind_alarms_to_filesystem(cronish: Cronish, filesystem: FileSystem):
-    alarms_dir = filesystem.root().add_entry("alarms", Directory())
+    alarms_dir = filesystem.root().add_subdir("alarms", Directory())
 
     def alarms_help() -> str:
         return "Values are: 'off' or '[H]H:MM[+]'.\nExample: '7:30', '16:42', or '2:00+' for 2AM tomorrow.\n"
-    alarms_dir.add_entry("help", File(alarms_help, None))
+    alarms_dir.add_file("help", File(alarms_help, None))
 
     for name in ['wakeup', 'sleep']:
-        alarm_dir = alarms_dir.add_entry(name, Directory())
+        alarm_dir = alarms_dir.add_subdir(name, Directory())
         for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
             def make_alarm_file(bound_name, bound_day):
                 alarm_name = _alarm_name(bound_name, bound_day)
@@ -66,5 +66,5 @@ def bind_alarms_to_filesystem(cronish: Cronish, filesystem: FileSystem):
                     cronish.update_task_time(alarm_name, days_of_week={dow}, hours={hour}, minutes={minute})
 
                 return File(read_alarm, write_alarm)
-            alarm_dir.add_entry(day, make_alarm_file(name, day))
+            alarm_dir.add_file(day, make_alarm_file(name, day))
 

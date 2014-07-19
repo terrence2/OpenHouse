@@ -46,12 +46,20 @@ def build_actuators(network: NetworkBus) -> DeviceSet:
     actuators.add(HueLight('hue-bedroom-desk', hue_bridge, 6))
     actuators.add(HueLight('hue-bedroom-dresser', hue_bridge, 7))
     actuators.add(HueLight('hue-bedroom-torch', hue_bridge, 3))
+    actuators.add(HueLight('hue-bedroom-tree0', hue_bridge, 10))
+    actuators.add(HueLight('hue-bedroom-tree1', hue_bridge, 11))
+    actuators.add(HueLight('hue-bedroom-tree2', hue_bridge, 12))
     actuators.add(HueLight('hue-office-ceiling1', hue_bridge, 4))
     actuators.add(HueLight('hue-office-ceiling2', hue_bridge, 5))
     actuators.add(HueLight('hue-livingroom-torch', hue_bridge, 2))
+    actuators.add(HueLight('hue-kitchen-sink', hue_bridge, 8))
+    actuators.add(HueLight('hue-utility-ceiling', hue_bridge, 9))
+    actuators.add(HueLight('hue-hall-ceiling0', hue_bridge, 13))
+    actuators.add(HueLight('hue-hall-ceiling1', hue_bridge, 14))
 
     # WeMo Switches
-    wemo_bridge = WeMoActuatorBridge('wemo-bridge')
+    # FIXME: install this somewhere permanent.
+    wemo_bridge = WeMoActuatorBridge('127.0.0.1')
     wemo_switch = actuators.add(WeMoSwitch('wemoswitch-office-fountain', wemo_bridge))
     network.add_device(wemo_switch.remote)
 
@@ -75,19 +83,19 @@ def _make_file(entity: Actuator, property_name: str, parser: callable):
             return
         setattr(entity, property_name, new_value)
 
-    return File(_read, _write)
+    return File(_read, _write, fixed_size=4096)
 
 
 def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
-    subdir = parent.add_entry(hue.name, Directory())
+    subdir = parent.add_subdir(hue.name, Directory())
 
-    subdir.add_entry('on', _make_file(hue, 'on', _is_truthy))
+    subdir.add_file('on', _make_file(hue, 'on', _is_truthy))
 
     def _parse_bhs(data: str):
         parts = data.strip().split()
         parts = [int(p) for p in parts]
         return BHS(*parts)
-    subdir.add_entry('bhs', _make_file(hue, 'bhs', _parse_bhs))
+    subdir.add_file('bhs', _make_file(hue, 'bhs', _parse_bhs))
 
     def _parse_rgb(data: str):
         data = data.strip()
@@ -106,20 +114,20 @@ def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
         else:
             r, g, b = [int(p) for p in data.strip().split()]
         return RGB(r, g, b)
-    subdir.add_entry('rgb', _make_file(hue, 'rgb', _parse_rgb))
+    subdir.add_file('rgb', _make_file(hue, 'rgb', _parse_rgb))
 
     def _parse_mired(data: str):
         return Mired(int(data))
-    subdir.add_entry('mired', _make_file(hue, 'mired', _parse_mired))
+    subdir.add_file('mired', _make_file(hue, 'mired', _parse_mired))
 
 
 def _bind_wemo_switch_to_filesystem(parent: Directory, switch: WeMoSwitch):
-    subdir = parent.add_entry(switch.name, Directory())
-    subdir.add_entry('on', _make_file(switch, 'on', _is_truthy))
+    subdir = parent.add_subdir(switch.name, Directory())
+    subdir.add_file('on', _make_file(switch, 'on', _is_truthy))
 
 
 def bind_actuators_to_filesystem(actuators: DeviceSet, filesystem: FileSystem):
-    directory = filesystem.root().add_entry("actuators", Directory())
+    directory = filesystem.root().add_subdir("actuators", Directory())
     for light in actuators.select("$hue"):
         _bind_hue_light_to_filesystem(directory, light)
 
