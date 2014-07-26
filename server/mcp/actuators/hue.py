@@ -75,11 +75,11 @@ class HueLight(Actuator):
 
     @rgb.setter
     def rgb(self, data: RGB):
-        bri, hue, sat = self.rgb_to_bhs(data)
+        bhs = self.rgb_to_bhs(data)
         self.hue_bridge.request("PUT", self.state_url(),
-                                {'bri': bri,
-                                 'hue': hue,
-                                 'sat': sat})
+                                {'bri': bhs.b,
+                                 'hue': bhs.h,
+                                 'sat': bhs.s})
 
     # Color Temperature
     @property
