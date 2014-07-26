@@ -85,6 +85,12 @@ class File(Node):
         self.read_function_ = read_function
         self.write_function_ = write_function
 
+        self.permission_ = 0
+        if self.read_function_:
+            self.permission_ |= 0o400
+        if self.write_function_:
+            self.permission_ |= 0o200
+
         self.fixed_size_ = fixed_size
 
     def guess_size(self) -> int:
