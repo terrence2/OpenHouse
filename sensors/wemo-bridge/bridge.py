@@ -8,13 +8,14 @@ import zmq
 
 from ouimeaux.environment import Environment
 from ouimeaux.signals import devicefound, statechange, receiver, subscription
-from zmq.sugar import socket as zmq_socket
 
-from datetime import datetime, timedelta
+from datetime import datetime
+from select import select
 from threading import Lock, Thread
 
-import logging
 import json
+import logging
+import os
 
 log = logging.getLogger('wemo-bridge')
 
@@ -38,6 +39,40 @@ def enable_logging(level):
     root.setLevel(logging.DEBUG)
     root.addHandler(ch)
     root.addHandler(fh)
+
+
+class Watchdog(Thread):
+    def __init__(self, lock, network):
+        Thread.__init__(self)
+        self.lock_ = lock
+        self.network_ = network
+        self.read_fd_, self.write_fd_ = os.pipe()
+        self.wants_exit_ = False
+
+    def exit(self):
+        self.wants_exit_ = True
+        os.write(self.write_fd_, b'0')
+
+    def run(self):
+        while not self.wants_exit_:
+            readable = select([self.read_fd_], [], [], 10.)
+            if self.read_fd_ in readable:
+                buf = os.read(self.read_fd_, 1)
+                assert buf == b'0'
+                if self.wants_exit_:
+                    return
+
+            out = ''
+            with self.lock_:
+                now = datetime.now()
+                devnames = sorted(self.network_.devices_.keys())
+                for name in devnames:
+                    if not name.startswith('wemomotion'):
+                        continue
+                    sec = now - self.network_.devices_[name].last_update
+                    name = name[len('wemomotion-'):]
+                    out += '{}:{} '.format(name, sec.seconds)
+            log.info(out)
 
 
 class NetworkDevice(object):
@@ -123,6 +158,7 @@ if __name__ == '__main__':
     # Global state.
     gil = Lock()
     net = Network(gil)
+    wd = Watchdog(gil, net)
     env = Environment(with_cache=False, bind="0.0.0.0:54321")
 
     @receiver(devicefound)
@@ -147,14 +183,17 @@ if __name__ == '__main__':
 
     @receiver(statechange)
     def state_update_event(sender, **kwargs):
-        log.info("{} state is {state}".format(
+        log.debug("{} state is {state}".format(
             sender.name, state="on" if kwargs.get('state') else "off"))
         net.broadcast(sender, {'type': 'statechange', 'state': kwargs.get('state')})
 
     try:
+        wd.start()
         env.wait()
     except (KeyboardInterrupt, SystemExit):
-        print("Goodbye!")
+        log.debug("Goodbye!")
 
+    wd.exit()
     net.exit()
+    wd.join(10)
     net.join(10)
