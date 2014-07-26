@@ -8,10 +8,14 @@ except ImportError:
         pass
 
 import logging
-import zmq
-from zmq.sugar import socket as zmq_socket
+import os
+
 from select import POLLIN
 from threading import Thread
+from queue import Queue, Empty
+
+import zmq
+from zmq.sugar import socket as zmq_socket
 
 log = logging.getLogger('network')
 
@@ -58,6 +62,7 @@ class Actuator:
         self.bus = None
         self.socket = None
         self.instance = actuator
+        self.queue_ = Queue()
 
     @staticmethod
     def device_type():
@@ -73,7 +78,8 @@ class Actuator:
 
     def send_message(self, message: object):
         assert self.socket is not None
-        self.socket.send_json(message)
+        self.queue_.put(message)
+        self.bus.poke()
 
     def on_reply(self, message: object):
         self.instance.on_reply(message)
@@ -101,6 +107,10 @@ class Bus(Thread):
         self.sensors = {}  # {zmq.socket: Sensor}
         self.actuators = {}  # {zmq.socket: Actuator}
 
+        # The poke socket.
+        self.read_fd_, self.write_fd_ = os.pipe()
+        self.poller.register(self.read_fd_, POLLIN)
+
     def connect_(self, address: (str, int), socket_type: "zmq socket type"):
         socket = self.ctx.socket(socket_type)
         address = "tcp://" + str(address[0]) + ":" + str(address[1])
@@ -111,11 +121,13 @@ class Bus(Thread):
 
     def add_actuator(self, actuator: Actuator):
         assert not hasattr(actuator, 'remote')
+        actuator.bus = self
         actuator.socket = self.connect_(actuator.address, zmq.REQ)
         self.actuators[actuator.socket] = actuator
 
     def add_sensor(self, sensor: Sensor):
         assert not hasattr(sensor, 'remote')
+        sensor.bus = self
         sensor.socket = self.connect_(sensor.address, zmq.SUB)
         sensor.socket.setsockopt(zmq.SUBSCRIBE, b'')
         self.sensors[sensor.socket] = sensor
@@ -130,10 +142,18 @@ class Bus(Thread):
         while not self.ready_to_exit:
             ready = self.poller.poll(Bus.Interval)
             if not ready:
-                # self.model.handle_timeout()
                 continue
 
             for (socket, event) in ready:
+                # if poke socket, check for exit, then send outbound messages waiting on send.
+                if socket == self.read_fd_:
+                    if self.ready_to_exit:
+                        return
+                    for actuator in self.actuators.values():
+                        if not actuator.queue_.empty():
+                            log.info("Sending message to actuator: {}".format(actuator.name))
+                            actuator.socket.send_json(actuator.queue_.get_nowait())
+
                 self.check_sensors_(socket, event)
                 self.check_actuators_(socket, event)
 
@@ -142,8 +162,12 @@ class Bus(Thread):
         for socket in self.sensors:
             socket.close()
 
+    def poke(self):
+        os.write(self.write_fd_, b'1')
+
     def exit(self):
         self.ready_to_exit = True
+        self.poke()
 
     def check_sensors_(self, socket: zmq_socket, event: int):
         if event != POLLIN:
@@ -196,4 +220,12 @@ class Bus(Thread):
                 actuator.on_reply(data)
         except Exception:
             log.exception("failed to handle actuator reply")
+
+        # Check for any messages waiting to send.
+        try:
+            to_send = actuator.queue_.get_nowait()
+            actuator.socket.send_json(to_send)
+        except Empty:
+            return
+
 
