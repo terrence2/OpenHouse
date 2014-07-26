@@ -22,6 +22,14 @@ class HueBridge:
         self.address = address
         self.username = username
 
+        self.known_lights = {}  # {name:str => id:str}
+        lights = self.request('GET', '/lights')
+        for id_str, light_def in lights.items():
+            self.known_lights[light_def['name']] = id_str
+
+    def identify_light(self, name:str):
+        return self.known_lights[name]
+
     def request(self, mode, resource, data=None):
         if data is not None:
             data = json.dumps(data).encode('UTF-8')
@@ -37,10 +45,10 @@ class HueLight(Actuator):
     """
     An individually controllable Philips Hue light.
     """
-    def __init__(self, name: str, bridge: HueBridge, hue_light_id: int):
+    def __init__(self, name: str, bridge: HueBridge):
         super().__init__(name)
         self.hue_bridge = bridge
-        self.hue_light_id = hue_light_id
+        self.hue_light_id = bridge.identify_light(name)
 
     # ON
     @property
@@ -97,7 +105,7 @@ class HueLight(Actuator):
         return "/lights/{}/state".format(self.hue_light_id)
 
     def state_from(self, data):
-        return data['lights'][str(self.hue_light_id)]['state']
+        return data['lights'][self.hue_light_id]['state']
 
     def rgb_to_bhs(self, rgb: RGB) -> BHS:
         r = rgb.r / 256
