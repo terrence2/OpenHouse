@@ -9,15 +9,19 @@ import zmq
 from ouimeaux.environment import Environment
 from ouimeaux.signals import devicefound, statechange, receiver, subscription
 from zmq.sugar import socket as zmq_socket
+
+from datetime import datetime, timedelta
 from threading import Lock, Thread
+
 import logging
 import json
 
 log = logging.getLogger('wemo-bridge')
 
+
 def enable_logging(level):
     # File logger captures everything.
-    fh = logging.FileHandler('mcp-events.log')
+    fh = logging.FileHandler('bridge.log')
     fh.setLevel(logging.DEBUG)
 
     # Console output level is configurable.
@@ -36,6 +40,12 @@ def enable_logging(level):
     root.addHandler(fh)
 
 
+class NetworkDevice(object):
+    def __init__(self, device):
+        self.device = device
+        self.last_update = datetime.now()
+
+
 class Network(Thread):
     ReplyPort = 31978
     BroadcastPort = 31979
@@ -49,7 +59,7 @@ class Network(Thread):
 
         self.ctx = zmq.Context()
         self.poller = zmq.Poller()
-        self.devices = {}  # {zmq.socket: ???}
+        self.devices_ = {}  # {str: NetworkDevice}
 
         self.pub_socket = self.ctx.socket(zmq.PUB)
         self.pub_socket.bind("tcp://*:{}".format(self.BroadcastPort))
@@ -58,10 +68,11 @@ class Network(Thread):
 
     def add_device(self, device):
         with self.lock_:
-            self.devices[device.name] = device
+            self.devices_[device.name] = NetworkDevice(device)
 
     def broadcast(self, device, message):
         with self.lock_:
+            self.devices_[device.name].last_update = datetime.now()
             wrapper = {'source': device.name, 'message': message}
             self.pub_socket.send(json.dumps(wrapper))
 
@@ -89,19 +100,19 @@ class Network(Thread):
 
                 target = data['target']
                 try:
-                    device = self.devices[target]
+                    net_device = self.devices_[target]
                 except KeyError:
                     log.error('unknown target device: {}'.format(target))
                     continue
 
                 if data['type'] == 'get_state':
-                    result = {'state': device.get_state()}
+                    result = {'state': net_device.device.get_state()}
                     self.rep_socket.send_json(result)
                 elif data['type'] == 'set_state':
                     state = bool(data['state'])
-                    device.set_state(state)
-                    result = {'state': device.get_state()}
-                    self.rep_socket.send_json(result)
+                    net_device.last_update = datetime.now()
+                    result = net_device.device.set_state(state)
+                    self.rep_socket.send_json({'result': result})
                 else:
                     log.error("unhandled message type: {} for {}".format(data['type'], target))
 
@@ -121,7 +132,7 @@ if __name__ == '__main__':
 
     @receiver(subscription)
     def subscription(sender, **kwargs):
-        log.info("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
+        log.debug("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
 
     # Kick off threads.
     net.start()
@@ -129,8 +140,8 @@ if __name__ == '__main__':
 
     env.discover(10)
     log.info("Finished discovery.")
-    log.info("Discovered {} devices:".format(len(net.devices)))
-    devnames = sorted(net.devices.keys())
+    log.info("Discovered {} devices:".format(len(net.devices_)))
+    devnames = sorted(net.devices_.keys())
     for name in devnames:
         log.info("-- {}".format(name))
 
