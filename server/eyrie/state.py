@@ -33,5 +33,7 @@ def bind_state_to_filesystem(state: EyrieStateMachine, filesystem: FileSystem):
     set control preference.
     """
     def read_state() -> str:
-        return state.current + "\n"
+        lines = [state.current, "Options:"] + sorted(['\t' + str(s) for s in state.all_states()])
+        return '\n'.join(lines) + '\n'
+
     filesystem.root().add_file('state', File(read_state, None))

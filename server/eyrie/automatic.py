@@ -76,20 +76,34 @@ def _handle_daytime(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine
         new_lighting = daylight(int(event.property_value))
         log.debug("motion updating lighting state in {} to {}".format(event.target.name, new_lighting))
         actuators.select('$hue').select('@' + event.target.name).set('bhs', new_lighting).set('on', True)
-    abode.lookup("/eyrie/bedroom").listen("humans_present", "propertyChanged", on_presence)
-    abode.lookup("/eyrie/livingroom").listen("humans_present", "propertyChanged", on_presence)
-    abode.lookup("/eyrie/office").listen("humans_present", "propertyChanged", on_presence)
-    abode.lookup("/eyrie/kitchen").listen("humans_present", "propertyChanged", on_presence)
-    abode.lookup("/eyrie/utility").listen("humans_present", "propertyChanged", on_presence)
+
+    rooms = ['bedroom', 'livingroom', 'office', 'kitchen', 'utility', 'hall']
+    for room_name in rooms:
+        abode.lookup('/eyrie/{}'.format(room_name)).listen("humans_present", "propertyChanged", on_presence)
 
 
 def _handle_sleep(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine):
     def on_enter_sleep(_: StateEvent):
-        actuators.select('$hue').set('bhs', moonlight(0))
-        actuators.select('$hue').select('@bedroom').select('#bed').set('on', False)
+        all_lights = actuators.select('$hue')
+        br = all_lights.select('@bedroom')
+        off_lights = br.select('#bed') + br.select('#ceiling') + br.select('#tree0') + br.select('#tree1')
+        on_lights = all_lights - off_lights
+
+        on_lights.set('on', True).set('bhs', moonlight(0))
+        off_lights.set('on', False)
     state.listen_enter_state('auto:sleep', on_enter_sleep)
 
     # TODO: Give us a night light in rooms other than the bedroom.
+    def on_presence(event: AbodeEvent):
+        if state.current != 'auto:sleep':
+            return
+        assert event.target.name != 'bedroom'
+        new_lighting = moonlight(int(event.property_value))
+        actuators.select('$hue').select('@' + event.target.name).set('bhs', new_lighting).set('on', True)
+
+    rooms = ['livingroom', 'office', 'kitchen', 'utility', 'hall']
+    for room_name in rooms:
+        abode.lookup('/eyrie/{}'.format(room_name)).listen("humans_present", "propertyChanged", on_presence)
 
 
 def bind_abode_to_real_world_obeying_state(abode: Abode, actuators: DeviceSet, animation: AnimationController,
