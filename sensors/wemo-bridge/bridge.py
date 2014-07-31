@@ -16,6 +16,7 @@ from threading import Lock, Thread
 import json
 import logging
 import os
+import sys
 
 log = logging.getLogger('wemo-bridge')
 
@@ -62,17 +63,23 @@ class Watchdog(Thread):
                 if self.wants_exit_:
                     return
 
-            out = ''
+            log_string = ''
+            maximum = 0
             with self.lock_:
                 now = datetime.now()
                 devnames = sorted(self.network_.devices_.keys())
                 for name in devnames:
                     if not name.startswith('wemomotion'):
                         continue
-                    sec = now - self.network_.devices_[name].last_update
-                    name = name[len('wemomotion-'):]
-                    out += '{}:{} '.format(name, sec.seconds)
-            log.info(out)
+                    dt = now - self.network_.devices_[name].last_update
+                    if dt.seconds > maximum:
+                        maximum = dt.seconds
+                    log_string += '{}:{} '.format(name[len('wemomotion-'):], dt.seconds)
+            log.info(log_string)
+
+            if maximum > 45:
+                log.critical("DETECTED FRAMEWORK DEATH")
+                os._exit(3)
 
 
 class NetworkDevice(object):
