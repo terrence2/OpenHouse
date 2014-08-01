@@ -111,6 +111,14 @@ class Bus(Thread):
         self.read_fd_, self.write_fd_ = os.pipe()
         self.poller.register(self.read_fd_, POLLIN)
 
+    def cleanup(self):
+        for socket in self.actuators:
+            socket.close()
+        for socket in self.sensors:
+            socket.close()
+        os.close(self.read_fd_)
+        os.close(self.write_fd_)
+
     def connect_(self, address: (str, int), socket_type: "zmq socket type"):
         socket = self.ctx.socket(socket_type)
         address = "tcp://" + str(address[0]) + ":" + str(address[1])
@@ -145,22 +153,11 @@ class Bus(Thread):
                 continue
 
             for (socket, event) in ready:
-                # if poke socket, check for exit, then send outbound messages waiting on send.
-                if socket == self.read_fd_:
-                    if self.ready_to_exit:
-                        return
-                    for actuator in self.actuators.values():
-                        if not actuator.queue_.empty():
-                            log.info("Sending message to actuator: {}".format(actuator.name))
-                            actuator.socket.send_json(actuator.queue_.get_nowait())
-
+                self.check_outgoing_messages_(socket, event)
                 self.check_sensors_(socket, event)
                 self.check_actuators_(socket, event)
 
-        for socket in self.actuators:
-            socket.close()
-        for socket in self.sensors:
-            socket.close()
+        self.cleanup()
 
     def poke(self):
         os.write(self.write_fd_, b'1')
@@ -168,6 +165,24 @@ class Bus(Thread):
     def exit(self):
         self.ready_to_exit = True
         self.poke()
+
+    def check_outgoing_messages_(self, socket, event: int):
+        if socket != self.read_fd_:
+            # Not a poke event, skip.
+            return
+
+        if event != POLLIN:
+            log.warning("unknown error on poke fd")
+            return
+
+        # Clear the buffered poke byte.
+        buf = os.read(self.read_fd_, 4096)
+        assert buf == b'1'
+
+        for actuator in self.actuators.values():
+            if not actuator.queue_.empty():
+                log.info("Sending message to actuator: {}".format(actuator.name))
+                actuator.socket.send_json(actuator.queue_.get_nowait())
 
     def check_sensors_(self, socket: zmq_socket, event: int):
         if event != POLLIN:
@@ -181,6 +196,7 @@ class Bus(Thread):
             sensor = self.sensors[socket]
         except KeyError:
             log.exception("received message from unknown sensor")
+            return
 
         log.debug("Received message from sensor: {}".format(sensor.name))
 
@@ -188,12 +204,14 @@ class Bus(Thread):
             data = socket.recv_json()
         except Exception:
             log.exception("failed to receive sensor message")
+            return
 
         try:
             with self.lock_:
                 sensor.on_message(data)
         except Exception:
             log.exception("failed to handle sensor message")
+            return
 
     def check_actuators_(self, socket: zmq_socket, event: int):
         if event != POLLIN:
@@ -207,6 +225,7 @@ class Bus(Thread):
             actuator = self.actuators[socket]
         except KeyError as ex:
             log.exception("received message from unknown actuator")
+            return
 
         log.info("Received message from actuator: {}".format(actuator.name))
 
@@ -214,12 +233,14 @@ class Bus(Thread):
             data = socket.recv_json()
         except Exception:
             log.exception("failed to receive sensor message")
+            return
 
         try:
             with self.lock_:
                 actuator.on_reply(data)
         except Exception:
             log.exception("failed to handle actuator reply")
+            return
 
         # Check for any messages waiting to send.
         try:
