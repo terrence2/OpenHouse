@@ -63,6 +63,7 @@ class Actuator:
         self.socket = None
         self.instance = actuator
         self.queue_ = Queue()
+        self.ready_to_send = True
 
     @staticmethod
     def device_type():
@@ -180,9 +181,10 @@ class Bus(Thread):
         assert buf == b'1'
 
         for actuator in self.actuators.values():
-            if not actuator.queue_.empty():
+            if not actuator.queue_.empty() and actuator.ready_to_send:
                 log.info("Sending message to actuator: {}".format(actuator.name))
                 actuator.socket.send_json(actuator.queue_.get_nowait())
+                actuator.ready_to_send = False
 
     def check_sensors_(self, socket: zmq_socket, event: int):
         if event != POLLIN:
@@ -234,6 +236,7 @@ class Bus(Thread):
         except Exception:
             log.exception("failed to receive sensor message")
             return
+        actuator.ready_to_send = True
 
         try:
             with self.lock_:
@@ -246,6 +249,7 @@ class Bus(Thread):
         try:
             to_send = actuator.queue_.get_nowait()
             actuator.socket.send_json(to_send)
+            actuator.ready_to_send = False
         except Empty:
             return
 
