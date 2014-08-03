@@ -9,5 +9,8 @@ log = logging.getLogger('actuators')
 
 
 class Actuator(Device):
+    def set(self, **args):
+        raise NotImplementedError
+
     def on_reply(self, message: object):
         log.warning("ignoring reply message to device {}: {}".format(self.name, message))

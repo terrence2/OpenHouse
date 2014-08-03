@@ -1,9 +1,11 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-__author__ = 'terrence'
-
 from mcp import Device
+
+from collections import defaultdict
+
+from pprint import pprint
 
 
 class DeviceSet:
@@ -63,10 +65,27 @@ class DeviceSet:
             return self.select_name_(match[1:])
         return DeviceSet()
 
+    def set(self, **kwargs):
+        # Find sets of items with the same bridge.
+        sifter = defaultdict(list)
+        for device in self.devices_:
+            bridge = device.bridge if hasattr(device, 'bridge') else None
+            sifter[bridge].append(device)
+        # Call the joint property setter if possible, otherwise do sets on individual devices.
+        pprint(sifter)
+        for bridge, devices in sifter.items():
+            if bridge is None:
+                for device in devices:
+                    device.set(**kwargs)
+            else:
+                bridge.set_group(devices, kwargs)
+
+    """
     def set(self, prop_name: str, prop_value) -> {Device}:
         for device in self.devices_:
             setattr(device, prop_name, prop_value)
         return self
+    """
 
     def get(self, prop_name: str):
         assert len(self.devices_) == 1

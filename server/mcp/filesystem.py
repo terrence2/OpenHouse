@@ -50,7 +50,7 @@ class Node:
         self.mtime = datetime.now()
         self.atime = datetime.now()
 
-    def poke(self):
+    def update_atime(self):
         """Update the atime."""
         self.atime_ = datetime.now()
 
@@ -101,16 +101,29 @@ class File(Node):
         return len(self.read_function_().encode('UTF-8'))
 
     def read(self) -> str:
-        self.poke()
+        self.update_atime()
         if self.read_function_:
             return self.read_function_()
         return ""
 
     def write(self, data: str):
-        self.poke()
+        self.update_atime()
         if self.write_function_:
-            return self.write_function_(data)
+            try:
+                return self.write_function_(data)
+            except Exception as e:
+                log.exception(e)
+                return errno.EFAULT
         return errno.EPERM
+
+
+class StaticFile(File):
+    def __init__(self, static_data: str):
+        self.static_data_ = static_data
+        super().__init__(self._read, None)
+
+    def _read(self) -> str:
+        return self.static_data_
 
 
 class Directory(Node):
@@ -126,23 +139,23 @@ class Directory(Node):
         }
 
     def add_file(self, name: str, node: File) -> File:
-        self.poke()
+        self.update_atime()
         self.entries_[name] = node
         return node
 
     def add_subdir(self, name: str, directory):
-        self.poke()
+        self.update_atime()
         self.entries_[name] = directory
         self.nlink += 1
         directory.entries_['..'] = self
         return directory
 
     def lookup(self, name: str) -> Node:
-        self.poke()
+        self.update_atime()
         return self.entries_[name]
 
     def listdir(self) -> [str]:
-        self.poke()
+        self.update_atime()
         return list(self.entries_.keys())
 
     def guess_size(self) -> int:

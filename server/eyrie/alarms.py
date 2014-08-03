@@ -4,7 +4,7 @@
 from eyrie.state import EyrieStateMachine
 
 from mcp.cronish import Cronish
-from mcp.filesystem import FileSystem, File, Directory
+from mcp.filesystem import FileSystem, File, Directory, StaticFile
 
 
 def _alarm_name(name: str, day: str) -> str:
@@ -48,9 +48,8 @@ def bind_alarms_to_state(cronish: Cronish, state: EyrieStateMachine):
 def bind_alarms_to_filesystem(cronish: Cronish, filesystem: FileSystem):
     alarms_dir = filesystem.root().add_subdir("alarms", Directory())
 
-    def alarms_help() -> str:
-        return "Values are: 'off' or '[H]H:MM[+]'.\nExample: '7:30', '16:42', or '2:00+' for 2AM tomorrow.\n"
-    alarms_dir.add_file("help", File(alarms_help, None))
+    help = "Values are: 'off' or '[H]H:MM[+]'.\nExample: '7:30', '16:42', or '2:00+' for 2AM tomorrow.\n"
+    alarms_dir.add_file("help", StaticFile(help))
 
     for name in ['wakeup', 'sleep']:
         alarm_dir = alarms_dir.add_subdir(name, Directory())

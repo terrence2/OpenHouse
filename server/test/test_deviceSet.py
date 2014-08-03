@@ -51,26 +51,26 @@ class TestDeviceSet(TestCase):
 
         self.assertEqual(f00.name, "foo-room0-name0")
 
-        devices.select("*").set('propname', 'value0')
+        devices.select("*").set(propname='value0')
         for dev in devices:
             self.assertEqual(dev.propname, "value0")
 
-        devices.select("@room0").set('propname', 'value1')
+        devices.select("@room0").set(propname='value1')
         for dev in (f00, f01, f02, r00, r01, r02, z00, z01, z02):
             self.assertEqual(dev.propname, "value1")
 
-        devices.select("$foo").set('propname', 'value2')
+        devices.select("$foo").set(propname='value2')
         for dev in (f00, f01, f02, f10, f11, f12, f20, f21, f22):
             self.assertEqual(dev.propname, "value2")
 
-        devices.select("#name0").set('propname', 'value3')
+        devices.select("#name0").set(propname='value3')
         for dev in (f00, r00, z00, f10, r10, z10, f20, r20, z20):
             self.assertEqual(dev.propname, "value3")
 
         d = devices.select("@room1").select("$bar").select("#name2")
         self.assertEqual(len(d), 1)
         self.assertTrue(d)
-        d.set('propname', 'value4')
+        d.set(propname='value4')
         self.assertEqual(r12.propname, 'value4')
 
         d = devices.select("@room99999")
@@ -78,8 +78,8 @@ class TestDeviceSet(TestCase):
         self.assertFalse(d)
 
         d = devices.select("@room0")
-        d.set('propname', 'before')
-        (d - d.select("$baz")).set('propname', 'value5')
+        d.set(propname='before')
+        (d - d.select("$baz")).set(propname='value5')
         for dev in (z00, z01, z02):
             self.assertEqual(dev.propname, 'before')
         for dev in (f00, f01, f02, r00, r01, r02):

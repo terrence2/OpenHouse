@@ -35,7 +35,7 @@ class Eyrie:
         self.state = EyrieStateMachine('manual:unset')
 
         # The view.
-        self.actuators = build_actuators(self.network)
+        self.actuators = build_actuators(self.network, llfuse.lock)
 
         # Data-binding for monitoring and direct control.
         bind_abode_to_database(self.abode, db_path)

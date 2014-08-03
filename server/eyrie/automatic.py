@@ -24,10 +24,10 @@ def _handle_wakeup(actuators: DeviceSet, animation: AnimationController, state: 
     def on_enter_wakeup(_: StateEvent):
         # Move to the expected sleep state, but also turn on the bedside lamp.
         lights = actuators.select('$hue')
-        lights.set('bhs', moonlight(0)).set('on', True)
+        lights.set(on=True, color=moonlight(0))
 
         def tick(v: BHS):
-            lights.set('bhs', v)
+            lights.set(color=v)
 
         def finish():
             state.change_state('auto:daytime')
@@ -46,7 +46,7 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
         lights = (actuators.select('$hue') - actuators.select('@bedroom').select('#bed'))
 
         def tick(v: BHS):
-            lights.set('bhs', v)
+            lights.set(color=v)
 
         def finish():
             # This state change should shut off the bedside lamp.
@@ -61,7 +61,7 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
 def _handle_daytime(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine):
     def on_enter_daytime(_: StateEvent):
         # TODO: snoop the humans_present and set each room accordingly.
-        actuators.select('$hue').set('bhs', daylight(1)).set('on', True)
+        actuators.select('$hue').set(on=True, color=daylight(1))
     state.listen_enter_state('auto:daytime', on_enter_daytime)
 
     # TODO: Detect ambient light from sunrise/sunset and adjust accordingly.
@@ -75,7 +75,7 @@ def _handle_daytime(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine
             return
         new_lighting = daylight(int(event.property_value))
         log.debug("motion updating lighting state in {} to {}".format(event.target.name, new_lighting))
-        actuators.select('$hue').select('@' + event.target.name).set('bhs', new_lighting).set('on', True)
+        actuators.select('$hue').select('@' + event.target.name).set(on=True, color=new_lighting)
 
     rooms = ['bedroom', 'livingroom', 'office', 'kitchen', 'utility', 'hall']
     for room_name in rooms:
@@ -89,8 +89,8 @@ def _handle_sleep(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine):
         off_lights = br.select('#bed') + br.select('#ceiling') + br.select('#tree0') + br.select('#tree1')
         on_lights = all_lights - off_lights
 
-        on_lights.set('on', True).set('bhs', moonlight(0))
-        off_lights.set('on', False)
+        on_lights.set(on=True, color=moonlight(0))
+        off_lights.set(on=False)
     state.listen_enter_state('auto:sleep', on_enter_sleep)
 
     # TODO: Give us a night light in rooms other than the bedroom.
@@ -99,7 +99,7 @@ def _handle_sleep(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine):
             return
         assert event.target.name != 'bedroom'
         new_lighting = moonlight(int(event.property_value))
-        actuators.select('$hue').select('@' + event.target.name).set('bhs', new_lighting).set('on', True)
+        actuators.select('$hue').select('@' + event.target.name).set(on=True, color=new_lighting)
 
     rooms = ['livingroom', 'office', 'kitchen', 'utility', 'hall']
     for room_name in rooms:

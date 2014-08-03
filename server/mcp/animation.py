@@ -3,8 +3,12 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from datetime import datetime, timedelta
 from threading import Thread
+
+import logging
 import os
 import select
+
+log = logging.getLogger('animation')
 
 
 class Animation:
