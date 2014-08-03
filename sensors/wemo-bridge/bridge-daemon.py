@@ -5,6 +5,7 @@
 import os
 import sys
 import subprocess
+import time
 
 if __name__ != '__main__':
     print("This module must be run directly.\n")
@@ -19,6 +20,8 @@ while not want_exit:
         return_code = subprocess.call([bridge_executable] + sys.argv[1:])
         print("Subprocess exited with code: {}".format(return_code))
         want_exit = (return_code == 0)
+        # Give the devices time to quiesce.
+        time.sleep(5)
     except KeyboardInterrupt:
         want_exit = True
 
