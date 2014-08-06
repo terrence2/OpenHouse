@@ -55,6 +55,11 @@ class Watchdog(Thread):
         os.write(self.write_fd_, b'0')
 
     def run(self):
+        with self.lock_:
+            devnames = sorted(self.network_.devices_.keys())
+            for name in devnames:
+                self.network_.devices_[name].last_update = datetime.now()
+
         while not self.wants_exit_:
             readable = select([self.read_fd_], [], [], 10.)
             if self.read_fd_ in readable:
