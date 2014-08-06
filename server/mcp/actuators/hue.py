@@ -46,6 +46,15 @@ class LightState:
             self.colormode = 'hs'
 
 
+class HueLightGroup:
+    def __init__(self, group_id: int, lights: list):
+        self.group_id = group_id
+        self.lights = set(lights)
+
+    def is_same_as(self, lights: list):
+        return set(lights) == self.lights
+
+
 class HueBridge(Thread):
     """
     A Philips Hue bridge which provides access to individual Hue lights.
@@ -64,16 +73,27 @@ class HueBridge(Thread):
         self.address = address
         self.username = username
 
+        # List of known groups.
+        self.groups = []
+        groups = self._make_request('GET', '/groups')
+        log.info("GET /groups: {}".format(groups))
+
         # Mapping between light names and light id's so we don't have to enter them manually.
         self.known_lights = {}  # {name:str => id:str}
 
         # Current light values.
         self.light_values = {}  # {id:str => LightState}
 
+        slash = self._make_request('GET', '/')
+        log.info("GET /: {}".format(slash))
+
         lights = self._make_request('GET', '/lights')
         for id_str, light_def in lights.items():
             self.known_lights[light_def['name']] = id_str
             self.light_values[id_str] = LightState(id_str, light_def)
+
+        groups = self._make_request('GET', '/groups')
+        log.info("GET /groups: {}".format(groups))
 
     def get_state(self, id_str: str) -> LightState:
         return self.light_values[id_str]
@@ -81,18 +101,29 @@ class HueBridge(Thread):
     def identify_light(self, name: str) -> str:
         return self.known_lights[name]
 
-    def request(self, mode: str, resource: str, data: {}=None):
-        self.queue_.put((mode, resource, data))
-
-    def parse_url_to_light_and_property(self, url: str) -> str:
+    def parse_url_to_lights_and_property(self, url: str) -> ([LightState], str):
         assert url[0] == '/'
         parts = url[1:].split('/')
-        assert parts[0] == 'lights'
-        id_str = parts[1]
-        assert parts[2] == 'state'
+        if parts[0] == 'lights':
+            id_str = parts[1]
+            assert parts[2] == 'state'
+            prop_name = parts[3]
+            state = self.get_state(id_str)
+            return [state], prop_name
+        assert parts[0] == 'groups'
+        group_id = int(parts[1])
+        group = self.groups[group_id]
+        states = [self.get_state(light.hue_light_id) for light in group.lights]
+        assert parts[2] == 'action'
         prop_name = parts[3]
-        state = self.get_state(id_str)
-        return state, prop_name
+        return states, prop_name
+
+    def handle_success_result(self, result: object):
+        pprint(result)
+        for light_url, property_value in result.items():
+            lights, property_name = self.parse_url_to_lights_and_property(light_url)
+            for light in lights:
+                light.update_from_response(property_name, property_value)
 
     def run(self):
         while True:
@@ -103,9 +134,10 @@ class HueBridge(Thread):
             # Update light state from response, rather than re-querying.
             for result in results:
                 if 'success' in result:
-                    for light_url, property_value in result['success'].items():
-                        light_state, property_name = self.parse_url_to_light_and_property(light_url)
-                        light_state.update_from_response(property_name, property_value)
+                    self.handle_success_result(result['success'])
+
+    def request(self, mode: str, resource: str, data: {}=None):
+        self.queue_.put((mode, resource, data))
 
     def _make_request(self, mode: str, resource: str, data: {}=None) -> {}:
         if data is not None:
@@ -119,37 +151,36 @@ class HueBridge(Thread):
         log.debug('{} {} :: {} -> {}'.format(mode, resource, data, result))
         return result
 
+    def set_properties_on_all_devices(self, devices, kwargs):
+        # Attempt to find a group we can set in one go.
+        for group in self.groups:
+            if group.is_same_as(devices):
+                url = "/groups/{}/action".format(group.group_id)
+                request_props = self.kwargs_to_json(kwargs)
+                self.request("PUT", url, request_props)
+                return
+        # Otherwise, loop and make a bunch of requests.
+        log.warning("falling back to individual set for: {} => {}".format(kwargs, devices))
+        for device in devices:
+            device.set(**kwargs)
 
-class HueLight(Actuator):
-    """
-    An individually controllable Philips Hue light.
-    """
-    def __init__(self, name: str, bridge: HueBridge):
-        super().__init__(name)
-        self.hue_bridge = bridge
-        self.hue_light_id = bridge.identify_light(name)
-
-        state = self.hue_bridge.get_state(self.hue_light_id)
-        log.info('HueLight(name="{}", id="{}", model="{}", swversion="{}"'.format(name, self.hue_light_id, state.modelid, state.swversion))
-
-    def set(self, **args):
-        # Parse arguments into a set of request properties for the hue bridge.
-        request_properties = {}
-        for prop_name, prop_value in args.items():
-            if prop_name == 'on' and self.on != prop_value:
-                request_properties['on'] = bool(prop_value)
-            elif prop_name == 'color' and self.color != prop_value:
-                request_properties.update(self.color_to_request(prop_value))
-
-        if not request_properties:
-            log.warning("skipping HueLight.set because of empty request for args {}".format(args))
-            return
-
-        url = "/lights/{}/state".format(self.hue_light_id)
-        self.hue_bridge.request("PUT", url, request_properties)
+    def add_group(self, group: HueLightGroup) -> HueLightGroup:
+        self.groups.append(group)
 
     @classmethod
-    def color_to_request(cls, color: Color):
+    def kwargs_to_json(cls, args: dict) -> dict:
+        """Parse arguments into a set of request properties for the hue bridge."""
+        blob = {}
+        if 'on' in args:
+            blob['on'] = bool(args['on'])
+        if 'color' in args:
+            blob.update(HueBridge.color_to_json(args['color']))
+        if 'transition_time' in args:
+            blob['transitiontime'] = int(args['transition_time'] * 10)
+        return blob
+
+    @classmethod
+    def color_to_json(cls, color: Color) -> dict:
         """Add the properties from Color to a json object suitable for passing to the hue API."""
         if isinstance(color, BHS):
             return {'bri': color.b, 'hue': color.h, 'sat': color.s}
@@ -159,21 +190,52 @@ class HueLight(Actuator):
         bhs = BHS.from_rgb(color)
         return {'bri': bhs.b, 'hue': bhs.h, 'sat': bhs.s}
 
+
+class HueLight(Actuator):
+    """
+    An individually controllable Philips Hue light.
+    """
+    def __init__(self, name: str, bridge: HueBridge):
+        super().__init__(name)
+        self.bridge = bridge
+        self.hue_light_id = bridge.identify_light(name)
+
+        state = self.bridge.get_state(self.hue_light_id)
+        log.info('HueLight(name="{}", id="{}", model="{}", swversion="{}"'.format(name, self.hue_light_id, state.modelid, state.swversion))
+
+    def set(self, **args):
+        data = self.kwargs_to_json(args)
+        if not data:
+            log.warning("skipping HueLight.set because of empty request for args {}".format(args))
+            return
+
+        url = "/lights/{}/state".format(self.hue_light_id)
+        self.bridge.request("PUT", url, data)
+
+    def kwargs_to_json(self, args: dict) -> dict:
+        """Parse arguments into a set of request properties for the hue bridge."""
+        blob = {}
+        if 'on' in args and self.on != args['on']:
+            blob['on'] = bool(args['on'])
+        if 'color' in args and self.color != args['color']:
+            blob.update(HueBridge.color_to_json(args['color']))
+        return blob
+
     @property
     def modelid(self) -> str:
-        return self.hue_bridge.get_state(self.hue_light_id).modelid
+        return self.bridge.get_state(self.hue_light_id).modelid
 
     @property
     def swversion(self) -> str:
-        return self.hue_bridge.get_state(self.hue_light_id).swversion
+        return self.bridge.get_state(self.hue_light_id).swversion
 
     @property
     def on(self) -> bool:
-        return self.hue_bridge.get_state(self.hue_light_id).on
+        return self.bridge.get_state(self.hue_light_id).on
 
     @property
     def color(self) -> Color:
-        state = self.hue_bridge.get_state(self.hue_light_id)
+        state = self.bridge.get_state(self.hue_light_id)
         if state.colormode == 'hs':
             return BHS(state.bri, state.hue, state.sat)
         assert state.colormode == 'ct'

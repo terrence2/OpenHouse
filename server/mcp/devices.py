@@ -78,14 +78,7 @@ class DeviceSet:
                 for device in devices:
                     device.set(**kwargs)
             else:
-                bridge.set_group(devices, kwargs)
-
-    """
-    def set(self, prop_name: str, prop_value) -> {Device}:
-        for device in self.devices_:
-            setattr(device, prop_name, prop_value)
-        return self
-    """
+                bridge.set_properties_on_all_devices(devices, kwargs)
 
     def get(self, prop_name: str):
         assert len(self.devices_) == 1

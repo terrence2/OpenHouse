@@ -7,7 +7,7 @@ import logging
 from threading import Lock
 
 from mcp.actuators import Actuator
-from mcp.actuators.hue import HueBridge, HueLight
+from mcp.actuators.hue import HueBridge, HueLight, HueLightGroup
 from mcp.color import BHS, RGB, Mired
 from mcp.devices import DeviceSet
 from mcp.filesystem import FileSystem, File, Directory, StaticFile
@@ -60,6 +60,8 @@ def build_actuators(network: NetworkBus, gil: Lock) -> DeviceSet:
     actuators.add(HueLight('hue-hall-ceiling0', hue_bridge))
     actuators.add(HueLight('hue-hall-ceiling1', hue_bridge))
     hue_bridge.start()
+
+    hue_bridge.add_group(HueLightGroup(0, actuators.select('$hue')))
 
     # WeMo Switches
     # FIXME: install this somewhere permanent.

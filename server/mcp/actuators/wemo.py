@@ -33,7 +33,7 @@ class WeMoActuatorBridge:
         log.debug("state of {} is {}".format(name, data['state']))
         return bool(data['state'])
 
-    def set_group(self, devices: [Actuator], properties: {}):
+    def set_properties_on_all_devices(self, devices: [Actuator], properties: {}):
         # FIXME: find a way to send the full set of sets to the bridge in one message.
         for device in devices:
             for prop_name, prop_value in properties.items():
