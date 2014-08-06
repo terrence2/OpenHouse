@@ -118,8 +118,7 @@ class HueBridge(Thread):
         prop_name = parts[3]
         return states, prop_name
 
-    def handle_success_result(self, result: object):
-        pprint(result)
+    def handle_success_result(self, result: {}):
         for light_url, property_value in result.items():
             lights, property_name = self.parse_url_to_lights_and_property(light_url)
             for light in lights:
