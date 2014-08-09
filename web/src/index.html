@@ -11,6 +11,7 @@
     <div class="row">
         <div class="large-12 columns callout panel">
             <h1>Master Control Program</h1>
+            <div class="large-12 columns callout panel" id="error-display" style="display:none">An error occurred.</div>
             <form>
                 <input type="radio" id="functionSelectState" name="functionSelectGroup" value="state" data-bind="checked: functionSelect">
                     <label for="functionSelectState">UserControl</label>
@@ -61,7 +62,7 @@
                         <a href="#" class="small round alert button" onclick="UpdateActuators('on', false)">Off</a>
                     </div>
                     <div data-bind="visible: actuatorPropertyName() == 'color'">
-                        <input id="actuatorColorSelect" type="color" onchange="UpdateActuators('rgb', document.getElementById('actuatorColorSelect').value)">
+                        <input id="actuatorColorSelect" type="color" onchange="UpdateActuators('color', document.getElementById('actuatorColorSelect').value)">
                     </div>
                 </div>
             </div>

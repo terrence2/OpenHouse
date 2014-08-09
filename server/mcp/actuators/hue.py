@@ -127,7 +127,6 @@ class HueBridge(Thread):
     def run(self):
         while True:
             mode, resource, data = self.queue_.get()
-            log.warning("Got request: {}, {}".format(mode, resource))
             results = self._make_request(mode, resource, data)
 
             # Update light state from response, rather than re-querying.

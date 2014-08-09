@@ -40,10 +40,8 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
     # TODO: This is kinda lame. I think we want to animate to full brightness for the full house,
     # TODO: then have the full house enter twighlight as one.
     def on_enter_bedtime(_: StateEvent):
-        # The expected daytime state is less certain than the nighttime state, so just
-        # fade from the initial state. In particular, leave the bedside lamp alone in case
-        # we happen to be reading.
-        lights = (actuators.select('$hue') - actuators.select('@bedroom').select('#bed'))
+        lights = actuators.select('$hue')
+        lights.set(on=True, color=daylight(1))
 
         def tick(v: BHS):
             lights.set(color=v)
@@ -52,9 +50,7 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
             # This state change should shut off the bedside lamp.
             state.change_state('auto:sleep')
 
-        # Note: we use the dresser lamp as a representative here. Really we should average or something.
-        animation.animate(LinearAnimation(lights.select('#dresser').get('bhs'), moonlight(0), SleepFadeTime,
-                                          tick, finish))
+        animation.animate(LinearAnimation(daylight(1), moonlight(0), SleepFadeTime, tick, finish))
     state.listen_enter_state('auto:bedtime', on_enter_bedtime)
 
 

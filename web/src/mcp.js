@@ -1,9 +1,15 @@
 function jsonp(path, data, callback) {
+    var target = 'http://' + window.location.hostname + ':5000' + path;
     $.ajax({
-        url: 'http://127.0.0.1:5000' + path,
+        url: target,
         data: {data: JSON.stringify(data)},
         dataType: 'jsonp',
-        success: callback
+        success: callback,
+        error: function(xhr, textStatus, errorString) {
+            $("#error-display").css('display', 'block')
+                               .css('backgroundColor', '#cf0061')
+                               .html('A problem has occurred while fetching: ' + target);
+        }
     });
 }
 

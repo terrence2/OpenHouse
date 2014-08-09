@@ -10,13 +10,13 @@ from mcp.state import StateEvent
 
 def bind_preset_states_to_real_world(state: EyrieStateMachine, actuators: DeviceSet):
     def listen_manual_on(_: StateEvent):
-        actuators.select('$hue').set(on=True, color=daylight(1))
+        actuators.select('$hue').set(on=True, color=daylight(1), transition_time=5)
 
     def listen_manual_low(_: StateEvent):
         actuators.select('$hue').set(on=True, color=daylight(0))
 
     def listen_manual_off(_: StateEvent):
-        actuators.select('$hue').set(on=False)
+        actuators.select('$hue').set(on=False, transition_time=5)
 
     def listen_manual_sleep(_: StateEvent):
         all_lights = actuators.select('$hue')

@@ -47,12 +47,14 @@ class WeMoSwitch(Actuator):
         self.address = self.bridge.address
         self.remote = network.Actuator(self)
 
+    def set(self, **args):
+        for arg, value in args.items():
+            if arg == 'on':
+                self.remote.send_message({'target': self.name, 'type': 'set_state', 'state': bool(value)})
+            else:
+                log.warning("skipping WeMo.set for unknown property {}".format(arg))
+
     @property
     def on(self) -> bool:
         return self.bridge.get_state(self.name)
-
-    @on.setter
-    def on(self, state: bool):
-        self.remote.send_message({'target': self.name, 'type': 'set_state', 'state': state})
-
 
