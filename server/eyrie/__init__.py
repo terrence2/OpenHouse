@@ -23,7 +23,7 @@ import llfuse
 class Eyrie:
     def __init__(self, db_path: str):
         # Platform services.
-        self.animator = AnimationController(0.5, llfuse.lock)
+        self.animator = AnimationController(2, llfuse.lock)
         self.cronish = Cronish(db_path, llfuse.lock)
         self.environment = Environment()
         self.filesystem = FileSystem('/things')

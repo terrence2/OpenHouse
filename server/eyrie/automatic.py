@@ -27,7 +27,7 @@ def _handle_wakeup(actuators: DeviceSet, animation: AnimationController, state: 
         lights.set(on=True, color=moonlight(0))
 
         def tick(v: BHS):
-            lights.set(color=v)
+            lights.set(color=v, transition_time=2.0)
 
         def finish():
             state.change_state('auto:daytime')
@@ -44,7 +44,7 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
         lights.set(on=True, color=daylight(1))
 
         def tick(v: BHS):
-            lights.set(color=v)
+            lights.set(color=v, transition_time=2.0)
 
         def finish():
             # This state change should shut off the bedside lamp.
