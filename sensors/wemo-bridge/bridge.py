@@ -150,6 +150,7 @@ class Network(Thread):
                     net_device = self.devices_[target]
                 except KeyError:
                     log.error('unknown target device: {}'.format(target))
+                    self.rep_socket.send_json({'result': 'error: unknown device {}'.format(target)})
                     continue
 
                 if data['type'] == 'get_state':
@@ -162,6 +163,7 @@ class Network(Thread):
                     self.rep_socket.send_json({'result': result})
                 else:
                     log.error("unhandled message type: {} for {}".format(data['type'], target))
+                    self.rep_socket.send_json({'result': 'error: unknown type'})
 
 
 if __name__ == '__main__':
