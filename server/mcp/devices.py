@@ -72,7 +72,6 @@ class DeviceSet:
             bridge = device.bridge if hasattr(device, 'bridge') else None
             sifter[bridge].append(device)
         # Call the joint property setter if possible, otherwise do sets on individual devices.
-        pprint(sifter)
         for bridge, devices in sifter.items():
             if bridge is None:
                 for device in devices:

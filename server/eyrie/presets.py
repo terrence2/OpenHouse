@@ -10,26 +10,26 @@ from mcp.state import StateEvent
 
 def bind_preset_states_to_real_world(state: EyrieStateMachine, actuators: DeviceSet):
     def listen_manual_on(_: StateEvent):
-        actuators.select('$hue').set(on=True, color=daylight(1), transition_time=5)
+        actuators.select('$hue').set(on=True, color=daylight(1), transition_time=2)
 
     def listen_manual_low(_: StateEvent):
-        actuators.select('$hue').set(on=True, color=daylight(0))
+        actuators.select('$hue').set(on=True, color=daylight(0), transition_time=2)
 
     def listen_manual_off(_: StateEvent):
-        actuators.select('$hue').set(on=False, transition_time=5)
+        actuators.select('$hue').set(on=False, transition_time=2)
 
     def listen_manual_sleep(_: StateEvent):
         all_lights = actuators.select('$hue')
         br = all_lights.select('@bedroom')
         off_lights = br.select('#bed') + br.select('#ceiling') + br.select('#tree0') + br.select('#tree1')
 
-        off_lights               .set(on=False, color=moonlight(0))
-        (all_lights - off_lights).set(on=True, color=moonlight(0))
+        off_lights               .set(on=False, color=moonlight(0), transition_time=2)
+        (all_lights - off_lights).set(on=True, color=moonlight(0), transition_time=2)
 
     def listen_manual_read(_: StateEvent):
         bed = actuators.select('$hue').select('#bed')
-        bed              .set(on=True, color=daylight(1))
-        (actuators - bed).set(on=True, color=daylight(0))
+        bed              .set(on=True, color=daylight(1), transition_time=0.2)
+        (actuators - bed).set(on=True, color=daylight(0), transition_time=2)
 
     state.listen_enter_state('manual:on', listen_manual_on)
     state.listen_enter_state('manual:low', listen_manual_low)

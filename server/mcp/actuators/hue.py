@@ -38,7 +38,9 @@ class LightState:
         log.debug('updating hue light state from response: @id{}: {} <- {}'.format(
             self.light_id, property_name, property_value))
 
-        assert property_name in self.__dict__
+        if property_name not in self.__dict__:
+            return
+
         setattr(self, property_name, property_value)
         if property_name == 'ct':
             self.colormode = 'ct'
