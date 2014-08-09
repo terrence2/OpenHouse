@@ -90,7 +90,7 @@ def _make_file(entity: Actuator, property_name: str, parser: callable):
         except Exception:
             log.exception("failed to parse property {} for {}; value was {}".format(property_name, entity.name, data))
             return errno.EINVAL
-        args = {property_name: new_value}
+        args = {property_name: new_value, 'transition_time': 0.1}
         entity.set(**args)
 
     return File(_read, _write, fixed_size=4096)

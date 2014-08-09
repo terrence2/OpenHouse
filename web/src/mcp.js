@@ -97,4 +97,21 @@ $(function() {
             }
             $('#userControlSelect').val(current);
         });
+
+    function updateColor(color) { UpdateActuators('color', color.toHexString()); };
+    var lastUpdate = 0;
+    function maybeUpdateColor(color) {
+        var now = Date.now();
+        if (now - lastUpdate < 200)
+            return;
+        lastUpdate = now;
+        updateColor(color);
+    }
+    // Apply spectrum to our color input.
+    $("#actuatorColorSelect").spectrum({
+        flat: true,
+        showInput: true,
+        change: updateColor,
+        move: maybeUpdateColor
+    });
 })
