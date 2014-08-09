@@ -8,6 +8,25 @@ from mcp.dimension import Coord, Size
 log = logging.getLogger('abode')
 
 
+class _Property:
+    def __init__(self, initial_value, configurable: bool=True):
+        self.value_ = initial_value
+        self.configurable_ = configurable
+
+    @property
+    def value(self):
+        return self.value_
+
+    @value.setter
+    def value(self, new_value):
+        if not self.configurable_:
+            return
+        self.value_ = new_value
+
+    def is_configurable(self) -> bool:
+        return self.configurable_
+
+
 class Area:
     def __init__(self, parent, name: str, position: Coord, size: Size):
         # Intrinsic properties.
@@ -21,7 +40,14 @@ class Area:
 
         # The set of properties attached to this region and the set of callbacks
         # directed at events on those properties.
-        self.properties_ = {}  #: {str: any}
+        self.properties_ = {
+            'size-x': _Property(self.size.x, False),
+            'size-y': _Property(self.size.y, False),
+            'size-z': _Property(self.size.z, False),
+            'position-x': _Property(self.position.x, False),
+            'position-y': _Property(self.position.y, False),
+            'position-z': _Property(self.position.z, False),
+        }  #: {str: _Property}
         self.listeners_ = {}  #: {str: {str: [callable]}} property -> event -> calls
 
     def subarea_names(self) -> [str]:
@@ -80,13 +106,13 @@ class Area:
         """
         if prop_name not in self.properties_:
             log.info("ADD {}[{}]".format(self.name, prop_name))
-            self.properties_[prop_name] = None
+            self.properties_[prop_name] = _Property(None)
             self.send_event(prop_name, 'propertyAdded', prop_value)
-        if prop_value != self.properties_[prop_name]:
-            log.info("CHANGE {}[{}] = {} -> {}".format(self.name, prop_name, self.properties_[prop_name], prop_value))
+        if prop_value != self.properties_[prop_name].value:
+            log.info("CHANGE {}[{}] = {} -> {}".format(self.name, prop_name, self.properties_[prop_name].value, prop_value))
             self.send_event(prop_name, 'propertyChanged', prop_value)
         log.debug("TOUCH {}[{}] = {}".format(self.name, prop_name, prop_value))
-        self.properties_[prop_name] = prop_value
+        self.properties_[prop_name].value = prop_value
         self.send_event(prop_name, 'propertyTouched', prop_value)
 
     def get(self, prop_name: str, default: object=None):
@@ -97,7 +123,7 @@ class Area:
             if default is not None:
                 return default
             raise KeyError("Property {} not in {}".format(prop_name, self.path()))
-        return self.properties_[prop_name]
+        return self.properties_[prop_name].value
 
     def send_event(self, prop_name: str, event_name: str, prop_value: object=None):
         """
