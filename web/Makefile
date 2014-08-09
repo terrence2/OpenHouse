@@ -1,13 +1,15 @@
-DIST=./dist
+DIST=./deploy
 
 all:
-	mkdir -p dist
-	rsync -avx vendor/foundation/ dist/
-	cp -av vendor/knockout-*.js dist/js/vendor/
-	cp -arv src/* dist/
+	mkdir -p ${DIST}
+	rsync -avx bower_components/foundation/ ${DIST}/
+	cp -av bower_components/knockout.js/knockout.js ${DIST}/js/vendor/
+	cp -av bower_components/spectrum/spectrum.js ${DIST}/js/vendor/
+	cp -av bower_components/spectrum/spectrum.css ${DIST}/css/
+	cp -arv src/* ${DIST}/
 
 watch:
 	while inotifywait -e close -r src; do make all; done
 
 run:
-	(cd dist && python -m SimpleHTTPServer 8000)
+	(cd ${DIST} && python -m SimpleHTTPServer 8000)
