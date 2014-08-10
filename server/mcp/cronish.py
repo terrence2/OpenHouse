@@ -121,15 +121,34 @@ class Cronish(Thread):
             json.dump(obj, fp)
 
     def register_task(self, name: str, callback: callable):
+        """
+        Map a task name to a callback, creating the task if it doesn't exist.
+        """
         if name not in self.tasks_:
             self.tasks_[name] = _Task(name)
         self.tasks_[name].set_callback(callback)
         log.info("registered task '{}'".format(name))
 
     def update_task_time(self, name: str, days_of_week: {int}, hours: {int}, minutes: {int}):
+        """
+        Set the time(s) a given task should run.
+        """
         self.tasks_[name].set_time(days_of_week, hours, minutes)
         log.debug("Updated task '{}' to {}".format(name, str(self.tasks_[name])))
         self._save_tasks(self.database_filename, self.tasks_)
+
+    def unschedule_task(self, name: str):
+        """
+        Set the given task to not run anymore.
+        """
+        self.update_task_time(name, set(), set(), set())
+
+    def schedule_at_offset(self, name: str, offset: timedelta):
+        """
+        Set the given task to run at times that match now + timedelta.
+        """
+        when = datetime.now() + offset
+        self.update_task_time(name, {when.weekday()}, {when.hour}, {when.minute})
 
     def get_task(self, name: str) -> _Task:
         return self.tasks_.get(name, None)

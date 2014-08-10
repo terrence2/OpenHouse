@@ -12,42 +12,35 @@ from mcp.cronish import Cronish
 log = logging.getLogger('presence')
 
 
-def _get_cronish_time_from_now(offset: int) -> (set, set, set):
-    """
-    Compute and return a cron-compatible timeset representing now plus |offset| seconds.
-    """
-    now = datetime.now()
-    when = now + timedelta(seconds=offset)
-    result = {when.weekday()}, {when.hour}, {when.minute}
-    log.debug("getting cronish offset: {} + {} => {} : {}".format(now, offset, when, result))
-    return result
-
-
 WatchedProperty = namedtuple('WatchedProperty', ('area', 'sensor', 'lifetime'))
 
 
-def _bind_area_to_presence(cronish: Cronish, area: Area, properties: [WatchedProperty], timeout: int):
+def _bind_area_to_presence(cronish: Cronish, area: Area, properties: [WatchedProperty]):
     cron_task_name = "{}_presence_update_timeout".format(area.name)
 
     def _timeout_presence():
         # Sanity check -- if any of the properties here went true, we should have reset the timeout.
         # Races are possible, which is why we only log the error.
         if any((watched_.area.get(watched_.sensor) for watched_ in properties)):
-            log.error("setting humans_present to false with a True human sensor")
+            log.error("setting humans_present to False while a human sensor is |True|")
 
         # Clear the presence data and ensure we won't run again until
         # we see more evidence of humans.
         area.set('humans_present', False)
-        cronish.update_task_time(cron_task_name, set(), set(), set())
+        cronish.unschedule_task(cron_task_name)
 
     def _check_presence_conditions(_: AbodeEvent):
-        if any((watched_.area.get(watched_.sensor) for watched_ in properties)):
+        timeouts = [watched_.lifetime for watched_ in properties if watched_.area.get(watched_.sensor)]
+        if timeouts:
             area.set('last_detected_humans', datetime.now())
             area.set('humans_present', True)
-            cronish.update_task_time(cron_task_name, *_get_cronish_time_from_now(timeout))
+            # Note: this will /shrink/ the interval to lights-off if we trigger one of the short interval detectors
+            #       after the long-interval detector has subsided. I think this is the correct behavior: for example,
+            #       when leaving a room the lights will shut off sooner.
+            cronish.schedule_at_offset(cron_task_name, timedelta(seconds=max(timeouts)))
 
     cronish.register_task(cron_task_name, _timeout_presence)
-    cronish.update_task_time(cron_task_name, set(), set(), set())
+    cronish.unschedule_task(cron_task_name)  # Remove any previous saved value.
     for watched in properties:
         watched.area.listen(watched.sensor, 'propertyTouched', _check_presence_conditions)
 
@@ -95,5 +88,5 @@ def bind_abode_to_presence(abode: Abode, cronish: Cronish):
         ]
     }
     for area, properties in presence_sensors.items():
-        _bind_area_to_presence(cronish, area, properties, 5 * 60)
+        _bind_area_to_presence(cronish, area, properties)
 
