@@ -37,7 +37,7 @@ def _bind_area_to_presence(cronish: Cronish, area: Area, properties: [WatchedPro
             # Note: this will /shrink/ the interval to lights-off if we trigger one of the short interval detectors
             #       after the long-interval detector has subsided. I think this is the correct behavior: for example,
             #       when leaving a room the lights will shut off sooner.
-            cronish.schedule_at_offset(cron_task_name, timedelta(seconds=max(timeouts)))
+            cronish.schedule_at_offset(cron_task_name, timedelta(seconds=max(timeouts) * 60))
 
     cronish.register_task(cron_task_name, _timeout_presence)
     cronish.unschedule_task(cron_task_name)  # Remove any previous saved value.
