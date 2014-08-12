@@ -20,6 +20,7 @@ SleepFadeTime = 30 * 60  # 30 min
 
 def _handle_wakeup(actuators: DeviceSet, animation: AnimationController, state: EyrieStateMachine):
     # TODO: make these visually appealing. Just a fade in/out right now for simplicity.
+    # TODO: keep the lights on full-bore until we detect motion /outside/ the bedroom.
     # Hook wakeup/bedtime to turn the lights on slowly.
     def on_enter_wakeup(_: StateEvent):
         # Move to the expected sleep state, but also turn on the bedside lamp.
@@ -56,8 +57,9 @@ def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state:
 
 def _handle_daytime(abode: Abode, actuators: DeviceSet, state: EyrieStateMachine):
     def on_enter_daytime(_: StateEvent):
-        # TODO: snoop the humans_present and set each room accordingly.
-        actuators.select('$hue').set(on=True, color=daylight(1))
+        for name in abode.subarea_names():
+            humans_present = abode.subarea(name).get('humans_present', False)
+            actuators.select('$hue').select('@' + name).set(on=True, color=daylight(int(humans_present)))
     state.listen_enter_state('auto:daytime', on_enter_daytime)
 
     # TODO: Detect ambient light from sunrise/sunset and adjust accordingly.
