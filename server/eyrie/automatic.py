@@ -40,7 +40,11 @@ def _handle_wakeup(actuators: DeviceSet, animation: AnimationController, state: 
 def _handle_bedtime(actuators: DeviceSet, animation: AnimationController, state: EyrieStateMachine):
     # TODO: This is kinda lame. I think we want to animate to full brightness for the full house,
     # TODO: then have the full house enter twighlight as one.
-    def on_enter_bedtime(_: StateEvent):
+    def on_enter_bedtime(evt: StateEvent):
+        # Check if we are already in the sleep state and skip this if we are.
+        if evt.prior_state == 'auto:sleep':
+            return
+
         lights = actuators.select('$hue')
         lights.set(on=True, color=daylight(1))
 
