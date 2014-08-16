@@ -9,6 +9,7 @@ except ImportError:
 
 import logging
 import os
+import socket
 
 from select import POLLIN
 from threading import Thread
@@ -18,6 +19,24 @@ import zmq
 from zmq.sugar import socket as zmq_socket
 
 log = logging.getLogger('network')
+
+
+def get_own_internal_ip_slow():
+    """
+    Discovering the active internal interface that new connections will get spawned on -- e.g. that local peers can
+    (in typical networks) call back on -- is actually quite hard. We spawn a connection to an external resource and
+    derive the internal network from that. A rather inelegant hack, but it gets the job done.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        return s.getsockname()[0]
+    except socket.error:
+        return None
+    finally:
+        # Don't wait around for the GC.
+        s.close()
+        del s
 
 
 class DeviceType(Enum):
@@ -111,6 +130,9 @@ class Bus(Thread):
         # The poke socket.
         self.read_fd_, self.write_fd_ = os.pipe()
         self.poller.register(self.read_fd_, POLLIN)
+
+        # Derive the internal ip address as part of our interface.
+        self.internal_address = get_own_internal_ip_slow()
 
     def cleanup(self):
         for socket in self.actuators:
