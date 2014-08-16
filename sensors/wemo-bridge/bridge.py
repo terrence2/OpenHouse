@@ -5,18 +5,19 @@
 from __future__ import print_function
 
 import zmq
+import ouimeaux.signals
 
 from ouimeaux.environment import Environment
-from ouimeaux.signals import devicefound, statechange, receiver, subscription
+#from ouimeaux.signals import devicefound, statechange, receiver, subscription
 
 from datetime import datetime
 from select import select
 from threading import Lock, Thread
 
+import argparse
 import json
 import logging
 import os
-import sys
 
 log = logging.getLogger('wemo-bridge')
 
@@ -166,8 +167,34 @@ class Network(Thread):
                     self.rep_socket.send_json({'result': 'error: unknown type'})
 
 
-if __name__ == '__main__':
+def broadcast_and_wait_for_devices(env, net, expected_devices):
+
+    @ouimeaux.signals.receiver(ouimeaux.signals.devicefound)
+    def found(sender, **kwargs):
+        log.info("Found device: {}".format(sender.name))
+        net.add_device(sender)
+
+    env.discover(10)
+
+    log.info("Finished discovery.")
+    log.info("Discovered {} devices:".format(len(net.devices_)))
+    devnames = sorted(net.devices_.keys())
+    for name in devnames:
+        log.info("-- {}".format(name))
+
+    return set(devnames)
+
+
+def main():
     enable_logging('INFO')
+
+    parser = argparse.ArgumentParser(description="Bridge between WeMo's and MCP.")
+    parser.add_argument('devices', metavar='DEV', type=str, nargs='+', help='Devices to monitor.')
+    args = parser.parse_args()
+
+    # Post-process args.
+    expected_devices = set(args.devices)
+    log.info("Waiting for {} devices: {}".format(len(expected_devices), expected_devices))
 
     # Global state.
     gil = Lock()
@@ -175,34 +202,26 @@ if __name__ == '__main__':
     wd = Watchdog(gil, net)
     env = Environment(with_cache=False, bind="0.0.0.0:54321")
 
-    @receiver(devicefound)
-    def found(sender, **kwargs):
-        log.info("Found device: {}".format(sender.name))
-        net.add_device(sender)
-
-    @receiver(subscription)
-    def subscription(sender, **kwargs):
-        log.debug("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
-
     # Kick off threads.
     net.start()
     env.start()
+    wd.start()
 
-    env.discover(10)
-    log.info("Finished discovery.")
-    log.info("Discovered {} devices:".format(len(net.devices_)))
-    devnames = sorted(net.devices_.keys())
-    for name in devnames:
-        log.info("-- {}".format(name))
+    # Wait for subscription results.
+    found_devices = broadcast_and_wait_for_devices(env, net, expected_devices)
 
-    @receiver(statechange)
+
+    @ouimeaux.signals.receiver(ouimeaux.signals.subscription)
+    def subscription(sender, **kwargs):
+        log.debug("Subscription Result: {} => {}: {}".format(sender.name, kwargs['type'], kwargs['value']))
+
+    @ouimeaux.signals.receiver(ouimeaux.signals.statechange)
     def state_update_event(sender, **kwargs):
         log.debug("{} state is {state}".format(
             sender.name, state="on" if kwargs.get('state') else "off"))
         net.broadcast(sender, {'type': 'statechange', 'state': kwargs.get('state')})
 
     try:
-        wd.start()
         env.wait()
     except (KeyboardInterrupt, SystemExit):
         log.debug("Goodbye!")
@@ -211,3 +230,7 @@ if __name__ == '__main__':
     net.exit()
     wd.join(10)
     net.join(10)
+
+
+if __name__ == '__main__':
+    main()

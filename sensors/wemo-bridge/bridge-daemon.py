@@ -21,7 +21,8 @@ while not want_exit:
         print("Subprocess exited with code: {}".format(return_code))
         want_exit = (return_code == 0)
         # Give the devices time to quiesce.
-        time.sleep(5)
+        if not want_exit:
+            time.sleep(5)
     except KeyboardInterrupt:
         want_exit = True
 
