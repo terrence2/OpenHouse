@@ -1,20 +1,42 @@
 #!/usr/bin/env python3
 from collections import namedtuple
-from copy import deepcopy
 from datetime import datetime, timedelta
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from lxml import objectify
 from queue import Queue
-from socketserver import ThreadingUDPServer, BaseRequestHandler
+from socketserver import ThreadingUDPServer, BaseRequestHandler, TCPServer
 from threading import Thread, Lock
 from urllib.parse import urlparse, urljoin, urlunparse
 
 import http.client
 import logging
+import select
 import socket
 import time
 
 from pprint import pprint
 
+
+def enable_logging(level):
+    # File logger captures everything.
+    fh = logging.FileHandler('bridge.log')
+    fh.setLevel(logging.DEBUG)
+
+    # Console output level is configurable.
+    ch = logging.StreamHandler()
+    ch.setLevel(getattr(logging, level))
+
+    # Set an output format.
+    formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(name)s:%(message)s')
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
+
+    # Add handlers to root.
+    root = logging.getLogger('')
+    root.setLevel(logging.DEBUG)
+    root.addHandler(ch)
+    root.addHandler(fh)
+enable_logging('DEBUG')
 
 log = logging.getLogger('wemo')
 gil = Lock()
@@ -122,9 +144,10 @@ class WeMoDeviceService:
         # Data from setup.xml.
         self.service_type = serviceType
         self.service_id = serviceId
-        self.event_suburl = eventSubURL
+        self.event_url = urlparse(urljoin(device.http_location, eventSubURL))
         self.scpd_url = urlparse(urljoin(device.http_location, SCPDURL))
 
+        """
         # Data from scpd xml.
         self.spec_version = (0, 0)
         self.actions = {}
@@ -132,17 +155,14 @@ class WeMoDeviceService:
 
     def periodic_update(self, updater):
         log.info("Fetching {} for {} at {}".format(self.service_id, self.device_.friendly_name, urlunparse(self.scpd_url)))
-        #print("Fetching {} for {} at {}".format(self.service_id, self.device_.friendly_name, urlunparse(self.scpd_url)))
         conn = http.client.HTTPConnection(self.scpd_url.hostname, self.scpd_url.port)
         conn.request("GET", self.scpd_url.path)
         res = conn.getresponse()
         data = res.read()
         xml = objectify.fromstring(data.decode('UTF-8'))
 
-        if self.service_id == 'urn:Belkin:serviceId:basicevent1' and self.device_.friendly_name == 'wemomotion-bedroom-desk':
-            print(data.decode('UTF-8'))
-
         self.spec_version = (int(xml.specVersion.major), int(xml.specVersion.minor))
+
         for node in xml.actionList.action:
             name = str(node.name)
             if name not in self.actions:
@@ -152,6 +172,29 @@ class WeMoDeviceService:
             name = str(node.name)
             if name not in self.state_vars:
                 self.state_vars[name] = WeMoDeviceStateVariable(node)
+        """
+
+    def subscribe(self):
+        log.info("Sending SUBSCRIBE to {}".format(urlunparse(self.event_url)))
+        conn = http.client.HTTPConnection(self.event_url.hostname, self.event_url.port)
+        callback = "<http://{}:{}>".format(get_own_external_ip_slow(), 8989)
+        conn.request("SUBSCRIBE", self.event_url.path, headers={'NT': 'upnp:event', 'CALLBACK': callback})
+        res = conn.getresponse()
+        data = res.read()
+        if res.status != 200:
+            log.error("SUBSCRIBE to {} FAILED: status {}".format(self.device_.friendly_name, res.status))
+            return
+
+        raw_timeout = res.getheader('TIMEOUT')
+        if not raw_timeout.startswith('Second-'):
+            log.error("SUBSCRIBE to {}: unexpected TIMEOUT, does not start with Second-: {}".format(
+                self.device_.friendly_name, raw_timeout))
+            return
+
+        timeout = timedelta(seconds=int(raw_timeout[len('Second-'):]))
+        sid = res.getheader('SID')
+
+        print("subscription result:\n\ttimeout: {}\n\tsid: {}".format(timeout, sid))
 
 
 class WeMoDeviceState:
@@ -239,7 +282,13 @@ class WeMoDeviceState:
                 self.services[key] = WeMoDeviceService(self,
                                                        str(node.serviceType), str(node.serviceId),
                                                        str(node.eventSubURL), str(node.SCPDURL))
-            updater.background_update(self.services[key])
+            #updater.background_update(self.services[key])
+
+        # FIXME: new thread for this, or is it fine to subscribe immediately.
+        self.get_service('basicevent1').subscribe()
+
+    def get_service(self, name: str) -> WeMoDeviceService:
+        return self.services[name]
 
 
 class WeMoBackgroundUpdate(Thread):
@@ -342,9 +391,154 @@ class WeMoManager(Thread):
         return FakeHandler(request, client_address, server)
 
 
+class WeMoNotifyServer(Thread):
+    """
+    I hesitate to call this an http server as it doesn't even remotely attempt to be one; rather, it is a server that
+    does as much HTTP as necessary to trick a WeMo into talking to it and makes no other concessions to portability.
+
+    Ideally, the builtin http.server would "just work", but the WeMo's NOTIFY client has a few odd quirks that this
+    particular implementation does not quite follow to the WeMo's satisfaction. In particular, it keeps HTTP/1.1
+    connections alive and does not offer any mechanism to close them, causing the WeMo to RST the TCP connection and
+    give up the subscription. Obviously HTTP/1.0 will close the connection, but the WeMo also gives a TCP RST here,
+    presumably because HTTP/1.0.
+
+    Whatevs, a trivial, single-purpose http server really is trivial. In theory doing it this way to should also give
+    lower latency and lower overhead as all the WeMo really wants is a 200 OK -- most servers insist on sending
+    advertising headers and other unnecessary pomp with every response.
+    """
+    def __init__(self, address: (str, int), lock: Lock):
+        super().__init__()
+        self.setDaemon(True)
+
+        self.lock_ = lock
+
+        self.sock_ = socket.socket()
+        self.sock_.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock_.bind(address)
+
+    def run(self):
+        self.sock_.listen(128)
+        while True:
+            peer, peer_addr = self.sock_.accept()
+            # FIXME: in theory all we need is the processing under the gil, so we could do all of the http work out of
+            # the gil and queue up results elsewhere. We still need the queue though, so we might as well use the network
+            # buffers as the queue until we have throughput issues.
+            with self.lock_:
+                result = self.process_one_connection(peer, peer_addr)
+                peer.close()
+
+                if result is not None:
+                    self.handle_result(*result)
+
+    def process_one_connection(self, peer: socket.socket, peer_addr: (str, int)):
+        log.debug("Receiving connection from: {}".format(peer_addr))
+
+        # Decode as UTF-8, as we know it will be.
+        data = peer.recv(1024)
+        data = data.decode('UTF-8')
+        lines = data.split('\r\n')
+
+        # Verify status line is sane.
+        status = lines.pop(0)
+        if status != 'NOTIFY / HTTP/1.1':
+            log.warning("Unrecognized status line ({}) from {}".format(status, peer_addr))
+            return
+
+        # Extract headers.
+        headers = {}
+        line = lines.pop(0).strip()
+        while line:
+            key, _, value = line.partition(':')
+            headers[key.strip()] = value.strip()
+            line = lines.pop(0).strip()
+
+        # Verify headers.
+        for key in ['NT', 'NTS', 'SEQ', 'SID', 'CONTENT-LENGTH', 'CONTENT-TYPE']:
+            if key not in headers:
+                log.warning('Missing {} header from {}'.format(key, peer_addr))
+                return
+        for key, expect in [('NT', 'upnp:event'), ('NTS', 'upnp:propchange'), ('CONTENT-TYPE', 'text/xml; charset="utf-8"')]:
+            if headers[key] != expect:
+                log.warning('Unexpected {} header: got {}, expected {}'.format(key, headers[key], expect))
+                return
+
+        # The wemo sends the headers in a separate write from the body, so we might get the body after the headers.
+        # I don't think these can be split further than headers/body, but I've handled the generic case here to be
+        # relatively safe.
+        content_length = int(headers['CONTENT-LENGTH'])
+        body = '\r\n'.join(lines).encode('UTF-8')
+
+        # Now that we've spent a few cycles processing, eagerly try another read if needed.
+        if len(body) < content_length:
+            log.debug("Got short initial read, optimistic retry with {} of {} bytes".format(len(body), content_length))
+            body += peer.recv(1024)
+
+        # If we still don't have what we need, wait for more: the upnp timeout is 30 seconds.
+        # FIXME: if we hit this often, we'll need to start a thread for this.
+        if len(body) < content_length:
+            log.debug("Got short reads, using select to retry with {} of {} bytes".format(len(body), content_length))
+            ready, _, _ = select.select([peer], [], [], 30)
+            if len(ready) == 0:
+                log.critical("Short read after long wait on {}: FIXME thread this if we see many of these".format(peer_addr))
+                return
+            body += peer.recv(1024)
+
+        # NOTE!!: the WeMo is wrong about the content-length is sends (too short by 1 byte),
+        #         so we use < instead of != in this check.
+        # If we still don't have a full read at this point, wtf?
+        if len(body) < content_length:
+            log.critical("Short read after select.select: have {}, want {}".format(len(body), content_length))
+            return
+
+        # Let the WeMo know we have what we need -- the caller will close the connection.
+        peer.send(b'HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n')
+
+        # Return successfully.
+        sid = headers['SID']
+        seq = headers['SEQ']
+        body = body.decode('UTF-8').strip()
+        return sid, seq, body
+
+    def handle_result(self, sid, seq, body):
+        log.info("Got result: {}, {}, {}".format(sid, seq, body))
+
+
+class MyHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_NOTIFY(self):
+        assert self.command == 'NOTIFY'
+        self.protocol_version = 'HTTP/1.1'
+
+        if self.path != '/':
+            log.warning("Received non-root request path from {}: {}".format(self.client_address, self.path))
+            return
+
+        data = self.rfile.read()
+        print("Request version: {}".format(self.request_version))
+        print("Response version: {}".format(self.protocol_version))
+        pprint(data.decode('UTF-8'))
+
+        out = b'<html><body><h1>200 OK</h1></body></html>'
+        self.send_response(200)
+        self.send_header('Connection', 'close')
+        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Length', str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+
 def main():
+    """
+    http_server_ = HTTPServer(('', 8989), MyHTTPRequestHandler)
+    http_server_thread_ = Thread(target=http_server_.serve_forever)
+    http_server_thread_.daemon = True
+    http_server_thread_.start()
+    """
+    http = WeMoNotifyServer(('', 8989), gil)
+    http.start()
+
     manager = WeMoManager(get_own_external_ip_slow(), gil)
     manager.add_device('wemomotion-bedroom-desk')
+    """
     manager.add_device('wemomotion-bedroom-south')
     manager.add_device('wemomotion-kitchen-sink')
     manager.add_device('wemomotion-kitchen-west')
@@ -354,14 +548,42 @@ def main():
     manager.add_device('wemomotion-office-west')
     manager.add_device('wemomotion-utility-north')
     manager.add_device('wemoswitch-office-fountain')
+    """
     manager.start()
-
-    time.sleep(2)
 
     """
     state = manager.device_by_hostname('wemomotion-bedroom-desk')
-    print("bedroom-desk info is at: {}".format(state.http_location))
+    service = state.get_service('basicevent1')
+    service.subscribe('BinaryState')
+
+    class MyTCPHandler(BaseRequestHandler):
+        def handle(self):
+            self.data = self.request.recv(4096).strip()
+            print("{} wrote:".format(self.client_address[0]))
+            print(self.data)
+            body = "<html><body><h1>200 OK</h1></body></html>"
+            response = (
+                '200 OK',
+                'Connection: close',
+                'Content-Type: text/html',
+                'Content-Length: {}'.format(len(body)),
+                '',
+                body
+            )
+            self.request.send('\r\n'.join(response).encode('UTF-8'))
+            self.request.close()
+
+    server = TCPServer(('', 8989), MyTCPHandler)
+    server.serve_forever()
     """
+
+    http.join()
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
