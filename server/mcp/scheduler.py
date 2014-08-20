@@ -29,7 +29,7 @@ class Scheduler(Thread):
     def set_timeout(self, delay: timedelta, callback: callable):
         self.queue_.put((datetime.now() + delay, callback))
 
-    def quit(self):
+    def exit(self):
         self.queue_.put(None)
 
     def _compute_next_delay(self):

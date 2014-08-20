@@ -16,6 +16,7 @@ from mcp.cronish import Cronish
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem
 from mcp.network import Bus as NetworkBus
+from mcp.scheduler import Scheduler
 
 import llfuse
 
@@ -28,6 +29,7 @@ class Eyrie:
         self.environment = Environment()
         self.filesystem = FileSystem('/things')
         self.network = NetworkBus(llfuse.lock)
+        self.scheduler = Scheduler(llfuse.lock)
 
         # The model.
         self.abode = build_abode()
@@ -56,16 +58,19 @@ class Eyrie:
         self.network.start()
         self.cronish.start()
         self.animator.start()
+        self.scheduler.start()
 
         # Block the main thread. Must be unmounted to stop.
         self.filesystem.run()
 
     def cleanup(self):
         # Stop and wait for the off-main-thread jobs.
+        self.scheduler.exit()
         self.network.exit()
         self.animator.exit()
         self.cronish.exit()
 
+        self.scheduler.join()
         self.network.join()
         self.animator.join()
         self.cronish.join()
