@@ -3,7 +3,7 @@ from collections import namedtuple
 from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from lxml import objectify
-from queue import Queue
+from queue import Queue, Empty
 from socketserver import ThreadingUDPServer, BaseRequestHandler, TCPServer
 from threading import Thread, Lock
 from urllib.parse import urlparse, urljoin, urlunparse
@@ -147,13 +147,21 @@ class WeMoDeviceService:
         self.event_url = urlparse(urljoin(device.http_location, eventSubURL))
         self.scpd_url = urlparse(urljoin(device.http_location, SCPDURL))
 
-        """
         # Data from scpd xml.
+        # Note: we don't really need any of the spec data. It appears to be of questionable accuracy in any case.
+        #self.spec_version = (0, 0)
+        #self.actions = {}
+        #self.state_vars = {}
+
+    def load_spec_data(self):
+        """
+        Yes, this is unused at the moment, but we might as well keep working code in case we want to do more with this
+        at some later time.
+        """
         self.spec_version = (0, 0)
         self.actions = {}
         self.state_vars = {}
 
-    def periodic_update(self, updater):
         log.info("Fetching {} for {} at {}".format(self.service_id, self.device_.friendly_name, urlunparse(self.scpd_url)))
         conn = http.client.HTTPConnection(self.scpd_url.hostname, self.scpd_url.port)
         conn.request("GET", self.scpd_url.path)
@@ -172,9 +180,12 @@ class WeMoDeviceService:
             name = str(node.name)
             if name not in self.state_vars:
                 self.state_vars[name] = WeMoDeviceStateVariable(node)
-        """
 
-    def subscribe(self):
+    def subscribe(self, scheduler):
+        """
+        Note that in UPnP, SUBSCRIBE subscribes to /everything/ all the time, so there is no point not just doing it
+        automatically.
+        """
         log.info("Sending SUBSCRIBE to {}".format(urlunparse(self.event_url)))
         conn = http.client.HTTPConnection(self.event_url.hostname, self.event_url.port)
         callback = "<http://{}:{}>".format(get_own_external_ip_slow(), 8989)
@@ -193,8 +204,7 @@ class WeMoDeviceService:
 
         timeout = timedelta(seconds=int(raw_timeout[len('Second-'):]))
         sid = res.getheader('SID')
-
-        print("subscription result:\n\ttimeout: {}\n\tsid: {}".format(timeout, sid))
+        log.info("subscription result:\n\ttimeout: {}\n\tsid: {}".format(timeout, sid))
 
 
 class WeMoDeviceState:
@@ -308,87 +318,16 @@ class WeMoBackgroundUpdate(Thread):
         """
         self.queue_.put(to_update)
 
+    def exit(self):
+        self.queue_.put(None)
+
     def run(self):
         while True:
-            to_update = self.queue_.get(True)
+            to_update = self.queue_.get(block=True)
             if to_update is None:
                 return
             with self.lock_:
                 to_update.periodic_update(self)
-
-
-class WeMoManager(Thread):
-    """
-    Uses UPnP and service descriptors to keep our list internal list of devices up-to-date.
-    """
-    def __init__(self, own_intranet_ip: str, lock: Lock):
-        super().__init__()
-        self.setDaemon(True)
-
-        # The global interlock that keeps everyone seeing coherenet data.
-        self.lock_ = lock
-
-        # The set of tracked devices.
-        self.devices_ = {}  # {host: WeMoDeviceState}
-
-        # The UPnP update infrastructure.
-        self.upnp_server_ = ThreadingUDPServer((own_intranet_ip, 54322), self.handle_upnp_response)
-        self.upnp_server_thread_ = Thread(target=self.upnp_server_.serve_forever)
-        self.upnp_server_thread_.daemon = True
-
-        # The background update runner.
-        self.updater_thread_ = WeMoBackgroundUpdate(self.lock_)
-
-    def add_device(self, hostname: str):
-        state = WeMoDeviceState(hostname)
-        self.devices_[state.hostip] = state
-
-    def device_by_hostname(self, hostname: str) -> WeMoDeviceState:
-        for state in self.devices_.values():
-            if state.hostname == hostname:
-                return state
-        return None
-
-    def run(self):
-        self.upnp_server_thread_.start()
-        self.updater_thread_.start()
-
-        while True:
-            mcast_addr = ('239.255.255.250', 1900)
-            request = '\r\n'.join(("M-SEARCH * HTTP/1.1",
-                                   "HOST:{}:{}",
-                                   "ST:upnp:rootdevice",
-                                   "MX:2",
-                                   'MAN:"ssdp:discover"',
-                                   "", "")).format(*mcast_addr)
-            log.info("SENDING UPnP M-SEARCH")
-            self.upnp_server_.socket.sendto(request.encode('UTF-8'), mcast_addr)
-            time.sleep(60)
-
-    def handle_upnp_response(self, request, client_address, server):
-        raw_data = request[0]
-        try:
-            headers = parse_http_to_headers(raw_data)
-        except FormatException as ex:
-            log.exception(ex)
-            return
-
-        if headers.get('x-user-agent', None) != 'redsonic':
-            log.debug("Found non-wemo device at: {}".format(client_address))
-            return
-
-        with self.lock_:
-            state = self.devices_.get(client_address[0], None)
-            if state is None:
-                log.warning("found unrecognized wemo at {}".format(client_address))
-                return
-            state.update_upnp_info(headers)
-
-        # Enqueue us for updating.
-        self.updater_thread_.background_update(state)
-
-        # The handler method is called from init, so the handler is totally extraneous.
-        return FakeHandler(request, client_address, server)
 
 
 class WeMoNotifyServer(Thread):
@@ -412,18 +351,31 @@ class WeMoNotifyServer(Thread):
 
         self.lock_ = lock
 
+        self.address_ = address
+
         self.sock_ = socket.socket()
         self.sock_.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock_.bind(address)
+
+        self.want_exit_ = False
+
+    def exit(self):
+        self.want_exit_ = True
+        sock = socket.socket()
+        sock.connect(self.address_)
+        sock.close()
 
     def run(self):
         self.sock_.listen(128)
         while True:
             peer, peer_addr = self.sock_.accept()
             # FIXME: in theory all we need is the processing under the gil, so we could do all of the http work out of
-            # the gil and queue up results elsewhere. We still need the queue though, so we might as well use the network
-            # buffers as the queue until we have throughput issues.
+            # FIXME: the gil and queue up results elsewhere. We still need the queue though, so we might as well use
+            # FIXME: the network buffers as the queue until we have throughput issues.
             with self.lock_:
+                if self.want_exit_:
+                    return
+
                 result = self.process_one_connection(peer, peer_addr)
                 peer.close()
 
@@ -474,7 +426,8 @@ class WeMoNotifyServer(Thread):
             body += peer.recv(1024)
 
         # If we still don't have what we need, wait for more: the upnp timeout is 30 seconds.
-        # FIXME: if we hit this often, we'll need to start a thread for this.
+        # FIXME: this select may timeout if the device falls over and we won't get messages for 30 seconds. If this
+        # FIXME:    happens often in practice, we'll need to start a thread for this.
         if len(body) < content_length:
             log.debug("Got short reads, using select to retry with {} of {} bytes".format(len(body), content_length))
             ready, _, _ = select.select([peer], [], [], 30)
@@ -503,39 +456,98 @@ class WeMoNotifyServer(Thread):
         log.info("Got result: {}, {}, {}".format(sid, seq, body))
 
 
-class MyHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_NOTIFY(self):
-        assert self.command == 'NOTIFY'
-        self.protocol_version = 'HTTP/1.1'
+class WeMoManager(Thread):
+    """
+    Uses UPnP and service descriptors to keep our list internal list of devices up-to-date.
+    """
+    def __init__(self, own_intranet_ip: str, lock: Lock):
+        super().__init__()
 
-        if self.path != '/':
-            log.warning("Received non-root request path from {}: {}".format(self.client_address, self.path))
+        # The global interlock that keeps everyone seeing coherenet data.
+        self.lock_ = lock
+
+        # The set of tracked devices.
+        self.devices_ = {}  # {host: WeMoDeviceState}
+
+        # The i/o queue.
+        self.queue_ = Queue()
+
+        # The UPnP update infrastructure.
+        self.upnp_server_ = ThreadingUDPServer((own_intranet_ip, 54322), self.handle_upnp_response)
+        self.upnp_server_thread_ = Thread(target=self.upnp_server_.serve_forever)
+
+        # The background update runner.
+        self.updater_thread_ = WeMoBackgroundUpdate(self.lock_)
+
+        # The httpish server that receives updates from subscribed devices.
+        self.event_receiver_ = WeMoNotifyServer(('', 8989), gil)
+        self.event_receiver_.start()
+
+    def add_device(self, hostname: str):
+        state = WeMoDeviceState(hostname)
+        self.devices_[state.hostip] = state
+        return state
+
+    def exit(self):
+        self.queue_.put(None)
+
+    def run(self):
+        self.upnp_server_thread_.start()
+        self.updater_thread_.start()
+
+        while True:
+            mcast_addr = ('239.255.255.250', 1900)
+            request = '\r\n'.join(("M-SEARCH * HTTP/1.1",
+                                   "HOST:{}:{}",
+                                   "ST:upnp:rootdevice",
+                                   "MX:2",
+                                   'MAN:"ssdp:discover"',
+                                   "", "")).format(*mcast_addr)
+            log.info("Sending UPnP M-SEARCH broadcast")
+            self.upnp_server_.socket.sendto(request.encode('UTF-8'), mcast_addr)
+            try:
+                message = self.queue_.get(block=True, timeout=60)
+            except Empty:
+                continue
+
+            assert message is None
+            self.upnp_server_.shutdown()
+            self.updater_thread_.exit()
+            self.event_receiver_.exit()
+
+            self.upnp_server_thread_.join()
+            self.updater_thread_.join()
+            self.event_receiver_.join()
             return
 
-        data = self.rfile.read()
-        print("Request version: {}".format(self.request_version))
-        print("Response version: {}".format(self.protocol_version))
-        pprint(data.decode('UTF-8'))
+    def handle_upnp_response(self, request, client_address, server):
+        raw_data = request[0]
+        try:
+            headers = parse_http_to_headers(raw_data)
+        except FormatException as ex:
+            log.exception(ex)
+            return
 
-        out = b'<html><body><h1>200 OK</h1></body></html>'
-        self.send_response(200)
-        self.send_header('Connection', 'close')
-        self.send_header('Content-Type', 'text/html')
-        self.send_header('Content-Length', str(len(out)))
-        self.end_headers()
-        self.wfile.write(out)
+        if headers.get('x-user-agent', None) != 'redsonic':
+            log.debug("Found non-wemo device at: {}".format(client_address))
+            return
+
+        with self.lock_:
+            state = self.devices_.get(client_address[0], None)
+            if state is None:
+                log.warning("found unrecognized wemo at {}".format(client_address))
+                return
+            state.update_upnp_info(headers)
+
+        # Enqueue us for updating.
+        self.updater_thread_.background_update(state)
+
+        # The handler method is called from init, so the handler is totally extraneous.
+        return FakeHandler(request, client_address, server)
+
 
 
 def main():
-    """
-    http_server_ = HTTPServer(('', 8989), MyHTTPRequestHandler)
-    http_server_thread_ = Thread(target=http_server_.serve_forever)
-    http_server_thread_.daemon = True
-    http_server_thread_.start()
-    """
-    http = WeMoNotifyServer(('', 8989), gil)
-    http.start()
-
     manager = WeMoManager(get_own_external_ip_slow(), gil)
     manager.add_device('wemomotion-bedroom-desk')
     """
@@ -551,33 +563,13 @@ def main():
     """
     manager.start()
 
-    """
-    state = manager.device_by_hostname('wemomotion-bedroom-desk')
-    service = state.get_service('basicevent1')
-    service.subscribe('BinaryState')
 
-    class MyTCPHandler(BaseRequestHandler):
-        def handle(self):
-            self.data = self.request.recv(4096).strip()
-            print("{} wrote:".format(self.client_address[0]))
-            print(self.data)
-            body = "<html><body><h1>200 OK</h1></body></html>"
-            response = (
-                '200 OK',
-                'Connection: close',
-                'Content-Type: text/html',
-                'Content-Length: {}'.format(len(body)),
-                '',
-                body
-            )
-            self.request.send('\r\n'.join(response).encode('UTF-8'))
-            self.request.close()
 
-    server = TCPServer(('', 8989), MyTCPHandler)
-    server.serve_forever()
-    """
+    time.sleep(60)
 
-    http.join()
+    print("EXITING!")
+    manager.exit()
+    manager.join()
 
 
 

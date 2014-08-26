@@ -34,7 +34,7 @@ class Scheduler(Thread):
 
     def _compute_next_delay(self):
         if self.heap_:
-            return (self.heap_[0].time - datetime.now()).total_seconds()
+            return max(0, (self.heap_[0].time - datetime.now()).total_seconds())
         return None
 
     def run(self):

@@ -3,6 +3,8 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import logging
 
+import llfuse
+
 from mcp.abode import Abode, Area
 from mcp.cronish import Cronish
 from mcp.environment import Environment
@@ -11,7 +13,8 @@ from mcp.devices import DeviceSet
 from mcp.sensors import SensorEvent
 from mcp.sensors.listener import Listener, ListenerEvent
 from mcp.sensors.nerve import Nerve
-from mcp.sensors.wemo import WeMoSensorBridge, WeMoMotion, WeMoSwitch
+from mcp.sensors.wemo import  WeMoManager, WeMoSensor
+from mcp.scheduler import Scheduler
 
 log = logging.getLogger("sensors")
 
@@ -23,7 +26,7 @@ def _make_property_forwarder(room: Area, property_name: str):
     return handler
 
 
-def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, cronish: Cronish) -> DeviceSet:
+def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, cronish: Cronish, scheduler: Scheduler) -> DeviceSet:
     sensors = DeviceSet()
 
     # Nerves.
@@ -48,7 +51,24 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
         network.add_sensor(nerve.remote)
 
     # WeMo motion.
-    # FIXME: install this somewhere permanent.
+    wemo_manager = WeMoManager(network.internal_address, scheduler, network, llfuse.lock)
+    wemo_motion_sensors = {
+        'office': ['desk', 'west', 'east'],
+        'kitchen': ['sink', 'west'],
+        'utility': ['north'],
+        'livingroom': ['north'],
+        'bedroom': ['desk', 'south']
+    }
+    for room_name, sensor_names in wemo_motion_sensors.items():
+        room = abode.lookup('/eyrie/{}'.format(room_name))
+        for sensor_name in sensor_names:
+            sensor_hostname = 'wemomotion-{}-{}'.format(room_name, sensor_name)
+            wemo_motion = sensors.add(wemo_manager.add_device(WeMoSensor(sensor_hostname, wemo_manager)))
+            property_name = 'wemo_motion_{}'.format(sensor_name)
+            room.set(property_name, False)  # FIXME: see if we can make this reflect the initial state somehow.
+            wemo_motion.listen_motion(_make_property_forwarder(room, property_name))
+
+    """
     wemo_bridge = WeMoSensorBridge('127.0.0.1')
 
     wemo_motion_sensors = {
@@ -73,6 +93,7 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
     wemo_switch.listen_switch_state(_make_property_forwarder(room, 'wemo_switch_fountain'))
 
     network.add_sensor(wemo_bridge.remote)
+    """
 
     # Listeners.
     abode.set('user_control', 'auto:daytime')
@@ -101,4 +122,4 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
     cronish.update_task_time('update_environment_on_abode',
                              days_of_week={0, 1, 2, 3, 4, 5, 6}, hours={0}, minutes=set())
 
-    return sensors
+    return sensors, [wemo_manager]

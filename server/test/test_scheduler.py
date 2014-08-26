@@ -11,7 +11,7 @@ class TestScheduler(TestCase):
     def test_quit(self):
         scheduler = Scheduler(Lock())
         scheduler.start()
-        scheduler.quit()
+        scheduler.exit()
         scheduler.join()
 
     def test_set_timeout(self):
@@ -30,5 +30,20 @@ class TestScheduler(TestCase):
         time.sleep(3.5)
         self.assertEqual(count, 6)
 
-        scheduler.quit()
+        scheduler.exit()
+        scheduler.join()
+
+    def test_negative_update(self):
+        scheduler = Scheduler(Lock())
+        scheduler.start()
+
+        called = False
+        def callback():
+            nonlocal called
+            called = True
+        scheduler.set_timeout(timedelta(seconds=-10), callback)
+        time.sleep(0.5)
+        self.assertEqual(called, True)
+
+        scheduler.exit()
         scheduler.join()

@@ -58,23 +58,3 @@ class WeMoSwitch(Actuator):
     def on(self) -> bool:
         return self.bridge.get_state(self.name)
 
-
-
-from threading import Thread
-
-
-class WeMoState:
-    def __init__(self, hostname: str):
-        self.hostname_ = hostname
-
-
-class WeMoManager(Thread):
-    """
-    Track information about WeMo and keep it up-to-date with what's actually on the network.
-    :own_address: The address that devices should call us back on. This should be the local, internal ip address of
-                  the server, and some unique port that is connectable from the local network.
-    """
-    def __init__(self, own_address: (str, int)):
-        super().__init__()
-        self.devices_ = {}  # {str: WeMoState}
-        self.own_address_ = own_address

@@ -33,7 +33,8 @@ class Eyrie:
 
         # The model.
         self.abode = build_abode()
-        self.sensors = build_sensors(self.abode, self.environment, self.network, self.cronish)
+        self.sensors, sensor_threads = build_sensors(self.abode, self.environment, self.network, self.cronish,
+                                                     self.scheduler)
         self.state = EyrieStateMachine('manual:unset')
 
         # The view.
@@ -53,24 +54,23 @@ class Eyrie:
         # Data-binding for automatic management of the world based directly on senor readings.
         bind_abode_to_real_world_obeying_state(self.abode, self.actuators, self.animator, self.state)
 
+        self.threads = [
+            self.animator,
+            self.cronish,
+            self.network,
+            self.scheduler
+        ] + sensor_threads
+
     def run(self):
-        # Off-main-thread.
-        self.network.start()
-        self.cronish.start()
-        self.animator.start()
-        self.scheduler.start()
+        for thread in self.threads:
+            thread.start()
 
         # Block the main thread. Must be unmounted to stop.
         self.filesystem.run()
 
     def cleanup(self):
-        # Stop and wait for the off-main-thread jobs.
-        self.scheduler.exit()
-        self.network.exit()
-        self.animator.exit()
-        self.cronish.exit()
+        for thread in self.threads:
+            thread.exit()
 
-        self.scheduler.join()
-        self.network.join()
-        self.animator.join()
-        self.cronish.join()
+        for thread in self.threads:
+            thread.join()

@@ -27,9 +27,10 @@ def bind_preset_states_to_real_world(state: EyrieStateMachine, actuators: Device
         (all_lights - off_lights).set(on=True, color=moonlight(0), transition_time=2)
 
     def listen_manual_read(_: StateEvent):
-        bed = actuators.select('$hue').select('#bed')
-        bed              .set(on=True, color=daylight(1), transition_time=0.2)
-        (actuators - bed).set(on=True, color=daylight(0), transition_time=2)
+        all_lights = actuators.select('$hue')
+        bed = all_lights.select('#bed')
+        bed               .set(on=True, color=daylight(1), transition_time=0.2)
+        (all_lights - bed).set(on=True, color=daylight(0), transition_time=2)
 
     state.listen_enter_state('manual:on', listen_manual_on)
     state.listen_enter_state('manual:low', listen_manual_low)
