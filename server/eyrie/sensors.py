@@ -64,9 +64,14 @@ def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, c
         for sensor_name in sensor_names:
             sensor_hostname = 'wemomotion-{}-{}'.format(room_name, sensor_name)
             wemo_motion = sensors.add(wemo_manager.add_device(WeMoSensor(sensor_hostname, wemo_manager)))
-            property_name = 'wemo_motion_{}'.format(sensor_name)
-            room.set(property_name, False)  # FIXME: see if we can make this reflect the initial state somehow.
-            wemo_motion.listen_motion(_make_property_forwarder(room, property_name))
+
+            motion_property_name = 'wemomotion_{}'.format(sensor_name)
+            room.set(motion_property_name, False)  # FIXME: see if we can make this reflect the initial state somehow.
+            wemo_motion.listen_motion(_make_property_forwarder(room, motion_property_name))
+
+            defunct_property_name = 'wemomotion_{}_defunct'.format(sensor_name)
+            room.set(defunct_property_name, False)
+            wemo_motion.listen_defunct(_make_property_forwarder(room, defunct_property_name))
 
     """
     wemo_bridge = WeMoSensorBridge('127.0.0.1')

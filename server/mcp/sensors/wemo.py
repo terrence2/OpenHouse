@@ -1,10 +1,13 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import contextlib
 import errno
 import http.client
 import logging
 import re
+import requests
+import requests.exceptions
 import select
 import socket
 
@@ -18,7 +21,7 @@ from urllib.parse import urlparse, urljoin, urlunparse
 
 from mcp.network import Bus as NetworkBus
 from mcp.scheduler import Scheduler
-from mcp.sensors import Sensor, MotionEvent
+from mcp.sensors import Sensor, MotionEvent, DefunctEvent
 
 
 log = logging.getLogger('wemo-sensor')
@@ -153,7 +156,20 @@ class _WeMoDeviceStateVariable:
         return "{0.name_}:{0.data_type_}={0.default_value_}".format(self)
 
 
+@contextlib.contextmanager
+def auto_unlock(lock: Lock):
+    lock.release()
+    try:
+        yield
+    finally:
+        lock.acquire()
+
+
 class _WeMoDeviceService:
+    SUBSCRIBE_TIMEOUT = 20  # seconds
+    TIMEOUT_RETRY_INTERVAL = timedelta(seconds=2 * 60)
+    ERROR_RETRY_INTERVAL = timedelta(seconds=5 * 60)
+
     def __init__(self, device, service_type: str, service_id: str, event_suburl: str, scpd_url: str):
         self.device_ = device
 
@@ -168,6 +184,9 @@ class _WeMoDeviceService:
         self.spec_version = (0, 0)
         self.actions = {}
         self.state_vars = {}
+
+        # Subscription state.
+        self.is_subscribed = False
 
     def load_spec_data(self):
         """
@@ -202,7 +221,7 @@ class _WeMoDeviceService:
     def make_subscribe_closure(self_inner, scheduler_inner):
         # Don't close over our nested call chain.
         def callback():
-            self_inner.resubscribe(scheduler_inner)
+            self_inner.subscribe(scheduler_inner)
         return callback
 
     @staticmethod
@@ -212,65 +231,74 @@ class _WeMoDeviceService:
             self_inner.resubscribe(scheduler_inner, sid_inner)
         return callback
 
-    def _send_request(self, method: str, headers: {}, timeout: float=5) -> http.client.HTTPResponse:
-        """
-        Make a synchronous http request and get back the data and headers.
-        """
-        conn = http.client.HTTPConnection(self.event_url.hostname, self.event_url.port, timeout)
-        conn.request(method, self.event_url.path, headers=headers)
-        conn.sock.settimeout(timeout)
-        try:
-            res = conn.getresponse()
-            _ = res.read()
-            res.close()
-        except socket.error as ex:
-            if ex.errno == errno.ETIMEDOUT:
-                raise TimeoutError(ex)
-            raise ex
-        return res
-
     def subscribe(self, scheduler: Scheduler):
         """
         Note that in UPnP, SUBSCRIBE subscribes to /everything/ all the time, so there is no point not just doing it
         automatically.
         """
         log.info("Sending SUBSCRIBE to {}".format(urlunparse(self.event_url)))
+        assert not self.is_subscribed
         try:
-            res = self._send_request('SUBSCRIBE',
-                                     {'NT': 'upnp:event', 'CALLBACK': self.device_.manager.callback_address})
-        except TimeoutError as ex:
+            with auto_unlock(self.device_.manager.lock_):
+                res = requests.request('SUBSCRIBE', urlunparse(self.event_url), timeout=self.SUBSCRIBE_TIMEOUT,
+                                       stream=False, allow_redirects=False,
+                                       headers={'NT': 'upnp:event', 'CALLBACK': self.device_.manager.callback_address})
+        except requests.exceptions.Timeout as ex:
             log.error("timed out trying to SUBSCRIBE")
             log.exception(ex)
-            return self._handle_subscribe_timeout(scheduler)
-        if res.status != 200:
-            log.error("SUBSCRIBE to {} FAILED: status {}".format(self.device_.friendly_name, res.status))
-            return
+            return self._handle_subscribe_failure(scheduler, self.TIMEOUT_RETRY_INTERVAL)
+        except requests.exceptions.ConnectionError as ex:
+            log.error("failed to connect to {} for SUBSCRIBE".format(urlunparse(self.event_url)))
+            log.exception(ex)
+            return self._handle_subscribe_failure(scheduler, self.ERROR_RETRY_INTERVAL)
+        if res.status_code != 200:
+            log.error("SUBSCRIBE to {} FAILED: status {}".format(self.device_.friendly_name, res.status_code))
+            return self._handle_subscribe_failure(scheduler, self.ERROR_RETRY_INTERVAL)
+
+        if self.device_.is_defunct:
+            self.device_.set_defunct(False)
+        self.is_subscribed = True
 
         self._setup_automatic_resubscribe(scheduler, res)
 
     def resubscribe(self, scheduler: Scheduler, sid: str):
         log.info("Sending RESUBSCRIBE to {} for {}".format(urlunparse(self.event_url), sid))
         try:
-            res = self._send_request('SUBSCRIBE', {'SID': sid})
-        except TimeoutError as ex:
+            with auto_unlock(self.device_.manager.lock_):
+                res = requests.request('SUBSCRIBE', urlunparse(self.event_url), timeout=self.SUBSCRIBE_TIMEOUT,
+                                       stream=False, allow_redirects=False,
+                                       headers={'SID': sid})
+        except requests.exceptions.Timeout as ex:
             log.error("timed out trying to re-SUBSCRIBE")
             log.exception(ex)
-            return self._handle_subscribe_timeout(scheduler)
+            return self._handle_subscribe_failure(scheduler, self.TIMEOUT_RETRY_INTERVAL)
+        except requests.exceptions.ConnectionError as ex:
+            log.error("failed to connect to {} for re-SUBSCRIBE".format(urlunparse(self.event_url)))
+            log.exception(ex)
+            return self._handle_subscribe_failure(scheduler, self.ERROR_RETRY_INTERVAL)
 
         # Code 412 is for invalid sid. Flush and start over.
-        if res.status == 412:
+        if res.status_code == 412:
             log.error("RESUBSCRIBE got 412 (invalid sid) back: restarting from SUBSCRIBE")
-            self.unsubscribe(sid)
-            self.subscribe(scheduler)
+            if self.unsubscribe(sid, scheduler):
+                self.subscribe(scheduler)
             return
 
-        if res.status != 200:
-            log.error("SUBSCRIBE to {} FAILED: status {}".format(self.device_.friendly_name, res.status))
+        if res.status_code != 200:
+            log.error("SUBSCRIBE to {} FAILED: status {}".format(self.device_.friendly_name, res.status_code))
             return
+
+        if self.device_.is_defunct:
+            self.device_.set_defunct(False)
+        self.is_subscribed = True
 
         self._setup_automatic_resubscribe(scheduler, res)
 
-    def _handle_subscribe_timeout(self, scheduler: Scheduler):
+    def _handle_subscribe_failure(self, scheduler: Scheduler, retry_time: timedelta):
+        # FIXME: retry a few times before setting the device as defunct.
+        self.device_.set_defunct(True)
+        scheduler.set_timeout(retry_time, self.make_subscribe_closure(self, scheduler))
+
         """
         self.timeout_state_.timed_out()
         if self.timeout_state_.defunct():
@@ -282,31 +310,48 @@ class _WeMoDeviceService:
             scheduler.set_timeout(5, self.make_subscribe_closure(self, scheduler))
         """
 
-
-    def _setup_automatic_resubscribe(self, scheduler: Scheduler, res: http.client.HTTPResponse):
-        raw_timeout = res.getheader('TIMEOUT')
+    def _setup_automatic_resubscribe(self, scheduler: Scheduler, res: requests.Response):
+        raw_timeout = res.headers['timeout']
         if not raw_timeout.startswith('Second-'):
             log.error("SUBSCRIBE to {}: unexpected TIMEOUT, does not start with Second-: {}".format(
                 self.device_.friendly_name, raw_timeout))
             return
 
         timeout = timedelta(seconds=int(raw_timeout[len('Second-'):]))
-        sid = res.getheader('SID')
+        sid = res.headers['sid']
 
         log.info("subscription result: timeout: {}; sid: {}".format(timeout, sid))
-        time_to_resubscribe = timedelta(seconds=60)
-        #time_to_resubscribe = timeout - timedelta(seconds=60)
+        # TODO: Test this thoroughly. We need to go at least |timeout - 30 * numDevices| before timeout in order to be
+        # TODO:    guaranteed to hit our resubscribe interval. In practice we're probably fine with just using 5 min
+        # TODO:    or something and not plumbing that number all the way down here.
+        #time_to_resubscribe = timedelta(seconds=60)
+        time_to_resubscribe = timeout - timedelta(seconds=30 * 10)
         scheduler.set_timeout(time_to_resubscribe, self.make_resubscribe_closure(self, scheduler, sid))
 
-    def unsubscribe(self, sid: str):
+    def unsubscribe(self, sid: str, scheduler: Scheduler) -> bool:
         log.info("Sending UNSUBSCRIBE to {} for {}".format(urlunparse(self.event_url), sid))
         try:
-            res = self._send_request('UNSUBSCRIBE', {'SID': sid})
-        except TimeoutError as ex:
+            with auto_unlock(self.device_.manager.lock_):
+                res = requests.request('UNSUBSCRIBE', urlunparse(self.event_url), timeout=self.SUBSCRIBE_TIMEOUT,
+                                       stream=False, allow_redirects=False,
+                                       headers={'SID': sid})
+        except requests.exceptions.Timeout as ex:
             log.error('UNSUBSCRIBE timed out, giving up.')
             log.exception(ex)
-        if res.status != 200:
-            log.warning("UNSUBSCRIBE unsuccessful, result is {}".format(res.status))
+            self._handle_subscribe_failure(scheduler, self.TIMEOUT_RETRY_INTERVAL)
+            return False
+        except requests.exceptions.ConnectionError as ex:
+            log.error("failed to connect to {} for UNSUBSCRIBE".format(urlunparse(self.event_url)))
+            log.exception(ex)
+            self._handle_subscribe_failure(scheduler, self.ERROR_RETRY_INTERVAL)
+            return False
+
+        self.is_subscribed = False
+
+        if res.status_code != 200:
+            log.warning("UNSUBSCRIBE unsuccessful, result is {}".format(res.status_code))
+
+        return True
 
 
 class WeMoSensor(Sensor):
@@ -318,6 +363,8 @@ class WeMoSensor(Sensor):
 
         self.hostname = hostname
         self.hostip = self.map_hostname_to_local_ip(hostname)
+
+        self.is_defunct_ = False
 
         # UPnP properties.
         self.upnp_last_update = datetime.now() - timedelta(weeks=52)
@@ -345,7 +392,8 @@ class WeMoSensor(Sensor):
         self.services = {}
 
         # Who to notify on motion events.
-        self.listeners_ = []
+        self.motion_listeners_ = []
+        self.defunct_listeners_ = []
 
     @staticmethod
     def map_hostname_to_local_ip(hostname: str) -> str:
@@ -407,7 +455,7 @@ class WeMoSensor(Sensor):
         except TimeoutError as ex:
             log.error("Timed out fetching services.xml for {}")
             log.exception(ex)
-            # TODO: set defunct status to device.
+            self.set_defunct(True)
             return
 
         xml = objectify.fromstring(data.decode('UTF-8'))
@@ -429,22 +477,36 @@ class WeMoSensor(Sensor):
             key = str(node.serviceId).split(':')[-1]
             if key not in self.services:
                 self.services[key] = _WeMoDeviceService(self,
-                                                       str(node.serviceType), str(node.serviceId),
-                                                       str(node.eventSubURL), str(node.SCPDURL))
+                                                        str(node.serviceType), str(node.serviceId),
+                                                        str(node.eventSubURL), str(node.SCPDURL))
                 #updater.background_update(self.services[key])
 
-        # Send the subscription immediately.
-        self.get_service('basicevent1').subscribe(self.manager.scheduler)
+        # If we just started up,
+        if not self.get_service('basicevent1').is_subscribed:
+            self.get_service('basicevent1').subscribe(self.manager.scheduler)
 
     def get_service(self, name: str) -> _WeMoDeviceService:
         return self.services[name]
 
     def listen_motion(self, callback: callable):
-        self.listeners_.append(callback)
+        self.motion_listeners_.append(callback)
+
+    def listen_defunct(self, callback: callable):
+        self.defunct_listeners_.append(callback)
 
     def motion_event(self, current_state: bool):
         event = MotionEvent(current_state)
-        for listener in self.listeners_:
+        for listener in self.motion_listeners_:
+            listener(event)
+
+    @property
+    def is_defunct(self):
+        return self.is_defunct_
+
+    def set_defunct(self, current_state: bool):
+        self.is_defunct_ = current_state
+        event = DefunctEvent(current_state)
+        for listener in self.defunct_listeners_:
             listener(event)
 
 
@@ -489,20 +551,18 @@ class _WeMoNotifyServer(Thread):
         self.sock_.listen(128)
         while True:
             peer, peer_addr = self.sock_.accept()
-            # FIXME: in theory all we need is the processing under the gil, so we could do all of the http work out of
-            # FIXME: the gil and queue up results elsewhere. We still need the queue though, so we might as well use
-            # FIXME: the network buffers as the queue until we have throughput issues.
+            result = self.process_one_connection(peer, peer_addr)
+            peer.close()
+
             with self.lock_:
                 if self.want_exit_:
                     return
 
-                result = self.process_one_connection(peer, peer_addr)
-                peer.close()
-
                 if result is not None:
                     self.handle_result(peer_addr, result[0], result[1], result[2])
 
-    def process_one_connection(self, peer: socket.socket, peer_addr: (str, int)):
+    @staticmethod
+    def process_one_connection(peer: socket.socket, peer_addr: (str, int)):
         log.debug("Receiving connection from: {}".format(peer_addr))
 
         # Decode as UTF-8, as we know it will be.
@@ -586,6 +646,8 @@ class _WeMoNotifyServer(Thread):
 
 
 class WeMoManager(Thread):
+    UPNP_MSEARCH_BEACON_INTERVAL = 10 * 60  # seconds
+
     """
     Uses UPnP and service descriptors to keep our list internal list of devices up-to-date.
     """
@@ -638,7 +700,7 @@ class WeMoManager(Thread):
             log.info("Sending UPnP M-SEARCH broadcast")
             self.upnp_server_.socket.sendto(request.encode('UTF-8'), mcast_addr)
             try:
-                message = self.queue_.get(block=True, timeout=60 * 10)
+                message = self.queue_.get(block=True, timeout=self.UPNP_MSEARCH_BEACON_INTERVAL)
             except Empty:
                 continue
 
@@ -651,6 +713,7 @@ class WeMoManager(Thread):
             return
 
     def handle_upnp_response(self, request, client_address, server):
+        log.debug("Received reply to UPnP request from {}".format(client_address))
         raw_data = request[0]
         try:
             headers = self.parse_http_to_headers(raw_data)
@@ -694,4 +757,3 @@ class WeMoManager(Thread):
                 out[name.strip().lower()] = value.strip()
 
         return out
-

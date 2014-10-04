@@ -1,0 +1,14 @@
+{ "name" : "OpenHouse: HOMe"
+, "version" : "0.0.1"
+, "description" : "Central data broker for OpenHouse."
+, "license" : "GPL-3.0+"
+, "main" : "main.js"
+, "dependencies" :
+  { "cheerio" : ">=0.17.0"
+  , "uuid" : ">=2.0.1"
+  , "zmq" : ">=2.8.0"
+  }
+, "devDependencies" :
+  { "typescript" : ">=1.0.1"
+  }
+}

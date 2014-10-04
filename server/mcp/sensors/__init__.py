@@ -19,6 +19,13 @@ class MotionEvent(SensorEvent):
         self.value = value
 
 
+class DefunctEvent(SensorEvent):
+    """Sent when a sensor's operational status changes."""
+    def __init__(self, value: bool):
+        super().__init__('defunct')
+        self.value = value
+
+
 class SwitchEvent(SensorEvent):
     def __init__(self, value: bool):
         super().__init__('switch')

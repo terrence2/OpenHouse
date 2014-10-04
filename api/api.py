@@ -6,6 +6,7 @@ import json
 import os
 import os.path
 import stat
+import subprocess
 
 from pprint import pprint
 
@@ -81,6 +82,23 @@ def do_readfiles():
     if 'callback' in request.args:
         result = '{}(\n{}\n);'.format(request.args['callback'], result)
     return result
+
+
+@app.route('/graph')
+def do_graph():
+    sensor = 'livingroom'
+    #database = "/storage/raid/data/var/db/mcp/{}.rrd".format(sensor)
+    database_temperature = os.path.expanduser('~/.local/var/db/mcp/{}-{}.rrd').format(sensor, 'temperature')
+    database_humidity = os.path.expanduser('~/.local/var/db/mcp/{}-{}.rrd').format(sensor, 'humidity')
+    return (subprocess.check_output([
+        "rrdtool", "graph", "-",
+        "-t", "Temperature And Humidity", "-w", "1280", "-h", "600",
+        "DEF:celsius={}:temperature:AVERAGE".format(database_temperature),
+        "DEF:humidity={}:humidity:AVERAGE".format(database_humidity),
+        "CDEF:fahrenheit=celsius,9,*,5,/,32,+",
+        "LINE1:humidity#0061cf:Humidity",
+        "LINE1:fahrenheit#cf0061:Temperature"
+    ]))
 
 
 if __name__ == "__main__":

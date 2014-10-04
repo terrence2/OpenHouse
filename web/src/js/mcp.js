@@ -80,6 +80,10 @@ function UpdateActuators(property_name, property_value) {
 
 // Initialize the document with our model.
 $(function() {
+    // Point our graph's img tag at the graph url.
+    var graphTarget = 'http://' + window.location.hostname + ':5000/graph';
+    $("#graphElement").attr('src', graphTarget);
+
     jsonp('/structure', {}, function(data) {
             myViewModel.structure = data;
             ko.applyBindings(myViewModel);
@@ -107,6 +111,7 @@ $(function() {
         lastUpdate = now;
         updateColor(color);
     }
+
     // Apply spectrum to our color input.
     $("#actuatorColorSelect").spectrum({
         flat: true,

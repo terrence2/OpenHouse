@@ -16,6 +16,8 @@
             <form>
                 <input type="radio" id="functionSelectState" name="functionSelectGroup" value="state" data-bind="checked: functionSelect">
                     <label for="functionSelectState">UserControl</label>
+                <input type="radio" id="functionSelectGraphs" name="functionSelectGroup" value="graph" data-bind="checked: functionSelect">
+                    <label for="functionSelectGraphs">Graphs</label>
                 <input type="radio" id="functionSelectActuators" name="functionSelectGroup" value="actuators" data-bind="checked: functionSelect">
                     <label for="functionSelectActuators">Actuators</label>
             </form>
@@ -27,6 +29,10 @@
             <select id="userControlSelect" data-bind="value: userControlValue" onchange="UpdateUserControl();">
             </select>
         </div>
+    </div>
+
+    <div class="row" data-bind="visible: functionSelect() == 'graph'">
+        <img id="graphElement" src="#"/>
     </div>
 
     <div class="row" data-bind="visible: functionSelect() == 'actuators'">
