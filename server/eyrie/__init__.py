@@ -15,6 +15,7 @@ from mcp.animation import AnimationController
 from mcp.cronish import Cronish
 from mcp.environment import Environment
 from mcp.filesystem import FileSystem
+from mcp.home import Home
 from mcp.network import Bus as NetworkBus
 from mcp.scheduler import Scheduler
 
@@ -32,8 +33,9 @@ class Eyrie:
         self.scheduler = Scheduler(llfuse.lock)
 
         # The model.
+        self.home = Home(llfuse.lock)
         self.abode = build_abode()
-        self.sensors, sensor_threads = build_sensors(self.abode, self.environment, self.network, self.cronish,
+        self.sensors, sensor_threads = build_sensors(self.abode, self.home, self.environment, self.network, self.cronish,
                                                      self.scheduler)
         self.state = EyrieStateMachine('manual:unset')
 
@@ -57,6 +59,7 @@ class Eyrie:
         self.threads = [
             self.animator,
             self.cronish,
+            self.home,
             self.network,
             self.scheduler
         ] + sensor_threads

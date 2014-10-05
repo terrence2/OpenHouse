@@ -8,6 +8,7 @@ import llfuse
 from mcp.abode import Abode, Area
 from mcp.cronish import Cronish
 from mcp.environment import Environment
+from mcp.home import Home
 from mcp.network import Bus as NetworkBus
 from mcp.devices import DeviceSet
 from mcp.sensors import SensorEvent
@@ -26,7 +27,7 @@ def _make_property_forwarder(room: Area, property_name: str):
     return handler
 
 
-def build_sensors(abode: Abode, environment: Environment, network: NetworkBus, cronish: Cronish, scheduler: Scheduler) -> DeviceSet:
+def build_sensors(abode: Abode, home: Home, environment: Environment, network: NetworkBus, cronish: Cronish, scheduler: Scheduler) -> DeviceSet:
     sensors = DeviceSet()
 
     # Nerves.
