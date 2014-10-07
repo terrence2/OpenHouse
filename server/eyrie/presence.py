@@ -54,38 +54,38 @@ def bind_abode_to_presence(abode: Abode, cronish: Cronish):
     office = abode.lookup('/eyrie/office')
     bedroom = abode.lookup('/eyrie/bedroom')
     kitchen = abode.lookup('/eyrie/kitchen')
-    #utility = abode.lookup('/eyrie/utility')
+    utility = abode.lookup('/eyrie/utility')
     hall = abode.lookup('/eyrie/hall')
     livingroom = abode.lookup('/eyrie/livingroom')
     presence_sensors = {
-        #office: [
-        #    WatchedProperty(office, 'wemomotion_desk', 10),
-        #    WatchedProperty(office, 'wemomotion_west', 3),
-        #    WatchedProperty(office, 'wemomotion_east', 3),
-        #],
-        #bedroom: [
-        #    WatchedProperty(bedroom, 'wemomotion_desk', 10),
-        #    WatchedProperty(bedroom, 'wemomotion_south', 5),
-        #],
-        #kitchen: [
-        #    WatchedProperty(kitchen, 'wemomotion_sink', 5),
-        #    WatchedProperty(kitchen, 'wemomotion_west', 3),
-        #    WatchedProperty(utility, 'wemomotion_north', 3),
-        #],
-        #utility: [
-        #    WatchedProperty(utility, 'wemomotion_north', 1),
-        #    #WatchedProperty(kitchen, 'wemomotion_sink', 3),
-        #],
-        #hall: [
-        #    WatchedProperty(office, 'wemomotion_east', 1),
-        #    WatchedProperty(bedroom, 'wemomotion_south', 1),
-        #    WatchedProperty(kitchen, 'wemomotion_west', 1),
-        #    WatchedProperty(livingroom, 'wemomotion_north', 1),
-        #    #WatchedProperty(bathroom, 'wemomotion_west'),
-        #],
-        #livingroom: [
-        #    WatchedProperty(livingroom, 'wemomotion_north', 1),
-        #]
+        office: [
+            WatchedProperty(office, 'wemomotion_desk', 10),
+            WatchedProperty(office, 'wemomotion_west', 3),
+            WatchedProperty(office, 'wemomotion_east', 3),
+        ],
+        bedroom: [
+            WatchedProperty(bedroom, 'wemomotion_desk', 10),
+            WatchedProperty(bedroom, 'wemomotion_south', 5),
+        ],
+        kitchen: [
+            WatchedProperty(kitchen, 'wemomotion_sink', 5),
+            WatchedProperty(kitchen, 'wemomotion_west', 3),
+            WatchedProperty(utility, 'wemomotion_north', 3),
+        ],
+        utility: [
+            WatchedProperty(utility, 'wemomotion_north', 1),
+            #WatchedProperty(kitchen, 'wemomotion_sink', 3),
+        ],
+        hall: [
+            WatchedProperty(office, 'wemomotion_east', 1),
+            WatchedProperty(bedroom, 'wemomotion_south', 1),
+            WatchedProperty(kitchen, 'wemomotion_west', 1),
+            WatchedProperty(livingroom, 'wemomotion_north', 1),
+            #WatchedProperty(bathroom, 'wemomotion_west'),
+        ],
+        livingroom: [
+            WatchedProperty(livingroom, 'wemomotion_north', 1),
+        ]
     }
     for area, properties in presence_sensors.items():
         _bind_area_to_presence(cronish, area, properties)
