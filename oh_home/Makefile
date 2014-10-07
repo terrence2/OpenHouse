@@ -7,8 +7,11 @@ vardir:
 	mkdir -p /var/run/openhouse/home
 
 check: build/main.js vardir
-	test/test.py
+	test/test.py | bunyan
 
 clean:
 	rm -rfv build
 	rm -rfv node_modules
+
+run: build/main.js vardir
+	node build/main.js home.html | bunyan

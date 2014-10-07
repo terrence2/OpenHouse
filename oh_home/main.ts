@@ -4,12 +4,23 @@
  * You can obtain one at https://www.gnu.org/licenses/gpl.txt.
  */
 /// <reference path="interfaces/node.d.ts" />
+/// <reference path="interfaces/bunyan.d.ts" />
 /// <reference path="interfaces/cheerio.d.ts" />
 /// <reference path="interfaces/zmq.d.ts" />
 import fs = require('fs');
 
+import bunyan = require('bunyan');
 import cheerio = require('cheerio');
 import zmq = require('zmq');
+
+
+var log = bunyan.createLogger({
+  name: 'HOMe',
+  streams: [
+    { level: 'debug', stream: process.stdout },
+    { level: 'debug', path: 'debug.log' }
+  ]
+});
 
 
 var query_address: string = "ipc:///var/run/openhouse/home/query";
@@ -22,7 +33,7 @@ function check_zmq_version(): boolean {
     return Number(parts[0]) > 2;
 }
 if (!check_zmq_version()) {
-    console.log("ZMQ version must be >=3.0.0... stopping");
+    log.fatal("ZMQ version must be >=3.0.0... stopping");
     process.exit(1);
 }
 
@@ -78,6 +89,7 @@ function handle_message(ctx: Context, msg: ArrayBuffer): Response {
     else if (type == "query")
         return handle_query(ctx, data);
 
+    log.warn({message_type: type}, "unrecognized message type");
     return {error: "Unrecognized message type: " + type}
 }
 
@@ -89,6 +101,7 @@ interface PingResponse extends Response {
     pong: string;
 }
 function handle_ping(data: PingMessage): PingResponse {
+    log.info({data: data.ping}, "handling ping");
     return {pong: data.ping};
 }
 
@@ -99,7 +112,7 @@ interface Transform {
 }
 interface QueryMessage extends Message {
     query: string;
-    transform: Transform[];
+    transforms: Transform[];
 }
 interface Attributes {
     [index: string]: string;
@@ -108,6 +121,8 @@ interface QueryResponse {
     [index: string]: Attributes;
 }
 function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
+    log.info({query: data.query}, "handling query");
+
     // Keep a list of all touched nodes with the most recent values.
     var output: QueryResponse = {};
 
@@ -118,9 +133,9 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     });
 
     // Apply each transform to the initial query.
-    for (var i in data.transform) {
-        var method_name = data.transform[i].method;
-        var args = data.transform[i].args;
+    for (var i in data.transforms) {
+        var method_name = data.transforms[i].method;
+        var args = data.transforms[i].args;
 
         nodes = nodes[method_name].apply(nodes, args);
         nodes.each(function(i, node) {
@@ -138,17 +153,17 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
 
 fs.readFile(home_html, function(error, data) {
     if (error) {
-        console.log("Failed to to load home '" + home_html + "': " + error);
+        log.fatal("Failed to to load home '" + home_html + "': " + error);
         process.exit(1);
     }
 
     var $ = cheerio.load(data.toString());
-    console.log("Loaded home: " + home_html);
+    log.info("Loaded home: " + home_html);
 
     var pub_sock = zmq.socket("pub");
     pub_sock.bind(event_address, function(error) {
         if (error) {
-            console.log("Failed to bind event socket: " + error);
+            log.fatal("Failed to bind event socket: " + error);
             process.exit(1);
         }
 
@@ -157,7 +172,7 @@ fs.readFile(home_html, function(error, data) {
         var query_sock = zmq.socket("rep");
         query_sock.bind(query_address, function(error) {
             if (error) {
-                console.log("Failed to bind query socket: " + error);
+                log.fatal("Failed to bind query socket: " + error);
                 process.exit(1);
             }
 

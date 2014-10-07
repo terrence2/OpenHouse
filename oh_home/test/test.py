@@ -88,7 +88,6 @@ def test_subscribe():
         home.send_json({'type': 'query', 'query': "[kind='wemomotion'][name='motion1']",
             'transform': [{'method': 'attr', 'args': ['value', 'on']}]})
         data = home.recv_json()
-        pprint(data)
 
     data = sub.recv()
     pprint(data)
