@@ -3,12 +3,12 @@
   "version": "0.0.1",
   "description": "Central data broker for OpenHouse.",
   "license": "GPL-3.0+",
-  "main": "main.js",
+  "main": "build/main.js",
   "dependencies": {
-    "cheerio": ">=0.17.0",
-    "uuid": ">=2.0.1",
-    "zmq": ">=2.8.0",
-    "bunyan": "~1.1.3"
+    "bunyan": "~1.1.3",
+    "jsdom": "~1.0.1",
+    "jquery": "~2.1.1",
+    "zmq": ">=2.8.0"
   },
   "devDependencies": {
     "typescript": ">=1.0.1"

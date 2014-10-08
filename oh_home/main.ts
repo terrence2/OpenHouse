@@ -5,12 +5,12 @@
  */
 /// <reference path="interfaces/node.d.ts" />
 /// <reference path="interfaces/bunyan.d.ts" />
-/// <reference path="interfaces/cheerio.d.ts" />
+/// <reference path="interfaces/jsdom.d.ts" />
 /// <reference path="interfaces/zmq.d.ts" />
 import fs = require('fs');
 
 import bunyan = require('bunyan');
-import cheerio = require('cheerio');
+import jsdom = require('jsdom');
 import zmq = require('zmq');
 
 
@@ -64,7 +64,7 @@ function pathof($, node): string {
 
 
 class Context {
-    $: any; // Cheerio, but needs to be callable, which interfaces are not.
+    $: any; // I'm not even going to try to type jquery.
     pub_sock: zmq.Socket;
 
     constructor(doc, pub_sock: zmq.Socket) {
@@ -84,10 +84,15 @@ function handle_message(ctx: Context, msg: ArrayBuffer): Response {
     var data = JSON.parse(msg.toString());
 
     var type: string = data.type;
-    if (type == "ping")
-        return handle_ping(data);
-    else if (type == "query")
-        return handle_query(ctx, data);
+    try {
+        if (type == "ping")
+            return handle_ping(data);
+        else if (type == "query")
+            return handle_query(ctx, data);
+    } catch(e) {
+        log.error({exception: e}, "Failed to handle message");
+        return {error: "Unexpected exception", exception: e};
+    }
 
     log.warn({message_type: type}, "unrecognized message type");
     return {error: "Unrecognized message type: " + type}
@@ -117,6 +122,11 @@ interface QueryMessage extends Message {
 interface Attributes {
     [index: string]: string;
 }
+function attrs($, node): Attributes {
+    var attrs: Attributes = {};
+    $(node.attributes).each(function() { attrs[this.nodeName] = this.nodeValue; });
+    return attrs;
+}
 interface QueryResponse {
     [index: string]: Attributes;
 }
@@ -129,7 +139,7 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     // Perform the query.
     var nodes = ctx.$(data.query);
     nodes.each(function(i, node) {
-        output[pathof(ctx.$, node)] = ctx.$(node).attr();
+        output[pathof(ctx.$, node)] = attrs(ctx.$, node);
     });
 
     // Apply each transform to the initial query.
@@ -139,7 +149,7 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
 
         nodes = nodes[method_name].apply(nodes, args);
         nodes.each(function(i, node) {
-            output[pathof(ctx.$, node)] = ctx.$(node).attr();
+            output[pathof(ctx.$, node)] = attrs(ctx.$, node);
         });
     }
 
@@ -157,33 +167,47 @@ fs.readFile(home_html, function(error, data) {
         process.exit(1);
     }
 
-    var $ = cheerio.load(data.toString());
-    log.info("Loaded home: " + home_html);
-
-    var pub_sock = zmq.socket("pub");
-    pub_sock.bind(event_address, function(error) {
-        if (error) {
-            log.fatal("Failed to bind event socket: " + error);
-            process.exit(1);
-        }
-
-        var ctx = new Context($, pub_sock);
-
-        var query_sock = zmq.socket("rep");
-        query_sock.bind(query_address, function(error) {
-            if (error) {
-                log.fatal("Failed to bind query socket: " + error);
+    jsdom.env(
+        data.toString(),
+        ["../node_modules/jquery/dist/jquery.min.js"],
+        function (errors, window) {
+            if (errors) {
+                log.fatal("failed to load %s: %s", home_html, errors.toString());
                 process.exit(1);
             }
+            var $ = window.$;
+            log.info("Loaded home: " + home_html);
 
-            query_sock.on('message', function(msg) {
-                var output = handle_message(ctx, msg);
-                query_sock.send(JSON.stringify(output));
+            var pub_sock = zmq.socket("pub");
+            pub_sock.bind(event_address, function(error) {
+                if (error) {
+                    log.fatal("Failed to bind event socket: " + error);
+                    process.exit(1);
+                }
+
+                var ctx = new Context($, pub_sock);
+
+                var query_sock = zmq.socket("rep");
+                query_sock.bind(query_address, function(error) {
+                    if (error) {
+                        log.fatal("Failed to bind query socket: " + error);
+                        process.exit(1);
+                    }
+
+                    query_sock.on('message', function(msg) {
+                        var output = handle_message(ctx, msg);
+                        query_sock.send(JSON.stringify(output));
+                    });
+                });
             });
-        });
-    });
+
+            var saveInterval = setInterval(function() {
+                log.info("saving snapshot");
+                fs.writeFile('snapshot.html', jsdom.serializeDocument(window.document), function (err) {
+                    if (err)
+                        console.error("Failed to save snapshot.");
+                });
+            }, 60 * 1000);
+        }
+    );
 });
-
-
-
-

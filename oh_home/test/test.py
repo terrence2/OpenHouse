@@ -33,7 +33,7 @@ def test_unknown():
 
 def test_query():
     # Basic query for all lights.
-    home.send_json({'type': 'query', 'query': "[kind='hue']", 'transform': []})
+    home.send_json({'type': 'query', 'query': "[kind='hue']", 'transforms': []})
     data = home.recv_json()
     for i in range(3):
         for j in range(3):
@@ -53,7 +53,7 @@ def test_query():
 
     # Query wemomotion named 0. And set value to on.
     home.send_json({'type': 'query', 'query': "[kind='wemomotion'][name='motion0']",
-        'transform': [{'method': 'attr', 'args': ['value', 'on']}]})
+        'transforms': [{'method': 'attr', 'args': ['value', 'on']}]})
     data = home.recv_json()
     for i in range(3):
         name = "/root/room{}/motion0".format(i)
@@ -63,7 +63,7 @@ def test_query():
         assert data[name]['value'] == 'on'
 
     # Query all wemomotions and verify we're still 'on'.
-    home.send_json({'type': 'query', 'query': "[kind='wemomotion']", 'transform': []})
+    home.send_json({'type': 'query', 'query': "[kind='wemomotion']", 'transforms': []})
     data = home.recv_json()
     for i in range(3):
         for j in range(3):
