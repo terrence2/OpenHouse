@@ -32,7 +32,10 @@ class LightState:
         self.hue = state['state']['hue']
         self.bri = state['state']['bri']
         self.sat = state['state']['sat']
-        self.ct = state['state']['ct']
+        if 'ct' in state['state']:
+            self.ct = state['state']['ct']
+        else:
+            self.ct = -1
 
     def update_from_response(self, property_name: str, property_value: str):
         log.debug('updating hue light state from response: @id{}: {} <- {}'.format(
