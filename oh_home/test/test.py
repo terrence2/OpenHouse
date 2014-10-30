@@ -33,7 +33,7 @@ def test_unknown():
 
 def test_query():
     # Basic query for all lights.
-    home.send_json({'type': 'query', 'query': "[kind='hue']", 'transforms': []})
+    home.send_json({'type': 'query', 'query_group': [{'query': "[kind='hue']", 'transforms': []}]})
     data = home.recv_json()
     for i in range(3):
         for j in range(3):
@@ -43,7 +43,7 @@ def test_query():
             assert data[name]['name'].startswith('light')
 
     # Query wemomotion named 0.
-    home.send_json({'type': 'query', 'query': "[kind='wemomotion'][name='motion0']"})
+    home.send_json({'type': 'query', 'query_group': [{'query': "[kind='wemomotion'][name='motion0']"}]})
     data = home.recv_json()
     for i in range(3):
         name = "/root/room{}/motion0".format(i)
@@ -52,8 +52,8 @@ def test_query():
         assert data[name]['name'].startswith('motion')
 
     # Query wemomotion named 0. And set value to on.
-    home.send_json({'type': 'query', 'query': "[kind='wemomotion'][name='motion0']",
-        'transforms': [{'method': 'attr', 'args': ['value', 'on']}]})
+    home.send_json({'type': 'query', 'query_group': [{'query': "[kind='wemomotion'][name='motion0']",
+        'transforms': [{'method': 'attr', 'args': ['value', 'on']}]}]})
     data = home.recv_json()
     for i in range(3):
         name = "/root/room{}/motion0".format(i)
@@ -63,7 +63,7 @@ def test_query():
         assert data[name]['value'] == 'on'
 
     # Query all wemomotions and verify we're still 'on'.
-    home.send_json({'type': 'query', 'query': "[kind='wemomotion']", 'transforms': []})
+    home.send_json({'type': 'query', 'query_group': [{'query': "[kind='wemomotion']", 'transforms': []}]})
     data = home.recv_json()
     for i in range(3):
         for j in range(3):
@@ -85,8 +85,11 @@ def test_subscribe():
     poller.register(sub, select.POLLIN)
 
     while not poller.poll(0.1):
-        home.send_json({'type': 'query', 'query': "[kind='wemomotion'][name='motion1']",
-            'transform': [{'method': 'attr', 'args': ['value', 'on']}]})
+        home.send_json({'type': 'query',
+            'query_group': [
+               {'query': "[kind='wemomotion'][name='motion1']",
+                'transform': [{'method': 'attr', 'args': ['value', 'on']}]}
+            ]})
         data = home.recv_json()
 
     data = sub.recv()

@@ -660,7 +660,7 @@ class WeMoManager(Thread):
         # The set_timeout service.
         self.scheduler = scheduler
 
-        # The global interlock that keeps everyone seeing coherenet data.
+        # The global interlock that keeps everyone seeing coherent data.
         self.lock_ = lock
 
         # The set of tracked devices.

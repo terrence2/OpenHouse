@@ -26,6 +26,8 @@ var log = bunyan.createLogger({
 var query_address: string = "ipc:///var/run/openhouse/home/query";
 var event_address: string = "ipc:///var/run/openhouse/home/events";
 var home_html: string = "home.html";
+var query_major_version: number = 3;
+var query_minor_version: number = 0;
 
 
 function check_zmq_version(): boolean {
@@ -65,10 +67,12 @@ function pathof($, node): string {
 
 class Context {
     $: any; // I'm not even going to try to type jquery.
+    window: any; // or jsdom.
     pub_sock: zmq.Socket;
 
-    constructor(doc, pub_sock: zmq.Socket) {
-        this.$ = doc;
+    constructor(window, pub_sock: zmq.Socket) {
+        this.window = window;
+        this.$ = window.$;
         this.pub_sock = pub_sock
     }
 }
@@ -87,6 +91,8 @@ function handle_message(ctx: Context, msg: ArrayBuffer): Response {
     try {
         if (type == "ping")
             return handle_ping(data);
+        else if (type == "html")
+            return handle_html(ctx);
         else if (type == "query")
             return handle_query(ctx, data);
     } catch(e) {
@@ -102,12 +108,28 @@ function handle_message(ctx: Context, msg: ArrayBuffer): Response {
 interface PingMessage extends Message {
     ping: string;
 }
+interface Version {
+    major: number;
+    minor: number;
+}
 interface PingResponse extends Response {
     pong: string;
+    version: Version;
 }
 function handle_ping(data: PingMessage): PingResponse {
-    log.info({data: data.ping}, "handling ping");
-    return {pong: data.ping};
+    log.info("handling ping");
+    var version: Version = { major: query_major_version, minor: query_minor_version };
+    var result: PingResponse = { pong: data.ping, version: version };
+    return result;
+}
+
+
+interface HtmlResponse extends Response {
+    html: string;
+}
+function handle_html(ctx: Context): HtmlResponse {
+    log.info("returning html serialization");
+    return {html: jsdom.serializeDocument(ctx.window.document)};
 }
 
 
@@ -115,9 +137,12 @@ interface Transform {
     method: string;
     args: string[];
 }
-interface QueryMessage extends Message {
+interface Query {
     query: string;
     transforms: Transform[];
+}
+interface QueryMessage extends Message {
+    query_group: Query[];
 }
 interface Attributes {
     [index: string]: string;
@@ -127,37 +152,51 @@ function attrs($, node): Attributes {
     $(node.attributes).each(function() { attrs[this.nodeName] = this.nodeValue; });
     return attrs;
 }
+interface QueryResult {
+    text: string;
+    attrs: Attributes;
+}
+function to_result($, node): QueryResult {
+    return { attrs: attrs($, node), text: $(node).text() };
+}
 interface QueryResponse {
-    [index: string]: Attributes;
+    [index: string]: QueryResult;
 }
 function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
-    log.info({query: data.query}, "handling query");
+    //log.info({query_group: data.query_group}, "handling query group");
+    log.info({count: data.query_group.length}, "handling query group");
 
-    // Keep a list of all touched nodes with the most recent values.
-    var output: QueryResponse = {};
+    // Keep a list of all touched and changed nodes for output and subscription updates.
+    var touched: QueryResponse = {};
+    var changed: QueryResponse = {};
 
-    // Perform the query.
-    var nodes = ctx.$(data.query);
-    nodes.each(function(i, node) {
-        output[pathof(ctx.$, node)] = attrs(ctx.$, node);
-    });
+    // Handle equy query in order.
+    for (var i in data.query_group)
+        handle_one_query(ctx, data.query_group[i], touched, changed);
+
+    // Publish touched nodes for subscribers to snoop on.
+    for (var path in changed)
+        ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
+
+    return touched;
+}
+function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, changed: QueryResponse) {
+    // Perform the base query.
+    var nodes = ctx.$(query.query);
+    nodes.each(function(i, node) { touched[pathof(ctx.$, node)] = to_result(ctx.$, node); });
 
     // Apply each transform to the initial query.
-    for (var i in data.transforms) {
-        var method_name = data.transforms[i].method;
-        var args = data.transforms[i].args;
+    for (var i in query.transforms) {
+        var method_name = query.transforms[i].method;
+        var args = query.transforms[i].args;
 
         nodes = nodes[method_name].apply(nodes, args);
         nodes.each(function(i, node) {
-            output[pathof(ctx.$, node)] = attrs(ctx.$, node);
+            var map = to_result(ctx.$, node);
+            touched[pathof(ctx.$, node)] = map;
+            changed[pathof(ctx.$, node)] = map;
         });
     }
-
-    // Publish touched nodes for subscribers to snoop on.
-    for (var path in output)
-        ctx.pub_sock.send(path + " " + JSON.stringify(output[path]));
-
-    return output;
 }
 
 
@@ -169,13 +208,14 @@ fs.readFile(home_html, function(error, data) {
 
     jsdom.env(
         data.toString(),
-        ["../node_modules/jquery/dist/jquery.min.js"],
+        ["../node_modules/jquery/dist/jquery.min.js",
+         "../node_modules/jquery-color/jquery.color.js",
+        ],
         function (errors, window) {
             if (errors) {
                 log.fatal("failed to load %s: %s", home_html, errors.toString());
                 process.exit(1);
             }
-            var $ = window.$;
             log.info("Loaded home: " + home_html);
 
             var pub_sock = zmq.socket("pub");
@@ -185,7 +225,7 @@ fs.readFile(home_html, function(error, data) {
                     process.exit(1);
                 }
 
-                var ctx = new Context($, pub_sock);
+                var ctx = new Context(window, pub_sock);
 
                 var query_sock = zmq.socket("rep");
                 query_sock.bind(query_address, function(error) {

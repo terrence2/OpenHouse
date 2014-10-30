@@ -59,6 +59,7 @@ def build_actuators(network: NetworkBus, gil: Lock) -> DeviceSet:
     actuators.add(HueLight('hue-livingroom-tower0', hue_bridge))
     actuators.add(HueLight('hue-livingroom-tower1', hue_bridge))
     actuators.add(HueLight('hue-livingroom-tower2', hue_bridge))
+    actuators.add(HueLight('hue-livingroom-console0', hue_bridge))
     actuators.add(HueLight('hue-utility-ceiling', hue_bridge))
     actuators.add(HueLight('hue-hall-ceiling0', hue_bridge))
     actuators.add(HueLight('hue-hall-ceiling1', hue_bridge))

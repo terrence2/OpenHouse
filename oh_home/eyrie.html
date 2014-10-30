@@ -6,28 +6,33 @@
 <body>
   <div name="eyrie" kind="home">
     <div name="bedroom" kind="room">
-      <div kind="hue" name="bed"></div>
-      <div kind="hue" name="desk"></div>
-      <div kind="hue" name="dresser"></div>
-      <div kind="hue" name="tree0"></div>
-      <div kind="hue" name="tree1"></div>
-      <div kind="hue" name="tree2"></div>
-      <div kind="hue" name="ceiling"></div>
+      <div kind="hue-bridge" name="hue-bridge" ipv4="hue-bridge" username="MasterControlProgram"></div>
+      <div kind="hue" name="bedroom-bed" off_at_night="true"></div>
+      <div kind="hue" name="bedroom-desk"></div>
+      <div kind="hue" name="bedroom-dresser"></div>
+      <div kind="hue" name="bedroom-tree0" off_at_night="true"></div>
+      <div kind="hue" name="bedroom-tree1" off_at_night="true"></div>
+      <div kind="hue" name="bedroom-tree2"></div>
+      <div kind="hue" name="bedroom-ceiling" off_at_night="true"></div>
       <div kind="wemomotion" name="desk"></div>
       <div kind="wemomotion" name="south"></div>
+
+      <div name="sleep" kind="scene">
+        <div name="off" on="false">[kind='room'][name='bedroom'] &gt; [kind='hue'][off_at_night='true']</div>
+      </div>
     </div>
     <div name="office" kind="room">
-      <div kind="hue" name="ceiling0"></div>
-      <div kind="hue" name="ceiling1"></div>
-      <div kind="hue" name="torch"></div>
+      <div kind="hue" name="office-ceiling0"></div>
+      <div kind="hue" name="office-ceiling1"></div>
+      <div kind="hue" name="office-torch"></div>
       <div kind="wemomotion" name="desk"></div>
       <div kind="wemomotion" name="west"></div>
       <div kind="wemomotion" name="east"></div>
     </div>
     <div name="hall" kind="room">
       <div name="closet" kind="room"></div>
-      <div kind="hue" name="ceiling0"></div>
-      <div kind="hue" name="ceiling1"></div>
+      <div kind="hue" name="hall-ceiling0"></div>
+      <div kind="hue" name="hall-ceiling1"></div>
     </div>
     <div name="bathroom" kind="room">
     </div>
@@ -36,18 +41,38 @@
       <div kind="wemomotion" name="west"></div>
     </div>
     <div name="utility" kind="room">
-      <div kind="hue" name="ceiling"></div>
+      <div kind="hue" name="utility-ceiling"></div>
       <div kind="wemomotion" name="north"></div>
     </div>
     <div name="livingroom" kind="room">
-      <div kind="hue" name="torch"></div>
-      <div kind="hue" name="tower0"></div>
-      <div kind="hue" name="tower1"></div>
-      <div kind="hue" name="tower2"></div>
+      <div kind="hue" name="livingroom-torch"></div>
+      <div kind="hue" name="livingroom-tower0"></div>
+      <div kind="hue" name="livingroom-tower1"></div>
+      <div kind="hue" name="livingroom-tower2"></div>
+      <div kind="hue" name="livingroom-console0"></div>
       <div kind="wemomotion" name="north"></div>
     </div>
     <div name="diningroom" kind="room">
     </div>
+
+    <div name="on" kind="scene">
+      <div name="on" on="true">[kind='hue']</div>
+      <div name="color" bri="255" hue="34495" sat="232">[kind='hue'] &gt; [name='bhs']</div>
+    </div>
+    <div name="off" kind="scene">
+      <div name="on" on="false" transition_time="0.2">[kind='hue']</div>
+    </div>
+    <div name="sleep" kind="scene">
+      <div name="on" on="true">[kind='hue']</div>
+      <div name="color" bri="0" hue="47000" sat="255">[kind='hue'] &gt; [name='bhs']</div>
+    </div>
+    <div name="daytime" kind="scene">
+      <div name="on" on="true">[kind='hue']</div>
+      <div name="color" bri="255" hue="34495" sat="232">[kind='hue'] &gt; [name='bhs']</div>
+    </div>
+  </div>
+
+  <div name="runtime" kind="runtime">
   </div>
 </body>
 </html>
