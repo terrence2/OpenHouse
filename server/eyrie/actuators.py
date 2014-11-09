@@ -46,23 +46,26 @@ def build_actuators(network: NetworkBus, gil: Lock) -> DeviceSet:
     # Hue Lights
     hue_bridge = HueBridge('hue-bridge', 'MasterControlProgram', gil)
     actuators.add(HueLight('hue-bedroom-bed', hue_bridge))
-    actuators.add(HueLight('hue-bedroom-desk', hue_bridge))
-    actuators.add(HueLight('hue-bedroom-dresser', hue_bridge))
+    actuators.add(HueLight('hue-bedroom-ceiling', hue_bridge))
+    actuators.add(HueLight('hue-bedroom-desk0', hue_bridge))
+    actuators.add(HueLight('hue-bedroom-desk1', hue_bridge))
     actuators.add(HueLight('hue-bedroom-tree0', hue_bridge))
     actuators.add(HueLight('hue-bedroom-tree1', hue_bridge))
     actuators.add(HueLight('hue-bedroom-tree2', hue_bridge))
-    actuators.add(HueLight('hue-bedroom-ceiling', hue_bridge))
-    actuators.add(HueLight('hue-office-ceiling1', hue_bridge))
-    actuators.add(HueLight('hue-office-ceiling2', hue_bridge))
-    actuators.add(HueLight('hue-office-torch', hue_bridge))
+    actuators.add(HueLight('hue-diningroom-ceiling', hue_bridge))
+    actuators.add(HueLight('hue-diningroom-shelves', hue_bridge))
+    actuators.add(HueLight('hue-hall-ceiling0', hue_bridge))
+    actuators.add(HueLight('hue-hall-ceiling1', hue_bridge))
+    actuators.add(HueLight('hue-livingroom-console0', hue_bridge))
+    actuators.add(HueLight('hue-livingroom-couch', hue_bridge))
     actuators.add(HueLight('hue-livingroom-torch', hue_bridge))
     actuators.add(HueLight('hue-livingroom-tower0', hue_bridge))
     actuators.add(HueLight('hue-livingroom-tower1', hue_bridge))
     actuators.add(HueLight('hue-livingroom-tower2', hue_bridge))
-    actuators.add(HueLight('hue-livingroom-console0', hue_bridge))
+    actuators.add(HueLight('hue-office-ceiling1', hue_bridge))
+    actuators.add(HueLight('hue-office-ceiling2', hue_bridge))
+    actuators.add(HueLight('hue-office-torch', hue_bridge))
     actuators.add(HueLight('hue-utility-ceiling', hue_bridge))
-    actuators.add(HueLight('hue-hall-ceiling0', hue_bridge))
-    actuators.add(HueLight('hue-hall-ceiling1', hue_bridge))
     hue_bridge.start()
 
     hue_bridge.add_group(HueLightGroup(0, actuators.select('$hue')))
@@ -91,7 +94,7 @@ def _make_file(entity: Actuator, property_name: str, parser: callable):
         except Exception:
             log.exception("failed to parse property {} for {}; value was {}".format(property_name, entity.name, data))
             return errno.EINVAL
-        args = {property_name: new_value, 'transition_time': 0.1}
+        args = {property_name: new_value, 'transition_time': entity.transition_time}
         entity.set(**args)
 
     return File(_read, _write, fixed_size=4096)
@@ -137,6 +140,20 @@ def _bind_hue_light_to_filesystem(parent: Directory, hue: HueLight):
     subdir.add_file('modelid', File(lambda: hue.modelid + "\n", None))
     subdir.add_file('on', _make_file(hue, 'on', _is_truthy))
     subdir.add_file('color', _make_file(hue, 'color', _parse_color))
+
+    def _make_transition_time_file(hue: HueLight):
+        def _read() -> str:
+            return str(hue.transition_time) + '\n'
+        def _write(data: str):
+            try:
+                sec = float(data)
+                hue.transition_time = sec
+            except Exception as e:
+                log.exception(e)
+
+        return File(_read, _write)
+
+    subdir.add_file('transition_time', _make_transition_time_file(hue))
 
 
 

@@ -96,6 +96,7 @@ class HueBridge(Thread):
         for id_str, light_def in lights.items():
             self.known_lights[light_def['name']] = id_str
             self.light_values[id_str] = LightState(id_str, light_def)
+        pprint(lights)
 
         groups = self._make_request('GET', '/groups')
         log.info("GET /groups: {}".format(groups))
@@ -203,6 +204,8 @@ class HueLight(Actuator):
         self.bridge = bridge
         self.hue_light_id = bridge.identify_light(name)
 
+        self.transition_time_ = 0.5  # seconds
+
         state = self.bridge.get_state(self.hue_light_id)
         log.info('HueLight(name="{}", id="{}", model="{}", swversion="{}"'.format(name, self.hue_light_id, state.modelid, state.swversion))
 
@@ -222,6 +225,7 @@ class HueLight(Actuator):
             blob['on'] = bool(args['on'])
         if 'color' in args and self.color != args['color']:
             blob.update(HueBridge.color_to_json(args['color']))
+        blob['transitiontime'] = int(self.transition_time * 10)
         return blob
 
     @property
@@ -243,5 +247,13 @@ class HueLight(Actuator):
             return BHS(state.bri, state.hue, state.sat)
         assert state.colormode == 'ct'
         return Mired(state.ct)
+
+    @property
+    def transition_time(self) -> float:  # seconds
+        return self.transition_time_
+
+    @transition_time.setter
+    def transition_time(self, value: float):
+        self.transition_time_ = value
 
 
