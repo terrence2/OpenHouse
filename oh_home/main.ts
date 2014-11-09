@@ -6,11 +6,13 @@
 /// <reference path="interfaces/node.d.ts" />
 /// <reference path="interfaces/bunyan.d.ts" />
 /// <reference path="interfaces/jsdom.d.ts" />
+/// <reference path="interfaces/primus.d.ts" />
 /// <reference path="interfaces/zmq.d.ts" />
 import fs = require('fs');
 
 import bunyan = require('bunyan');
 import jsdom = require('jsdom');
+import primus = require('primus');
 import zmq = require('zmq');
 
 
@@ -28,6 +30,7 @@ var event_address: string = "ipc:///var/run/openhouse/home/events";
 var home_html: string = "home.html";
 var query_major_version: number = 3;
 var query_minor_version: number = 0;
+var autosave_interval: number = 5 * 60 * 1000;
 
 
 function check_zmq_version(): boolean {
@@ -200,6 +203,66 @@ function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, ch
 }
 
 
+function save_jsdom(window)
+{
+    log.info("saving snapshot");
+    fs.writeFile('snapshot.html', jsdom.serializeDocument(window.document), function (err) {
+        if (err)
+            console.error("Failed to save snapshot.");
+    });
+}
+
+function loaded_jsdom(errors, window)
+{
+    if (errors) {
+        log.fatal("failed to load %s: %s", home_html, errors.toString());
+        process.exit(1);
+    }
+    log.info("Loaded home: " + home_html);
+
+    // Setup occasional autosave of the current state for inspection.
+    setInterval(function() {save_jsdom(window);}, autosave_interval);
+
+    // Setup broadcast sockets and listen for connections via ZMQ.
+    var pub_sock = zmq.socket("pub");
+    pub_sock.bind(event_address, function(error) {
+        if (error) {
+            log.fatal("Failed to bind event socket: " + error);
+            process.exit(1);
+        }
+
+        var ctx = new Context(window, pub_sock);
+
+        var query_sock = zmq.socket("rep");
+        query_sock.bind(query_address, function(error) {
+            if (error) {
+                log.fatal("Failed to bind query socket: " + error);
+                process.exit(1);
+            }
+
+            query_sock.on('message', function(msg) {
+                var output = handle_message(ctx, msg);
+                query_sock.send(JSON.stringify(output));
+            });
+        });
+    });
+
+    // Listen for websocket connections.
+    var primus_server = primus.createServer({
+        port: 8080,
+        protocol: "JSON"
+    });
+    primus_server.on('connection', function (spark) {
+        log.info({address: spark.address, headers: spark.headers, id: spark.id},
+                  'new primus connection');
+
+        spark.on('data', function (data) {
+            log.info({raw: data}, 'received data from the client');
+        });
+    })
+}
+
+
 fs.readFile(home_html, function(error, data) {
     if (error) {
         log.fatal("Failed to to load home '" + home_html + "': " + error);
@@ -211,43 +274,6 @@ fs.readFile(home_html, function(error, data) {
         ["../node_modules/jquery/dist/jquery.min.js",
          "../node_modules/jquery-color/jquery.color.js",
         ],
-        function (errors, window) {
-            if (errors) {
-                log.fatal("failed to load %s: %s", home_html, errors.toString());
-                process.exit(1);
-            }
-            log.info("Loaded home: " + home_html);
-
-            var pub_sock = zmq.socket("pub");
-            pub_sock.bind(event_address, function(error) {
-                if (error) {
-                    log.fatal("Failed to bind event socket: " + error);
-                    process.exit(1);
-                }
-
-                var ctx = new Context(window, pub_sock);
-
-                var query_sock = zmq.socket("rep");
-                query_sock.bind(query_address, function(error) {
-                    if (error) {
-                        log.fatal("Failed to bind query socket: " + error);
-                        process.exit(1);
-                    }
-
-                    query_sock.on('message', function(msg) {
-                        var output = handle_message(ctx, msg);
-                        query_sock.send(JSON.stringify(output));
-                    });
-                });
-            });
-
-            var saveInterval = setInterval(function() {
-                log.info("saving snapshot");
-                fs.writeFile('snapshot.html', jsdom.serializeDocument(window.document), function (err) {
-                    if (err)
-                        console.error("Failed to save snapshot.");
-                });
-            }, 60 * 1000);
-        }
+        loaded_jsdom
     );
 });
