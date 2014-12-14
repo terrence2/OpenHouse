@@ -25,11 +25,19 @@ var log = bunyan.createLogger({
 });
 
 
-var query_address: string = "ipc:///var/run/openhouse/home/query";
-var event_address: string = "ipc:///var/run/openhouse/home/events";
-var home_html: string = "home.html";
+// Protocol constants.
 var query_major_version: number = 3;
 var query_minor_version: number = 0;
+// 0MQ constants.
+var query_address: string = "ipc:///var/run/openhouse/home/query";
+var event_address: string = "ipc:///var/run/openhouse/home/events";
+// WebSocket constants.
+var websocket_ipv4: string = "localhost";
+var websocket_port: number = 8080;
+var websocket_address: string = "ws://" + websocket_ipv4 + ":" + websocket_port + "/primus";
+var websocket_client_code: string = "http://" + websocket_ipv4 + ":" + websocket_port + "/primus/primus.js";
+// Configuration constants.
+var home_html: string = "home.html";
 var autosave_interval: number = 5 * 60 * 1000;
 
 
@@ -87,9 +95,7 @@ interface Message {
 interface Response {
     error?: string;
 }
-function handle_message(ctx: Context, msg: ArrayBuffer): Response {
-    var data = JSON.parse(msg.toString());
-
+function handle_message(ctx: Context, data): Response {
     var type: string = data.type;
     try {
         if (type == "ping")
@@ -122,7 +128,18 @@ interface PingResponse extends Response {
 function handle_ping(data: PingMessage): PingResponse {
     log.info("handling ping");
     var version: Version = { major: query_major_version, minor: query_minor_version };
-    var result: PingResponse = { pong: data.ping, version: version };
+    var result: PingResponse = {
+        pong: data.ping,
+        version: version,
+        zmq: {
+            query_address: query_address,
+            event_address: event_address
+        },
+        websocket: {
+            address: websocket_address,
+            client_code: websocket_client_code
+        }
+    };
     return result;
 }
 
@@ -233,6 +250,7 @@ function loaded_jsdom(errors, window)
 
         var ctx = new Context(window, pub_sock);
 
+        // Listen for zmq connections.
         var query_sock = zmq.socket("rep");
         query_sock.bind(query_address, function(error) {
             if (error) {
@@ -241,25 +259,27 @@ function loaded_jsdom(errors, window)
             }
 
             query_sock.on('message', function(msg) {
-                var output = handle_message(ctx, msg);
+                var output = handle_message(ctx, JSON.parse(msg.toString()));
                 query_sock.send(JSON.stringify(output));
             });
         });
-    });
 
-    // Listen for websocket connections.
-    var primus_server = primus.createServer({
-        port: 8080,
-        protocol: "JSON"
-    });
-    primus_server.on('connection', function (spark) {
-        log.info({address: spark.address, headers: spark.headers, id: spark.id},
-                  'new primus connection');
-
-        spark.on('data', function (data) {
-            log.info({raw: data}, 'received data from the client');
+        // Listen for websocket connections.
+        var primus_server = primus.createServer({
+            port: 8080,
+            protocol: "JSON"
         });
-    })
+        primus_server.on('connection', function (spark) {
+            log.info({address: spark.address}, 'new primus connection');
+
+            spark.on('data', function (data) {
+                log.info({data: data}, 'received data from the client');
+                var output = handle_message(ctx, data);
+                log.info({output: output}, 'generated response');
+                spark.write(output);
+            });
+        });
+    });
 }
 
 

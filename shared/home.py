@@ -7,7 +7,10 @@ import json
 import os
 import select
 
-from mcp.util import ExitableThread
+try:
+    from mcp.util import ExitableThread
+except ImportError:
+    from util import ExitableThread
 
 import zmq
 
@@ -138,6 +141,11 @@ class Home(ExitableThread):
         assert result['pong'] == 'hello'
         assert result['version']['major'] == self.required_version[0]
         assert result['version']['minor'] >= self.required_version[1]
+
+    def get_websocket_info(self):
+        self.query_sock_.send_json({'type': 'ping', 'ping': 'hello'})
+        result = self.query_sock_.recv_json()
+        return result['websocket']
 
     def subscribe(self, name: str, callback: callable):
         self.subscription_sock_.setsockopt_string(zmq.SUBSCRIBE, name)
