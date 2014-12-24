@@ -12,9 +12,6 @@ from bottle import route, run, template, static_file
 
 
 def query_websock_info():
-    """
-    This is not a gateway, ensure the name remains hidden.
-    """
     h = Home((3, 0), RLock())
     ws = h.get_websocket_info()
     return ws

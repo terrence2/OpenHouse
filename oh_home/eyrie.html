@@ -4,8 +4,8 @@
 </head>
 
 <body>
-  <div name="eyrie" kind="home">
-    <div name="bedroom" kind="room">
+  <div kind="home" name="eyrie">
+    <div kind="room" name="bedroom">
       <div kind="hue-bridge" name="hue-bridge" ipv4="hue-bridge" username="MasterControlProgram"></div>
       <div kind="hue" name="bedroom-bed" off_at_night="true"></div>
       <div kind="hue" name="bedroom-desk"></div>
@@ -18,7 +18,9 @@
       <div kind="wemomotion" name="south"></div>
 
       <div name="sleep" kind="scene">
-        <div name="off" on="false">[kind='room'][name='bedroom'] &gt; [kind='hue'][off_at_night='true']</div>
+        <div name="off" on="false">
+            [kind='room'][name='bedroom'] &gt; [kind='hue'][off_at_night='true']
+        </div>
       </div>
     </div>
     <div name="office" kind="room">

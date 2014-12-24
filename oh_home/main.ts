@@ -80,11 +80,13 @@ class Context {
     $: any; // I'm not even going to try to type jquery.
     window: any; // or jsdom.
     pub_sock: zmq.Socket;
+    ws_listeners: Array<any>;
 
     constructor(window, pub_sock: zmq.Socket) {
         this.window = window;
         this.$ = window.$;
-        this.pub_sock = pub_sock
+        this.pub_sock = pub_sock;
+        this.ws_listeners = [];
     }
 }
 
@@ -177,7 +179,9 @@ interface QueryResult {
     attrs: Attributes;
 }
 function to_result($, node): QueryResult {
-    return { attrs: attrs($, node), text: $(node).text() };
+    // Text, with text of children stripped out.
+    var text = $(node).clone().children().remove().end().text().trim();
+    return { attrs: attrs($, node), text: text };
 }
 interface QueryResponse {
     [index: string]: QueryResult;
@@ -197,6 +201,12 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     // Publish touched nodes for subscribers to snoop on.
     for (var path in changed)
         ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
+    for (var path in changed) {
+        for (var i in ctx.ws_listeners) {
+            var spark = ctx.ws_listeners[i];
+            spark.write({path: path, message: changed[path]});
+        }
+    }
 
     return touched;
 }
@@ -274,10 +284,17 @@ function loaded_jsdom(errors, window)
 
             spark.on('data', function (data) {
                 log.info({data: data}, 'received data from the client');
-                var output = handle_message(ctx, data);
+                var token = data.token;
+                var message = data.message;
+                var output = handle_message(ctx, message);
                 log.info({output: output}, 'generated response');
-                spark.write(output);
+                spark.write({token: token, message: output});
             });
+
+            ctx.ws_listeners.push(spark);
+        });
+        primus_server.on('disconnection', function(spark) {
+            ctx.ws_listeners = ctx.ws_listeners.filter(function(val, i, arr) { return val !== spark; });
         });
     });
 }

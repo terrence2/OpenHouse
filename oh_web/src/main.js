@@ -9,23 +9,57 @@ function assert(cond) {
         throw "Assertion failure";
 }
 
-function attach(tree, parent) {
+function broadcast_handler(path, msg)
+{
+    console.log("got broadcast: " + path + " => " + msg.toSource());
+    var uid = path.replace(/\//g, '-').slice(1);
+    for (var key in msg.attrs) {
+        var value = msg.attrs[key];
+        var keyNode = $(`#${uid}-data > [name=${key}] > [type=key]`).html(key);
+        var valNode = $(`#${uid}-data > [name=${key}] > [type=value]`)
+            .html(value)
+            .css('color', 'green');
+        //if (valNode.get(0).timeout !== undefined)
+        //    window.clearTimeout(
+        //window.setTimeout(() => {node.css('color', 'black')});
+    }
+}
+
+function attach_data(data, parent) {
+    for (var attr in data.attrs) {
+        if (attr === 'name' || attr === 'kind')
+            continue;
+
+        $(parent).append(`<div name="${attr}">{ <span type="key">${attr}</span>: <span type="value">${data.attrs[attr]}</span> }</div>`);
+    }
+    if (data.text === undefined)
+        return;
+    var content = data.text.trim();
+    if (content.length > 0)
+        $(parent).append(`<div>&lt;text&gt;: ${content}</div>`);
+}
+
+function attach_children(tree, parent) {
     $(parent).append("<ul></ul>");
     for (var key in tree.children) {
         var child = tree.children[key];
+        var uid = child.path.replace(/\//g, '-').slice(1);
         var p = $(parent)
                     .children()
                     .first().append(
-                      $("<li>").attr('id', key + '-item')
+                      $("<li>").attr('id', `${uid}-item`)
                                .addClass('tree-item-style')
                                .addClass(child.data.attrs.kind + '-style').append(
                         $("<span>").html(key)
                       ).append(
-                        $("<div>").attr('id', key + '-child')
+                        $("<div>").attr('id', `${uid}-data`)
+                      ).append(
+                        $("<div>").attr('id', `${uid}-child`)
                       )
                     );
-        attach(child, $("#" + key + "-child"));
-        debugger;
+
+        attach_data(child.data, $(`#${uid}-data`));
+        attach_children(child, $(`#${uid}-child`));
     }
     return;
 }
@@ -42,7 +76,7 @@ function remainder(path) {
     return '/' + parts.slice(1).join('/');
 }
 
-function treeify(data, depth) {
+function treeify(path, data, depth) {
     if (depth === undefined)
         depth = 0;
 
@@ -67,12 +101,16 @@ function treeify(data, depth) {
     }
 
     for (var key in children)
-        children[key] = treeify(children[key], depth+1);
+        children[key] = treeify(`${path}/${key}`, children[key], depth+1);
 
-    return {children: children, data: own_data};
+    return {path: path, children: children, data: own_data};
 }
 
 var styles = jss.createStyleSheet({
+    'body': {
+        'color': '#AAAAAA',
+        'background-color': '#000000',
+    },
     '.tree-item-style': {
     },
     '.undefined-style': {
@@ -102,14 +140,13 @@ var styles = jss.createStyleSheet({
 });
 styles.attach();
 
-home.connect(HOME_ADDRESS)
+home.connect(HOME_ADDRESS, broadcast_handler)
     .then(conn => conn.query('div'))
     .then(msg => {
         //R.map(key => $(target).append(`<div>${key}</div>`), R.keys(msg));
-        var tree = treeify(msg);
-        console.log(tree.toSource());
+        var tree = treeify('', msg);
         $('body').empty().append('<div id="root">/<div></div></div>');
-        attach(tree, $("#root > div"));
+        attach_children(tree, $("#root > div"));
         //R.map(key => attach(key), keys);
     })
     //.then(R.get('pong'))
