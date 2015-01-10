@@ -1,8 +1,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from color import parse_css_color, RGB, BHS, Mired
-from home import Home
+from pprint import pprint
+from shared.color import parse_css_color, RGB, BHS, Mired
+from shared.home import Home
 from bridge import Bridge
 
 import logging
@@ -42,6 +43,7 @@ class Light:
         # FIXME: use DOM to getComputedStyle so that we can use CSS, etc.
         log.info("light state updated: {}".format(style))
         css = parse_css(data['attrs']['style'])
+        pprint(css)
         try:
             raw_color = parse_css_color(css.get('color', 'rgb(255,255,255)'))
             light_vis = css.get('visibility', 'visible')

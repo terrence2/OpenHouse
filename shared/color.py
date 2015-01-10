@@ -6,7 +6,7 @@ import logging
 from pprint import pprint
 import re
 
-from typeclass import DerivingEq, DerivingAdd, DerivingMul, DerivingSub
+from shared.typeclass import DerivingEq, DerivingAdd, DerivingMul, DerivingSub
 
 import tinycss.color3
 

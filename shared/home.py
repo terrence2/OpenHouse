@@ -7,10 +7,7 @@ import json
 import os
 import select
 
-try:
-    from mcp.util import ExitableThread
-except ImportError:
-    from util import ExitableThread
+from shared.util import ExitableThread
 
 import zmq
 
@@ -153,7 +150,7 @@ class Home(ExitableThread):
 
     def path_to_query(self, path: str):
         parts = path.strip('/').split('/')
-        pieces = ["[name='{}']".format(part) for part in parts]
+        pieces = ['[name="{}"]'.format(part) for part in parts]
         return ' > '.join(pieces)
 
     def html(self) -> str:

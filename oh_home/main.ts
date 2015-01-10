@@ -187,8 +187,7 @@ interface QueryResponse {
     [index: string]: QueryResult;
 }
 function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
-    //log.info({query_group: data.query_group}, "handling query group");
-    log.info({count: data.query_group.length}, "handling query group");
+    log.info("handling query group");
 
     // Keep a list of all touched and changed nodes for output and subscription updates.
     var touched: QueryResponse = {};
@@ -199,15 +198,17 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
         handle_one_query(ctx, data.query_group[i], touched, changed);
 
     // Publish touched nodes for subscribers to snoop on.
-    for (var path in changed)
-        ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
     for (var path in changed) {
-        for (var i in ctx.ws_listeners) {
-            var spark = ctx.ws_listeners[i];
-            spark.write({path: path, message: changed[path]});
-        }
+        if (path === '')
+            continue;
+
+        ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
+
+        for (var i in ctx.ws_listeners)
+            ctx.ws_listeners[i].write({path: path, message: changed[path]});
     }
 
+    delete touched[''];
     return touched;
 }
 function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, changed: QueryResponse) {
@@ -283,11 +284,9 @@ function loaded_jsdom(errors, window)
             log.info({address: spark.address}, 'new primus connection');
 
             spark.on('data', function (data) {
-                log.info({data: data}, 'received data from the client');
                 var token = data.token;
                 var message = data.message;
                 var output = handle_message(ctx, message);
-                log.info({output: output}, 'generated response');
                 spark.write({token: token, message: output});
             });
 

@@ -6,7 +6,7 @@ import os
 
 from threading import RLock
 
-from sabot.home import Home
+from shared.home import Home
 
 from bottle import route, run, template, static_file
 
@@ -38,4 +38,4 @@ def resources(name):
     return static_file(RESOURCES[name], root=os.getcwd())
 
 
-run(server='waitress', port=8887)
+run(server='waitress', host="0.0.0.0", port=8887)

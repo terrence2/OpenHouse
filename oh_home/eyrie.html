@@ -4,7 +4,8 @@
 </head>
 
 <body>
-  <div kind="home" name="eyrie">
+  <div kind="home" name="eyrie" scene="on">
+
     <div kind="room" name="bedroom">
       <div kind="hue-bridge" name="hue-bridge" ipv4="hue-bridge" username="MasterControlProgram"></div>
       <div kind="hue" name="bedroom-bed" off_at_night="true"></div>
@@ -16,12 +17,6 @@
       <div kind="hue" name="bedroom-ceiling" off_at_night="true"></div>
       <div kind="wemomotion" name="desk"></div>
       <div kind="wemomotion" name="south"></div>
-
-      <div name="sleep" kind="scene">
-        <div name="off" on="false">
-            [kind='room'][name='bedroom'] &gt; [kind='hue'][off_at_night='true']
-        </div>
-      </div>
     </div>
     <div name="office" kind="room">
       <div kind="hue" name="office-ceiling1"></div>
@@ -47,6 +42,7 @@
       <div kind="wemomotion" name="north"></div>
     </div>
     <div name="livingroom" kind="room">
+      <div kind="hue" name="livingroom-couch"></div>
       <div kind="hue" name="livingroom-torch"></div>
       <div kind="hue" name="livingroom-tower0"></div>
       <div kind="hue" name="livingroom-tower1"></div>
@@ -55,24 +51,26 @@
       <div kind="wemomotion" name="north"></div>
     </div>
     <div name="diningroom" kind="room">
+      <div kind="hue" name="diningroom-shelves"></div>
+      <div kind="hue" name="diningroom-ceiling"></div>
     </div>
 
     <div name="on" kind="scene">
-      <div name="on" on="true">[kind='hue']</div>
-      <div name="color" bri="255" hue="34495" sat="232">[kind='hue'] &gt; [name='bhs']</div>
+      <div name="base" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">[kind='hue']</div>
     </div>
+
     <div name="off" kind="scene">
-      <div name="on" on="false" transition_time="0.2">[kind='hue']</div>
+      <div name="base" style="visibility:hidden;">[kind='hue']</div>
     </div>
+
     <div name="sleep" kind="scene">
-      <div name="on" on="true">[kind='hue']</div>
-      <div name="color" bri="0" hue="47000" sat="255">[kind='hue'] &gt; [name='bhs']</div>
+      <div name="base0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">[kind='hue']</div>
+      <div name="base1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">[kind='hue'][off_at_night='true']</div>
     </div>
-    <div name="daytime" kind="scene">
-      <div name="on" on="true">[kind='hue']</div>
-      <div name="color" bri="255" hue="34495" sat="232">[kind='hue'] &gt; [name='bhs']</div>
+
+    <div name="low" kind="scene">
+      <div name="0" style="color:bhs(0,34495,232);animation-duration:5;visibility:visible;">[kind='hue']</div>
     </div>
-  </div>
 
   <div name="runtime" kind="runtime">
   </div>

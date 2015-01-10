@@ -2,10 +2,10 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import requests
-from home import Home
+from shared.home import Home
 import json
 import logging
-from pprint import pprint
+from pprint import pprint, pformat
 
 
 log = logging.getLogger('oh_hue.bridge')
@@ -24,13 +24,17 @@ class Bridge:
         # Make initial status query.
         res = requests.get(self.url(''))
         self.status_ = res.json()
-        pprint(self.status_)
+        log.debug(pformat(self.status_))
 
         # Inject the hue-bridge config under the bridge node.
         group = self.home.group()
         group.query(self.bridge_query).empty()
         group.reflect_as_properties(self.bridge_query, self.status_['config'])
         group.run()
+
+        # Keep a list of lights we have queried info for so we can
+        # report any that are probably unconfigured.
+        self.queried_lights_ = set()
 
         # TODO: poll for changes to the state set on the bridge and reflect in the HOMe.
 
@@ -49,6 +53,7 @@ class Bridge:
     def get_id_for_light_named(self, light_name: str) -> bool:
         for light_id, light_state in self.status_['lights'].items():
             if light_state['name'] == light_name:
+                self.queried_lights_.add(light_name)
                 return light_id
         raise Exception("Attempted to get id for unowned light.")
 
@@ -60,3 +65,8 @@ class Bridge:
         for item in res.json():
             if 'error' in item:
                 log.error(item['error'])
+
+    def show_unqueried_lights(self):
+        for light_id, light_state in self.status_['lights'].items():
+            if light_state['name'] not in self.queried_lights_:
+                log.error("Found unconfigured light: {}".format(light_state['name']))

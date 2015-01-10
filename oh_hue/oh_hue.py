@@ -2,12 +2,8 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-import os.path
-import sys
-sys.path.append(os.path.realpath(os.path.join('..', 'shared')))
-
-import util
-from home import Home
+import shared.util as util
+from shared.home import Home
 
 from bridge import Bridge
 from light import Light
@@ -57,6 +53,10 @@ def main():
             except BridgeNotFound as ex:
                 log.error("Found light '{}' with no owning bridge. Please double-check the spelling."
                           .format(ex.light_name))
+
+        # Show lights that may be unconfigured.
+        for bridge in bridges:
+            bridge.show_unqueried_lights()
 
         # Show the interactive prompt.
         embed(globals(), locals(), vi_mode=True)
