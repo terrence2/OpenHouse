@@ -138,7 +138,7 @@ function attach(elem)
     styles.attach();
 
     home.connect(HOME_ADDRESS, broadcast_handler)
-        .then(conn => conn.query('div'))
+        .then(conn => conn.query('div').run())
         .then(msg => treeify('', msg))
         .then(tree => attach_children(tree, $(elem)));
 }

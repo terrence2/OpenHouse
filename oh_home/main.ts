@@ -32,7 +32,7 @@ var query_minor_version: number = 0;
 var query_address: string = "ipc:///var/run/openhouse/home/query";
 var event_address: string = "ipc:///var/run/openhouse/home/events";
 // WebSocket constants.
-var websocket_ipv4: string = "localhost";
+var websocket_ipv4: string = "192.168.0.22";
 var websocket_port: number = 8080;
 var websocket_address: string = "ws://" + websocket_ipv4 + ":" + websocket_port + "/primus";
 var websocket_client_code: string = "http://" + websocket_ipv4 + ":" + websocket_port + "/primus/primus.js";

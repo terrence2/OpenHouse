@@ -1,19 +1,46 @@
+function Query(conn, query_text) {
+    this.connection = conn;
+    this.query_text = query_text;
+    this.transforms = [];
+}
+Query.prototype.attr = function(key, value) {
+    this.transforms.push({
+        method: 'attr',
+        args: [key, value]
+    });
+    return this;
+};
+Query.prototype.run = function() {
+    return this.connection._do_query(this);
+};
+Query.prototype.get_query = function() {
+    return this.query_text;
+};
+Query.prototype.get_transforms = function() {
+    return this.transforms;
+};
+
+
 function Connection(sock) {
     this.socket = sock;
     this.token = 0;
     this.message_map = new Map();
 }
 Connection.prototype.query = function(q) {
+    return new Query(this, q);
+};
+Connection.prototype._do_query = function(q) {
     var conn = this;
     function query_ready(accept, reject) {
         var token = ++conn.token;
-        var query = {query: q, transforms: []};
+        var query = {query: q.get_query(), transforms: q.get_transforms()};
         var msg = {token: token, message: {type: 'query', query_group: [query]}};
         conn.message_map.set(token, {accept: accept, reject: reject});
         conn.socket.send(JSON.stringify(msg));
     }
     return new Promise(query_ready);
 };
+
 
 function connect(address, broadcast_handler) {
     return new Promise(function(accept, reject) {
