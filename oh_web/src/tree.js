@@ -6,7 +6,7 @@ var home = require('./home');
 
 function broadcast_handler(path, msg)
 {
-    console.log("got broadcast: " + path + " => " + msg.toSource());
+    //console.log("got broadcast: " + path + " => " + msg.toSource());
     var uid = path.replace(/\//g, '-').slice(1);
     for (var key in msg.attrs) {
         var value = msg.attrs[key];
@@ -35,7 +35,7 @@ function attach_data(data, parent) {
 }
 
 function attach_children(tree, parent) {
-    $(parent).append("<ul></ul>");
+    $(parent).append('<ul class="tree-children"></ul>');
     for (var key in tree.children) {
         var child = tree.children[key];
         var uid = child.path.replace(/\//g, '-').slice(1);
@@ -101,14 +101,13 @@ function treeify(path, data, depth) {
     return {path: path, children: children, data: own_data};
 }
 
-function attach(elem)
+function attach(conn, elem)
 {
     var styles = jss.createStyleSheet({
-        'body': {
-            'color': '#AAAAAA',
-            'background-color': '#000000',
-        },
         '.tree-item-style': {
+        },
+        '.tree-children': {
+            'margin-top': '0px',
         },
         '.undefined-style': {
             'list-style': 'disc',
@@ -137,10 +136,10 @@ function attach(elem)
     });
     styles.attach();
 
-    home.connect(HOME_ADDRESS, broadcast_handler)
-        .then(conn => conn.query('div').run())
+    conn.query('div').run()
         .then(msg => treeify('', msg))
         .then(tree => attach_children(tree, $(elem)));
+    return broadcast_handler;
 }
 
 module.exports = {
