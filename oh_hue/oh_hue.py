@@ -2,18 +2,18 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import argparse
+import logging
+
+from pprint import pprint
+from threading import RLock
+
 import shared.util as util
 from shared.home import Home
 
 from bridge import Bridge
 from light import Light
 
-import logging
-
-from pprint import pprint
-from threading import RLock
-
-from prompt_toolkit.contrib.repl import embed
 
 log = logging.getLogger('oh_hue')
 
@@ -34,7 +34,11 @@ def find_bridge_owning_light(bridges: [Bridge], light_node) -> (Bridge, str):
 
 
 def main():
-    util.enable_logging('events.log', 'DEBUG')
+    parser = argparse.ArgumentParser(description='Map light style changes to hue commands.')
+    util.add_common_args(parser)
+    args = parser.parse_args()
+
+    util.enable_logging(args.log_target, args.log_level)
     with util.run_thread(Home((3, 0), RLock())) as home:
 
         # Find all configured bridges.
@@ -51,7 +55,8 @@ def main():
                 bridge, light_id = find_bridge_owning_light(bridges, node)
                 lights.append(Light(light_id, path, node['attrs']['name'], bridge, home))
             except BridgeNotFound as ex:
-                log.error("Found light '{}' with no owning bridge. Please double-check the spelling."
+                log.error("Found light '{}' with no owning bridge. "\
+                          "Please double-check the spelling."
                           .format(ex.light_name))
 
         # Show lights that may be unconfigured.
@@ -59,7 +64,7 @@ def main():
             bridge.show_unqueried_lights()
 
         # Show the interactive prompt.
-        embed(globals(), locals(), vi_mode=True)
+        util.wait_for_exit(args.daemonize, globals(), locals())
 
 
 if __name__ == '__main__':

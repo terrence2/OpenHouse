@@ -1,14 +1,27 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import argparse
 import logging
 import socket
 import sys
+import time
 
 from contextlib import contextmanager
 from threading import Thread
 
+from prompt_toolkit.contrib.repl import embed
 from rainbow_logging_handler import RainbowLoggingHandler
+
+
+def add_common_args(parser: argparse.ArgumentParser):
+    group = parser.add_argument_group('OpenHouse Common Arguments')
+    group.add_argument('--daemonize', '-d', action='store_true',
+                       help="Do not enter a REPL.")
+    group.add_argument('--log-level', '-l', default='DEBUG',
+                       help="The logging level. (default DEBUG)")
+    group.add_argument('--log-target', '-L', default='events.log',
+                       help="The logging target. (default events.log)")
 
 
 def enable_logging(filename: str, level: str):
@@ -39,6 +52,17 @@ def enable_logging(filename: str, level: str):
     root.setLevel(logging.DEBUG)
     root.addHandler(stream_handler)
     root.addHandler(file_handler)
+
+
+def wait_for_exit(daemonize, global_env, local_env):
+    if daemonize:
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            pass
+    else:
+        embed(global_env, local_env, vi_mode=True)
 
 
 def get_own_internal_ip_slow() -> str:

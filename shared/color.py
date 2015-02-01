@@ -8,7 +8,6 @@ import re
 
 from shared.typeclass import DerivingEq, DerivingAdd, DerivingMul, DerivingSub
 
-import tinycss.color3
 
 log = logging.getLogger('color')
 
@@ -54,11 +53,6 @@ class BHS(Color, DerivingEq, DerivingAdd, DerivingMul, DerivingSub):
         g = rgb.g / 256
         b = rgb.b / 256
         hue, light, sat = colorsys.rgb_to_hls(r, g, b)
-        return cls(light * 256, hue * 2**16, sat * 256)
-
-    @classmethod
-    def from_css(cls, rgba: tinycss.color3.RGBA):
-        hue, light, sat = colorsys.rgb_to_hls(rgba.red, rgba.green, rgba.blue)
         return cls(light * 256, hue * 2**16, sat * 256)
 
 

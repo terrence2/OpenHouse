@@ -6,7 +6,7 @@ import os.path
 
 from threading import Lock
 
-from home import Home
+from shared.home import Home
 
 from prompt_toolkit.contrib.repl import embed
 from bs4 import BeautifulSoup as bs
