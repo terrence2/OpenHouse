@@ -121,7 +121,7 @@ function attach(conn, elem)
         '.hue-style': {
             'list-style-image': 'url(/resources/hue32.png)',
         },
-        '.huebridge-style': {
+        '.hue-bridge-style': {
             'list-style': 'disc',
         },
         '.wemomotion-style': {
@@ -133,6 +133,9 @@ function attach(conn, elem)
         '.scene-style': {
             'list-style': 'disc',
         },
+        '.property-style': {
+          'list-style': 'disc',
+        }
     });
     styles.attach();
 

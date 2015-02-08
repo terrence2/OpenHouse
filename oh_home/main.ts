@@ -37,7 +37,7 @@ var websocket_port: number = 8080;
 var websocket_address: string = "ws://" + websocket_ipv4 + ":" + websocket_port + "/primus";
 var websocket_client_code: string = "http://" + websocket_ipv4 + ":" + websocket_port + "/primus/primus.js";
 // Configuration constants.
-var home_html: string = "home.html";
+var home_html: string = "home.xhtml";
 var autosave_interval: number = 5 * 60 * 1000;
 
 
@@ -189,7 +189,7 @@ interface QueryResponse {
 function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     log.info("handling query group");
 
-    // Keep a list of all touched and changed nodes for output and subscription updates.
+   // Keep a list of all touched and changed nodes for output and subscription updates.
     var touched: QueryResponse = {};
     var changed: QueryResponse = {};
 

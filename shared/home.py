@@ -53,7 +53,7 @@ class QueryGroup:
                 self.query(query).append(content)
 
     def run(self):
-        return self.home.execute_query_group(self.query_group)
+        return self.home._execute_query_group(self.query_group)
 
     def __str__(self):
         parts = [str(q) for q in self.query_group]
@@ -97,7 +97,7 @@ class Query:
         return self
 
     def run(self):
-        return self.home.execute_single_query(self)
+        return self.home._execute_single_query(self)
 
     def __str__(self):
         xforms = [".{}({})".format(xform['method'], ', '.join(xform['args'])) for xform in self.transforms]
@@ -148,7 +148,8 @@ class Home(ExitableThread):
         self.subscription_sock_.setsockopt_string(zmq.SUBSCRIBE, name)
         self.subscriptions_[name] = callback
 
-    def path_to_query(self, path: str):
+    @staticmethod
+    def path_to_query(path: str):
         parts = path.strip('/').split('/')
         pieces = ['[name="{}"]'.format(part) for part in parts]
         return ' > '.join(pieces)
@@ -159,13 +160,22 @@ class Home(ExitableThread):
             result = self.query_sock_.recv_json()
         return result['html']
 
+    def get_home_path(self) -> str:
+        homes = self.query("home").run()
+        return list(homes.keys())[0]
+
+    def get_home_node(self) -> {}:
+        homes = self.query("home").run()
+        home_name = list(homes.keys())[0]
+        return homes[home_name]
+
     def query(self, query):
         return Query(self, query)
 
     def group(self):
         return QueryGroup(self)
 
-    def execute_query_group(self, group: [Query]) -> {str: str}:
+    def _execute_query_group(self, group: [Query]) -> {str: str}:
         msg = {'type': 'query', 'query_group': []}
         for query in group:
             msg['query_group'].append({'query': query.query, 'transforms': query.transforms})
@@ -174,7 +184,7 @@ class Home(ExitableThread):
             result = self.query_sock_.recv_json()
         return result
 
-    def execute_single_query(self, query: Query) -> {str: str}:
+    def _execute_single_query(self, query: Query) -> {str: str}:
         with self.gil_:
             self.query_sock_.send_json({'type': 'query',
                                         'query_group': [
@@ -184,33 +194,30 @@ class Home(ExitableThread):
             result = self.query_sock_.recv_json()
         return result
 
-    def poke(self):
+    def _poke(self):
         os.write(self.write_fd_, b'1')
 
-    def exit(self):
-        self.quit_ = True
-        self.poke()
-
-    def handle_poke(self, socket) -> bool:
+    def _handle_poke(self, socket) -> bool:
         if socket == self.read_fd_:
             _ = os.read(self.read_fd_, 4096)
             return True
         return False
 
-    def handle_event(self, socket):
+    def _handle_event(self, socket):
         assert socket == self.subscription_sock_
         data = socket.recv()
         target, _, serialized = data.decode('UTF-8').partition(' ')
         # Note: subscriptions will send anything matching the prefix, which is a common occurence with the paths here.
         #       The fact that our map is on subscript names means that we automatically filter anything we don't want.
         if target in self.subscriptions_:
-            log.debug("received subscription: {}".format(data))
+            #log.debug("received subscription: {}".format(data))
             deserialized = json.loads(serialized)
             callback = self.subscriptions_[target]
             with self.gil_:
                 callback(target, deserialized)
         else:
-            log.debug("filtered prefix subscription: {}".format(data))
+            pass
+            #log.debug("filtered prefix subscription: {}".format(data))
 
     def run(self):
         while not self.quit_:
@@ -219,6 +226,11 @@ class Home(ExitableThread):
                 continue
 
             for (socket, event) in ready:
-                if self.handle_poke(socket):
+                if self._handle_poke(socket):
                     continue
-                self.handle_event(socket)
+                self._handle_event(socket)
+
+    def exit(self):
+        self.quit_ = True
+        self._poke()
+

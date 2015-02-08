@@ -4,6 +4,7 @@ var jss = require('jss');
 
 var home = require('./home');
 var alarmView = require('./alarm');
+var birdseyeView = require('./birdseye');
 var switchView = require('./switch');
 var treeView = require('./tree');
 
@@ -44,8 +45,9 @@ function main() {
     home.connect(HOME_ADDRESS, broadcast_handler)
         .then(conn => {
             gHandlers.push(switchView.attach(conn, $("#switch")));
-            gHandlers.push(alarmView.attach(conn, $("#alarm")));
-            gHandlers.push(treeView.attach(conn, $("#tree")));
+            //gHandlers.push(alarmView.attach(conn, $("#alarm")));
+            gHandlers.push(birdseyeView.attach(conn, $("#birdseye")));
+            //gHandlers.push(treeView.attach(conn, $("#tree")));
         });
 }
 $(main);

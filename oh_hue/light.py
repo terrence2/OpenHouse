@@ -1,12 +1,13 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from pprint import pprint
+import logging
+import json
+
 from shared.color import parse_css_color, RGB, BHS, Mired
 from shared.home import Home
 from bridge import Bridge
 
-import logging
 
 log = logging.getLogger('oh_hue.light')
 
@@ -43,7 +44,6 @@ class Light:
         # FIXME: use DOM to getComputedStyle so that we can use CSS, etc.
         log.info("light state updated: {}".format(style))
         css = parse_css(data['attrs']['style'])
-        pprint(css)
         try:
             raw_color = parse_css_color(css.get('color', 'rgb(255,255,255)'))
             light_vis = css.get('visibility', 'visible')
@@ -70,5 +70,6 @@ class Light:
         else:
             assert isinstance(raw_color, Mired)
             props.update({'ct': raw_color.ct})
-        self.bridge_.set_light_state(self.id_, props)
+        json_data = json.dumps(props).encode('UTF-8')
+        self.bridge_.set_light_state(self.id_, json_data)
 

@@ -15,6 +15,8 @@ function attach(conn, elem)
 
     conn.query('[kind=alarm]').run()
         .then(msg => console.log(msg));
+
+    return function(){};
 }
 
 module.exports = {

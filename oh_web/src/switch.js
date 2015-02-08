@@ -13,28 +13,31 @@ function attach(conn, elem)
                    '<select id="global_switch"></select></div>');
     var gswitch = $('#global_switch');
 
-    var gpath = undefined;  // Path of scene we're observing.
+    var gMonitoredPath = undefined;  // Path of scene we're observing.
     function broadcast_handler(path, msg) {
-        if (path === gpath)
+        if (path === gMonitoredPath)
             $(gswitch).val(msg.attrs.scene);
     }
 
-    conn.query('[kind=scene]').run()
+    conn.query('scene').run()
         .then(R.values)
         .then(R.map((data) => data.attrs.name))
         .then(R.map((name) => `<option value="${name}">${name}</option>`))
         .then(R.map((opt) => $(gswitch).append(opt)))
         .then((_) => {
-            conn.query('[kind=home]').run()
-                .then(data => {
-                    gpath = R.last(R.keys(data));
-                    $(gswitch).val(R.last(R.values(data)).attrs.scene);
+            conn.query('home').run()
+                .then(msg => {
+                    var path = R.last(R.keys(msg));
+                    var data = R.last(R.values(msg));
+                    gMonitoredPath = path;
+                    $(gswitch).val(data.attrs.scene);
                 });
         });
 
     gswitch.on('change', (e) => {
         var switchValue = e.target.options[e.target.selectedIndex].value;
-        conn.query('[kind=home]').attr('scene', switchValue).run();
+        console.log("new switch val: " + switchValue);
+        conn.query('home').attr('scene', switchValue).run();
     });
 
     return broadcast_handler;

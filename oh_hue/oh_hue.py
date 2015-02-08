@@ -42,20 +42,20 @@ def main():
     with util.run_thread(Home((3, 0), RLock())) as home:
 
         # Find all configured bridges.
-        res = home.query("[kind='hue-bridge']").run()
+        res = home.query("hue-bridge").run()
         bridges = []
         for name, node in res.items():
             bridges.append(Bridge(name, node['attrs']['ipv4'], node['attrs']['username'], home))
 
         # Find all configured lights.
-        res = home.query("[kind='hue']").run()
+        res = home.query("hue").run()
         lights = []
         for path, node in res.items():
             try:
                 bridge, light_id = find_bridge_owning_light(bridges, node)
                 lights.append(Light(light_id, path, node['attrs']['name'], bridge, home))
             except BridgeNotFound as ex:
-                log.error("Found light '{}' with no owning bridge. "\
+                log.error("Found light '{}' with no owning bridge. "
                           "Please double-check the spelling."
                           .format(ex.light_name))
 
@@ -63,8 +63,18 @@ def main():
         for bridge in bridges:
             bridge.show_unqueried_lights()
 
+        # Start all bridge threads.
+        for bridge in bridges:
+            bridge.start()
+
         # Show the interactive prompt.
         util.wait_for_exit(args.daemonize, globals(), locals())
+
+        # Start all bridge threads.
+        for bridge in bridges:
+            bridge.quit()
+        for bridge in bridges:
+            bridge.join()
 
 
 if __name__ == '__main__':

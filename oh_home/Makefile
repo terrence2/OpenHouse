@@ -14,4 +14,4 @@ clean:
 	rm -rfv node_modules
 
 run: build/main.js vardir
-	node build/main.js home.html | bunyan
+	node build/main.js eyrie.html | bunyan
