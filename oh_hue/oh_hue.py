@@ -70,7 +70,7 @@ def main():
         # Show the interactive prompt.
         util.wait_for_exit(args.daemonize, globals(), locals())
 
-        # Start all bridge threads.
+        # Stop all bridge threads.
         for bridge in bridges:
             bridge.quit()
         for bridge in bridges:

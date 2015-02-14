@@ -47,7 +47,7 @@ function main() {
             gHandlers.push(switchView.attach(conn, $("#switch")));
             //gHandlers.push(alarmView.attach(conn, $("#alarm")));
             gHandlers.push(birdseyeView.attach(conn, $("#birdseye")));
-            //gHandlers.push(treeView.attach(conn, $("#tree")));
+            gHandlers.push(treeView.attach(conn, $("#tree")));
         });
 }
 $(main);

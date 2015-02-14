@@ -83,14 +83,14 @@
   </comment>
   <room name="bedroom" x="12ft" y="0ft" w="12ft" l="10ft">
     <hue name="bedroom-bed" off_at_night="true"></hue>
-    <hue name="bedroom-desk0"></hue>
-    <hue name="bedroom-desk1"></hue>
+    <hue name="bedroom-desk0" off_at_night="true"></hue>
+    <hue name="bedroom-desk1" off_at_night="true"></hue>
     <hue name="bedroom-tree0" off_at_night="true"></hue>
     <hue name="bedroom-tree1" off_at_night="true"></hue>
     <hue name="bedroom-tree2"></hue>
     <hue name="bedroom-ceiling" off_at_night="true"></hue>
-    <wemomotion name="desk"></wemomotion>
-    <wemomotion name="south"></wemomotion>
+    <wemo-motion name="desk"></wemo-motion>
+    <wemo-motion name="south"></wemo-motion>
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="office" x="0ft" y="0ft" w="10ft" l="13ft">
@@ -98,9 +98,10 @@
     <hue name="office-ceiling1"></hue>
     <hue name="office-ceiling2"></hue>
     <hue name="office-torch"></hue>
-    <wemomotion name="desk"></wemomotion>
-    <wemomotion name="west"></wemomotion>
-    <wemomotion name="east"></wemomotion>
+    <wemo-motion name="desk"></wemo-motion>
+    <wemo-motion name="west"></wemo-motion>
+    <wemo-motion name="east"></wemo-motion>
+    <wemo-switch name="wemoswitch-office-desk1"></wemo-switch>
     <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
@@ -111,12 +112,12 @@
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
   </room>
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
-    <wemomotion name="sink"></wemomotion>
-    <wemomotion name="west"></wemomotion>
+    <wemo-motion name="sink"></wemo-motion>
+    <wemo-motion name="west"></wemo-motion>
   </room>
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
     <hue name="utility-ceiling"></hue>
-    <wemomotion name="north"></wemomotion>
+    <wemo-motion name="north"></wemo-motion>
   </room>
   <room name="livingroom" x="0ft" y="13ft" w="13ft" l="19ft9in">
     <hue name="livingroom-couch"></hue>
@@ -125,7 +126,7 @@
     <hue name="livingroom-tower1"></hue>
     <hue name="livingroom-tower2"></hue>
     <hue name="livingroom-console0"></hue>
-    <wemomotion name="north"></wemomotion>
+    <wemo-motion name="north"></wemo-motion>
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
     <hue name="diningroom-shelves"></hue>

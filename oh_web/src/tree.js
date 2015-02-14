@@ -139,7 +139,7 @@ function attach(conn, elem)
     });
     styles.attach();
 
-    conn.query('div').run()
+    conn.query('home, room, closet, hue, wemo-switch, wemo-motion, scene').run()
         .then(msg => treeify('', msg))
         .then(tree => attach_children(tree, $(elem)));
     return broadcast_handler;
