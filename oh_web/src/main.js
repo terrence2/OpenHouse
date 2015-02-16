@@ -1,3 +1,6 @@
+// This Source Code Form is subject to the terms of the GNU General Public
+// License, version 3. If a copy of the GPL was not distributed with this file,
+// You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 var R = require('ramda');
 var $ = require('jquery');
 var jss = require('jss');
@@ -7,13 +10,6 @@ var alarmView = require('./alarm');
 var birdseyeView = require('./birdseye');
 var switchView = require('./switch');
 var treeView = require('./tree');
-
-var gHandlers = [];
-function broadcast_handler(path, msg)
-{
-    for (var i in gHandlers)
-        gHandlers[i](path, msg);
-}
 
 function main() {
     var styles = jss.createStyleSheet({
@@ -42,12 +38,12 @@ function main() {
                  <div id="birdseye"></div>
                  <div id="tree">Raw Tree View:</div>`);
 
-    home.connect(HOME_ADDRESS, broadcast_handler)
+    home.connect(HOME_ADDRESS)
         .then(conn => {
-            gHandlers.push(switchView.attach(conn, $("#switch")));
-            //gHandlers.push(alarmView.attach(conn, $("#alarm")));
-            gHandlers.push(birdseyeView.attach(conn, $("#birdseye")));
-            gHandlers.push(treeView.attach(conn, $("#tree")));
+            switchView.attach(conn, $("#switch"));
+            //alarmView.attach(conn, $("#alarm"));
+            birdseyeView.attach(conn, $("#birdseye"));
+            treeView.attach(conn, $("#tree"));
         });
 }
 $(main);

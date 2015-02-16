@@ -1,3 +1,6 @@
+// This Source Code Form is subject to the terms of the GNU General Public
+// License, version 3. If a copy of the GPL was not distributed with this file,
+// You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 function Query(conn, query_text) {
     this.connection = conn;
     this.query_text = query_text;
@@ -25,6 +28,7 @@ function Connection(sock) {
     this.socket = sock;
     this.token = 0;
     this.message_map = new Map();
+    this.subscriptions = new Map();
 }
 Connection.prototype.query = function(q) {
     return new Query(this, q);
@@ -40,9 +44,17 @@ Connection.prototype._do_query = function(q) {
     }
     return new Promise(query_ready);
 };
+Connection.prototype.subscribe = function(path, callback) {
+    var conn = this;
+    var callbacks = conn.subscriptions.get(path);
+    if (callbacks === undefined)
+        callbacks = [];
+    callbacks.push(callback);
+    conn.subscriptions.set(path, callbacks);
+};
 
 
-function connect(address, broadcast_handler) {
+function connect(address) {
     return new Promise(function(accept, reject) {
         var socket = new WebSocket(address, "JSON");
 
@@ -61,9 +73,13 @@ function connect(address, broadcast_handler) {
                     callbacks.accept(message);
                     conn.message_map.delete(token);
                 } else {
-                    // Bcast case:
+                    // Subscription case:
                     var path = data.path;
-                    broadcast_handler(path, message);
+                    var callbacks = conn.subscriptions.get(path);
+                    if (callbacks !== undefined) {
+                        for (var i = 0; i < callbacks.length; ++i)
+                            callbacks[i](path, message);
+                    }
                 }
             }
             accept(conn);

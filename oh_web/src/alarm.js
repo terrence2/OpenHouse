@@ -1,3 +1,6 @@
+// This Source Code Form is subject to the terms of the GNU General Public
+// License, version 3. If a copy of the GPL was not distributed with this file,
+// You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 var $ = require('jquery');
 var R = require('ramda');
 var jss = require('jss');
@@ -13,10 +16,8 @@ function attach(conn, elem)
                       <input type="checkbox" id="alarm_enable"/></div>`);
     var gAlarmEnable = $("#alarm_enable");
 
-    conn.query('[kind=alarm]').run()
+    conn.query('alarm').run()
         .then(msg => console.log(msg));
-
-    return function(){};
 }
 
 module.exports = {

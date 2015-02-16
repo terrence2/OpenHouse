@@ -1,26 +1,13 @@
+// This Source Code Form is subject to the terms of the GNU General Public
+// License, version 3. If a copy of the GPL was not distributed with this file,
+// You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 var R = require('ramda');
 var $ = require('jquery');
 var jss = require('jss');
 var assert = require('./util').assert;
 var home = require('./home');
 
-function broadcast_handler(path, msg)
-{
-    //console.log("got broadcast: " + path + " => " + msg.toSource());
-    var uid = path.replace(/\//g, '-').slice(1);
-    for (var key in msg.attrs) {
-        var value = msg.attrs[key];
-        var keyNode = $(`#${uid}-data > [name=${key}] > [type=key]`).html(key);
-        var valNode = $(`#${uid}-data > [name=${key}] > [type=value]`)
-            .html(value)
-            .css('color', 'green');
-        //if (valNode.get(0).timeout !== undefined)
-        //    window.clearTimeout(
-        //window.setTimeout(() => {node.css('color', 'black')});
-    }
-}
-
-function attach_data(data, parent) {
+function attach_data(conn, path, data, parent) {
     for (var attr in data.attrs) {
         if (attr === 'name' || attr === 'kind')
             continue;
@@ -32,9 +19,21 @@ function attach_data(data, parent) {
     var content = data.text.trim();
     if (content.length > 0)
         $(parent).append(`<div>&lt;text&gt;: ${content}</div>`);
+
+    // Listen for changes to this data.
+    conn.subscribe(path, (_, msg) => {
+        var uid = path.replace(/\//g, '-').slice(1);
+        for (var key in msg.attrs) {
+            var value = msg.attrs[key];
+            var keyNode = $(`#${uid}-data > [name=${key}] > [type=key]`).html(key);
+            var valNode = $(`#${uid}-data > [name=${key}] > [type=value]`)
+                .html(value)
+                .css('color', 'green');
+        }
+    });
 }
 
-function attach_children(tree, parent) {
+function attach_children(conn, tree, parent) {
     $(parent).append('<ul class="tree-children"></ul>');
     for (var key in tree.children) {
         var child = tree.children[key];
@@ -44,7 +43,7 @@ function attach_children(tree, parent) {
                     .first().append(
                       $("<li>").attr('id', `${uid}-item`)
                                .addClass('tree-item-style')
-                               .addClass(child.data.attrs.kind + '-style').append(
+                               .addClass(child.data.tagName.toLowerCase() + '-style').append(
                         $("<span>").html(key)
                       ).append(
                         $("<div>").attr('id', `${uid}-data`)
@@ -53,8 +52,8 @@ function attach_children(tree, parent) {
                       )
                     );
 
-        attach_data(child.data, $(`#${uid}-data`));
-        attach_children(child, $(`#${uid}-child`));
+        attach_data(conn, child.path, child.data, $(`#${uid}-data`));
+        attach_children(conn, child, $(`#${uid}-child`));
     }
     return;
 }
@@ -139,10 +138,9 @@ function attach(conn, elem)
     });
     styles.attach();
 
-    conn.query('home, room, closet, hue, wemo-switch, wemo-motion, scene').run()
+    conn.query('*').run()
         .then(msg => treeify('', msg))
-        .then(tree => attach_children(tree, $(elem)));
-    return broadcast_handler;
+        .then(tree => attach_children(conn, tree, $(elem)));
 }
 
 module.exports = {

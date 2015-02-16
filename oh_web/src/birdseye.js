@@ -1,11 +1,10 @@
+// This Source Code Form is subject to the terms of the GNU General Public
+// License, version 3. If a copy of the GPL was not distributed with this file,
+// You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 var $ = require('jquery');
 var R = require('ramda');
 var jss = require('jss');
 var home = require('./home');
-
-var gMonitoredPaths = [];
-function broadcast_handler(path, msg) {
-}
 
 function parse_size(size) {
     var FEET_TO_METERS = 0.3048;
@@ -85,12 +84,17 @@ function display_room(data, global_scenes_msg, elem, conn)
         .then(R.map((data) => data.attrs.name))
         .then(R.map((n) => $(sel).append(`<option value="${n}">${n}</option>`)))
         .then((_) => {
+            // Get the current value of the room's scene.
             conn.query(`room[name=${room_name}]`).run()
                 .then(msg => {
                     var path = R.last(R.keys(msg));
                     var data = R.last(R.values(msg));
-                    gMonitoredPaths.push(path);
                     $(sel).val(data.attrs.scene || 'auto');
+
+                    // Listen for future changes.
+                    conn.subscribe(path, (pathArg, msg) => {
+                        $(sel).val(msg.attrs.scene || 'auto');
+                    });
                 });
         });
     sel.on('change', (e) => {
@@ -135,7 +139,6 @@ function attach(conn, elem)
 
     conn.query('home').run()
         .then(msg => create_home_area(R.values(msg)[0], elem, conn));
-    return broadcast_handler;
 }
 
 module.exports = {
