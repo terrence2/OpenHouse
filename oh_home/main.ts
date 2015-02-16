@@ -186,7 +186,8 @@ interface QueryResult {
 function to_result($, node): QueryResult {
     // Text, with text of children stripped out.
     var text = $(node).clone().children().remove().end().text().trim();
-    return { attrs: attrs($, node), text: text };
+    var tagName = $(node).prop('tagName');
+    return { attrs: attrs($, node), text: text, tagName: tagName };
 }
 interface QueryResponse {
     [index: string]: QueryResult;
