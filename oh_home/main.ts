@@ -76,17 +76,22 @@ function pathof($, node): string {
 }
 
 
+interface Subscriptions {
+    [index: string]: Array<any>;
+}
 class Context {
     $: any; // I'm not even going to try to type jquery.
     window: any; // or jsdom.
     pub_sock: zmq.Socket;
     ws_listeners: Array<any>;
+    ws_subscriptions: Subscriptions;
 
     constructor(window, pub_sock: zmq.Socket) {
         this.window = window;
         this.$ = window.$;
         this.pub_sock = pub_sock;
         this.ws_listeners = [];
+        this.ws_subscriptions = {};
     }
 }
 
@@ -204,6 +209,10 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
 
         ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
 
+        if (ctx.ws_subscriptions[path] !== undefined) {
+            for (var i in ctx.ws_subscriptions[path])
+                ctx.ws_subscriptions[path][i].write({path: path, message: changed[path]});
+        }
         for (var i in ctx.ws_listeners)
             ctx.ws_listeners[i].write({path: path, message: changed[path]});
     }
@@ -228,6 +237,19 @@ function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, ch
             changed[pathof(ctx.$, node)] = map;
         });
     }
+}
+
+
+interface SubscribeMessage extends Message {
+    target: string;
+}
+interface SubscribeResponse extends Response {
+}
+function handle_subscribe(ctx: Context, data: SubscribeMessage, spark): SubscribeResponse {
+    if (ctx.ws_subscriptions[data.target] === undefined)
+        ctx.ws_subscriptions[data.target] = [];
+    ctx.ws_subscriptions[data.target].push(spark);
+    return {};
 }
 
 
@@ -286,14 +308,27 @@ function loaded_jsdom(errors, window)
             spark.on('data', function (data) {
                 var token = data.token;
                 var message = data.message;
-                var output = handle_message(ctx, message);
+                log.info({data:data, token:token, message:message}, 'websocket data');
+                var output;
+                if (message.type == 'subscribe')
+                    output = handle_subscribe(ctx, message, spark);
+                else
+                    output = handle_message(ctx, message);
                 spark.write({token: token, message: output});
             });
 
             ctx.ws_listeners.push(spark);
         });
         primus_server.on('disconnection', function(spark) {
-            ctx.ws_listeners = ctx.ws_listeners.filter(function(val, i, arr) { return val !== spark; });
+            ctx.ws_listeners = ctx.ws_listeners.filter(
+                                                function(val, i, arr) { return val !== spark; });
+            for (var key in ctx.ws_subscriptions) {
+                ctx.ws_subscriptions[key] = ctx.ws_subscriptions[key].filter(
+                                                function(val, i, arr) { return val !== spark; });
+                if (ctx.ws_subscriptions[key].length === 0) {
+                    delete ctx.ws_subscriptions[key];
+                }
+            }
         });
     });
 }

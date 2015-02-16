@@ -99,6 +99,7 @@ class Home:
         self.websock = websock
         self.waiting = {}  # {int: Future}
         self.token = itertools.count(1)
+        self.subscriptions = {}  # {str: coro}
 
     @staticmethod
     def path_to_query(path: str):
@@ -119,45 +120,50 @@ class Home:
     def listener(self):
         while True:
             raw = yield from self.websock.recv()
+            if raw is None:
+                continue
             frame = json.loads(raw)
-            token = frame['token']
-            message = frame['message']
-            assert token in self.waiting
-            self.waiting[token].set_result(message)
+            if 'token' in frame:
+                token = frame['token']
+                message = frame['message']
+                assert token in self.waiting
+                self.waiting[token].set_result(message)
+            else:
+                path = frame['path']
+                message = frame['message']
+                assert path in self.subscriptions
+                asyncio.async(self.subscriptions[path](path, message))
+
+    def _dispatch_message(self, message) -> dict:
+        token = next(self.token)
+        self.waiting[token] = asyncio.Future()
+        yield from self.websock.send(json.dumps({'token': token, 'message': message}))
+        yield from self.waiting[token]
+        result = self.waiting[token].result()
+        del self.waiting[token]
+        if 'error' in result:
+            log.error("HOMe returned an error: {}".format(result['error']))
+            raise Exception(result['error'])
+        return result
 
     @asyncio.coroutine
-    def subscribe(self, path: str, coro):
-        token = next(self.token)
-        yield from self.websock.send(json.dumps({'token': token, 'message': {'type': 'subscribe', 'target': path}}))
-        raw = yield from self.websock.recv()
-        frame = json.loads(raw)
-        assert frame['token'] == token
-        log.warning("got subscribe result: {}".format(frame['message']))
+    def subscribe(self, path: str, coro: asyncio.coroutine):
+        assert path not in self.subscriptions
+        self.subscriptions[path] = coro
+        self._dispatch_message({'type': 'subscribe', 'target': path})
 
     def _execute_query_group(self, group: [Query]) -> {str: str}:
         msg = {'type': 'query', 'query_group': []}
         for query in group:
             msg['query_group'].append({'query': query.query, 'transforms': query.transforms})
-
-        token = next(self.token)
-        self.waiting[token] = asyncio.Future()
-        yield from self.websock.send(json.dumps({'token': token, 'message': msg}))
-        message = yield from self.waiting[token].result()
-        return message
+        return self._dispatch_message(msg)
 
     def _execute_single_query(self, query: Query) -> {str: str}:
         msg = {'type': 'query', 'query_group': [
             {'query': query.query,
              'transforms': query.transforms}
         ]}
-
-        token = next(self.token)
-        self.waiting[token] = asyncio.Future()
-        yield from self.websock.send(json.dumps({'token': token, 'message': msg}))
-        yield from self.waiting[token]
-        message = self.waiting[token].result()
-        del self.waiting[token]
-        return message
+        return self._dispatch_message(msg)
 
 
 @asyncio.coroutine
@@ -173,135 +179,3 @@ def connect(address: (str, int)) -> Home:
     asyncio.async(home.listener())
     return home
 
-
-'''
-class Home(ExitableThread):
-    """Sync binding to the oh_home server."""
-
-    PollInterval = 500  # sec
-
-    def __init__(self, version: (int, int), lock: RLock):
-        super().__init__()
-        self.required_version = version
-        self.gil_ = lock
-        self.quit_ = False
-
-        self.poller_ = zmq.Poller()
-        self.ctx_ = zmq.Context()
-
-        self.query_sock_ = self.ctx_.socket(zmq.REQ)
-        self.query_sock_.connect("ipc:///var/run/openhouse/home/query")
-        self.check_version()
-
-        # Initial state is filtering out all messages.
-        self.subscription_sock_ = self.ctx_.socket(zmq.SUB)
-        self.subscription_sock_.connect("ipc:///var/run/openhouse/home/events")
-        self.poller_.register(self.subscription_sock_, select.POLLIN)
-        self.subscriptions_ = {}  # { subscription_text: callback }
-
-        # The poke socket.
-        self.read_fd_, self.write_fd_ = os.pipe()
-        self.poller_.register(self.read_fd_, select.POLLIN)
-
-    def check_version(self):
-        self.query_sock_.send_json({'type': 'ping', 'ping': 'hello'})
-        result = self.query_sock_.recv_json()
-        assert result['pong'] == 'hello'
-        assert result['version']['major'] == self.required_version[0]
-        assert result['version']['minor'] >= self.required_version[1]
-
-    def get_websocket_info(self):
-        self.query_sock_.send_json({'type': 'ping', 'ping': 'hello'})
-        result = self.query_sock_.recv_json()
-        return result['websocket']
-
-    def subscribe(self, name: str, callback: callable):
-        self.subscription_sock_.setsockopt_string(zmq.SUBSCRIBE, name)
-        self.subscriptions_[name] = callback
-
-    @staticmethod
-    def path_to_query(path: str):
-        parts = path.strip('/').split('/')
-        pieces = ['[name="{}"]'.format(part) for part in parts]
-        return ' > '.join(pieces)
-
-    def html(self) -> str:
-        with self.gil_:
-            self.query_sock_.send_json({'type': 'html'})
-            result = self.query_sock_.recv_json()
-        return result['html']
-
-    def get_home_path(self) -> str:
-        homes = self.query("home").run()
-        return list(homes.keys())[0]
-
-    def get_home_node(self) -> {}:
-        homes = self.query("home").run()
-        home_name = list(homes.keys())[0]
-        return homes[home_name]
-
-    def query(self, query):
-        return Query(self, query)
-
-    def group(self):
-        return QueryGroup(self)
-
-    def _execute_query_group(self, group: [Query]) -> {str: str}:
-        msg = {'type': 'query', 'query_group': []}
-        for query in group:
-            msg['query_group'].append({'query': query.query, 'transforms': query.transforms})
-        with self.gil_:
-            self.query_sock_.send_json(msg)
-            result = self.query_sock_.recv_json()
-        return result
-
-    def _execute_single_query(self, query: Query) -> {str: str}:
-        with self.gil_:
-            self.query_sock_.send_json({'type': 'query',
-                                        'query_group': [
-                                            {'query': query.query,
-                                             'transforms': query.transforms}
-                                        ]})
-            result = self.query_sock_.recv_json()
-        return result
-
-    def _poke(self):
-        os.write(self.write_fd_, b'1')
-
-    def _handle_poke(self, socket) -> bool:
-        if socket == self.read_fd_:
-            _ = os.read(self.read_fd_, 4096)
-            return True
-        return False
-
-    def _handle_event(self, socket):
-        assert socket == self.subscription_sock_
-        data = socket.recv()
-        target, _, serialized = data.decode('UTF-8').partition(' ')
-        # Note: subscriptions will send anything matching the prefix, which is a common occurence with the paths here.
-        #       The fact that our map is on subscript names means that we automatically filter anything we don't want.
-        if target in self.subscriptions_:
-            #log.debug("received subscription: {}".format(data))
-            deserialized = json.loads(serialized)
-            callback = self.subscriptions_[target]
-            with self.gil_:
-                callback(target, deserialized)
-        else:
-            pass
-            #log.debug("filtered prefix subscription: {}".format(data))
-
-    def run(self):
-        while not self.quit_:
-            ready = self.poller_.poll(Home.PollInterval)
-            if not ready:
-                continue
-
-            for (socket, event) in ready:
-                if self._handle_poke(socket):
-                    continue
-                self._handle_event(socket)
-
-    def exit(self):
-        self.quit_ = True
-        self._poke()
-'''
