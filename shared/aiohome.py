@@ -2,13 +2,30 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import asyncio
+import collections
 import html
 import itertools
 import json
 import logging
 import websockets
 
+from pprint import pformat
 log = logging.getLogger('aiohome')
+
+
+class NodeData:
+    def __init__(self, node: dict):
+        self.tagName = node['tagName']
+        self.text = node['text']
+        self.attrs = node['attrs']
+
+    def __str__(self):
+        if self.text:
+            return "<{} {}>{}</{}>".format(self.tagName, self.attrs, self.text, self.tagName)
+        return "<{} {}/>".format(self.tagName, self.attrs)
+
+
+NodeMap = {str: NodeData}
 
 
 class QueryGroup:
@@ -16,7 +33,7 @@ class QueryGroup:
         self.home = home
         self.query_group = []
 
-    def query(self, query: str):
+    def query(self, query: str) -> 'Query':
         q = Query(self.home, query)
         self.query_group.append(q)
         return q
@@ -41,7 +58,7 @@ class QueryGroup:
                 self.query(query).append(content)
 
     @asyncio.coroutine
-    def run(self):
+    def run(self) -> NodeMap:
         return self.home._execute_query_group(self.query_group)
 
     def __str__(self):
@@ -55,38 +72,38 @@ class Query:
         self.query = query
         self.transforms = []  # {method: str, args: [str]}
 
-    def after(self, content: str):
+    def after(self, content: str) -> 'Query':
         self.transforms.append({'method': 'after', 'args': [content]})
         return self
 
-    def append(self, content: str):
+    def append(self, content: str) -> 'Query':
         self.transforms.append({'method': 'append', 'args': [content]})
         return self
 
-    def attr(self, name: str, value: str):
+    def attr(self, name: str, value: str) -> 'Query':
         args = [name] if value is None else [name, value]
         self.transforms.append({'method': 'attr', 'args': args})
         return self
 
-    def css(self, name: str, value: str):
+    def css(self, name: str, value: str) -> 'Query':
         args = [name] if value is None else [name, value]
         self.transforms.append({'method': 'css', 'args': args})
         return self
 
-    def empty(self):
+    def empty(self) -> 'Query':
         self.transforms.append({'method': 'empty', 'args': []})
         return self
 
-    def parent(self):
+    def parent(self) -> 'Query':
         self.transforms.append({'method': 'parent', 'args': []})
         return self
 
-    def children(self):
+    def children(self) -> 'Query':
         self.transforms.append({'method': 'children', 'args': []})
         return self
 
     @asyncio.coroutine
-    def run(self):
+    def run(self) -> NodeMap:
         return self.home._execute_single_query(self)
 
     def __str__(self):
@@ -99,7 +116,7 @@ class Home:
         self.websock = websock
         self.waiting = {}  # {int: Future}
         self.token = itertools.count(1)
-        self.subscriptions = {}  # {str: coro}
+        self.subscriptions = collections.defaultdict(list)  # {path: [coro]}
 
     @staticmethod
     def path_to_query(path: str):
@@ -113,7 +130,7 @@ class Home:
     def __call__(self, query: str) -> Query:
         return self.query(query)
 
-    def group(self):
+    def group(self) -> QueryGroup:
         return QueryGroup(self)
 
     @asyncio.coroutine
@@ -121,7 +138,8 @@ class Home:
         while True:
             raw = yield from self.websock.recv()
             if raw is None:
-                continue
+                log.critical("other end closed connection!")
+                raise Exception("connection closed")
             frame = json.loads(raw)
             if 'token' in frame:
                 token = frame['token']
@@ -130,11 +148,12 @@ class Home:
                 self.waiting[token].set_result(message)
             else:
                 path = frame['path']
-                message = frame['message']
-                assert path in self.subscriptions
-                asyncio.async(self.subscriptions[path](path, message))
+                message = NodeData(frame['message'])
+                assert path in self.subscriptions, "unsubscribed path: {}".format(path)
+                for coroutine in self.subscriptions[path]:
+                    asyncio.async(coroutine(path, message))
 
-    def _dispatch_message(self, message) -> dict:
+    def _dispatch_message(self, message) -> NodeMap:
         token = next(self.token)
         self.waiting[token] = asyncio.Future()
         yield from self.websock.send(json.dumps({'token': token, 'message': message}))
@@ -144,21 +163,20 @@ class Home:
         if 'error' in result:
             log.error("HOMe returned an error: {}".format(result['error']))
             raise Exception(result['error'])
-        return result
+        return {key: NodeData(val) for key, val in result.items()}
 
     @asyncio.coroutine
-    def subscribe(self, path: str, coro: asyncio.coroutine):
-        assert path not in self.subscriptions
-        self.subscriptions[path] = coro
-        self._dispatch_message({'type': 'subscribe', 'target': path})
+    def subscribe(self, path: str, coroutine: asyncio.coroutine):
+        self.subscriptions[path].append(coroutine)
+        return self._dispatch_message({'type': 'subscribe', 'target': path})
 
-    def _execute_query_group(self, group: [Query]) -> {str: str}:
+    def _execute_query_group(self, group: [Query]) -> NodeMap:
         msg = {'type': 'query', 'query_group': []}
         for query in group:
             msg['query_group'].append({'query': query.query, 'transforms': query.transforms})
         return self._dispatch_message(msg)
 
-    def _execute_single_query(self, query: Query) -> {str: str}:
+    def _execute_single_query(self, query: Query) -> NodeMap:
         msg = {'type': 'query', 'query_group': [
             {'query': query.query,
              'transforms': query.transforms}

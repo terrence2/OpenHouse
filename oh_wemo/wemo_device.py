@@ -6,70 +6,59 @@ import aiohttp
 import logging
 import re
 
-from pprint import pformat
-from datetime import datetime, timedelta
-from urllib.parse import urlparse, urljoin, urlunparse
+from urllib.parse import urljoin
 
 
 class WemoDevice:
-    def __init__(self, name: str, setup_location: str, callback_addr: (str, int)):
+    def __init__(self, name: str, setup_location: str, callback_address: (str, int)):
         self.name = name
         self.event_url = urljoin(setup_location, "/upnp/event/basicevent1")
         self.log = logging.getLogger("wemo_device.{}".format(name))
-
-        self.callback_address = "<http://{}:{}>".format(*callback_addr)
-
-        self.last_sid = None
+        self.callback_address = "<http://{}:{}>".format(*callback_address)
 
     @staticmethod
-    def parse_timeout(header):
-        match = re.search(r'Second-(\d+)', header)
-        return int(match.group(1))
+    def parse_response_headers(headers: {str: str}) -> (str, int, int):
+        """
+        Returns: SID, timeout, delay
+        """
+        sid_header = headers['SID']
+        timeout_header = headers['TIMEOUT']
+
+        match = re.search(r'Second-(\d+)', timeout_header)
+        timeout = int(match.group(1))
+
+        return sid_header, timeout, (timeout * 3 // 4)
 
     @asyncio.coroutine
-    def subscribe(self):
+    def follow_device(self, device_map):
         """
         Note that in UPnP, SUBSCRIBE subscribes to /everything/ all the time, so there is no point not just doing it
         automatically.
         """
-        assert self.last_sid is None
-
-        response = yield from aiohttp.request('SUBSCRIBE', self.event_url,
-                                    headers={'NT': 'upnp:event', 'CALLBACK': self.callback_address})
-
-        # Parse headers.
-        timeout = self.parse_timeout(response.headers['TIMEOUT'])
-        self.last_sid = response.headers['SID']
-
-        # Setup resubscribe.
-        delay = timeout * 3 // 4
-        asyncio.async(self.resubscribe_after(delay))
-
+        headers = {'NT': 'upnp:event', 'CALLBACK': self.callback_address}
+        response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
+        try:
+            sid, timeout, delay = self.parse_response_headers(response.headers)
+        except KeyError as ex:
+            self.log.exception(ex)
+            self.log.error("Failed to subscribe to device: {}".format(self.name))
+            return
+        assert sid not in device_map
+        device_map[sid] = self
         self.log.debug("subscribed to {} at sid {}, with timeout {} s; resubscribe in {} s.".format(
-            self.name, self.last_sid, timeout, delay))
-        return self.last_sid
+                       self.name, sid, timeout, delay))
 
-    @asyncio.coroutine
-    def resubscribe_after(self, delay: int):
-        self.log.debug("will resubscribe in {} seconds".format(delay))
-        yield from asyncio.sleep(delay)
-
-        assert self.last_sid is not None
-        response = yield from aiohttp.request('SUBSCRIBE', self.event_url,
-                                              headers={'SID': self.last_sid})
-
-        # Parse headers.
-        timeout = self.parse_timeout(response.headers['TIMEOUT'])
-        self.last_sid = response.headers['SID']
-
-        # Setup resubscribe.
-        delay = timeout * 3 // 4
-        asyncio.async(self.resubscribe_after(delay))
-
-        self.log.debug("resubscribed to {} at sid {}, with timeout {} s; resubscribe in {} s".format(
-            self.name, self.last_sid, timeout, delay))
-
-
-    def on_state_changed(self, state: bool):
-        self.log.info("Device {} changed state to {}".format(self.name, state))
-
+        while True:
+            yield from asyncio.sleep(delay)
+            headers = {'SID': sid}
+            response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
+            try:
+                next_sid, timeout, delay = self.parse_response_headers(response.headers)
+            except KeyError as ex:
+                self.log.exception(ex)
+                self.log.error("Failed to resubscribe to device: {}".format(self.name))
+                del device_map[sid]
+                return
+            assert sid == next_sid
+            self.log.debug("subscribed to {} at sid {}, with timeout {} s; resubscribe in {} s.".format(
+                self.name, sid, timeout, delay))

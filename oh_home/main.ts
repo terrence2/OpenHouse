@@ -83,14 +83,12 @@ class Context {
     $: any; // I'm not even going to try to type jquery.
     window: any; // or jsdom.
     pub_sock: zmq.Socket;
-    ws_listeners: Array<any>;
     ws_subscriptions: Subscriptions;
 
     constructor(window, pub_sock: zmq.Socket) {
         this.window = window;
         this.$ = window.$;
         this.pub_sock = pub_sock;
-        this.ws_listeners = [];
         this.ws_subscriptions = {};
     }
 }
@@ -214,8 +212,6 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
             for (var i in ctx.ws_subscriptions[path])
                 ctx.ws_subscriptions[path][i].write({path: path, message: changed[path]});
         }
-        for (var i in ctx.ws_listeners)
-            ctx.ws_listeners[i].write({path: path, message: changed[path]});
     }
 
     delete touched[''];
@@ -301,7 +297,8 @@ function loaded_jsdom(errors, window)
         // Listen for websocket connections.
         var primus_server = primus.createServer({
             port: 8080,
-            protocol: "JSON"
+            protocol: "JSON",
+            timeout: false
         });
         primus_server.on('connection', function (spark) {
             log.info({address: spark.address}, 'new primus connection');
@@ -317,12 +314,8 @@ function loaded_jsdom(errors, window)
                     output = handle_message(ctx, message);
                 spark.write({token: token, message: output});
             });
-
-            ctx.ws_listeners.push(spark);
         });
         primus_server.on('disconnection', function(spark) {
-            ctx.ws_listeners = ctx.ws_listeners.filter(
-                                                function(val, i, arr) { return val !== spark; });
             for (var key in ctx.ws_subscriptions) {
                 ctx.ws_subscriptions[key] = ctx.ws_subscriptions[key].filter(
                                                 function(val, i, arr) { return val !== spark; });

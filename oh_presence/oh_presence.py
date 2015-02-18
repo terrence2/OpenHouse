@@ -14,6 +14,15 @@ import shared.util as util
 log = logging.getLogger("oh_databind")
 
 
+def get_state(node: home.NodeData) -> bool:
+    return parse_bool(node.attrs.get('state', 'false'))
+
+
+def parse_bool(field: str) -> bool:
+    assert field == 'true' or field == 'false'
+    return field == 'true'
+
+
 class RoomState:
     def __init__(self, name: str):
         self.name = name
@@ -23,10 +32,21 @@ class RoomState:
     def are_humans_present(self):
         return any(self.switches_.values())
 
+    def add_switch(self, path: str, initial_state: bool):
+        assert path not in self.switches_
+        self.switches_[path] = initial_state
+
+    def update_switch(self, S: home.Home, path: str, new_state: bool):
+        assert path in self.switches_
+        self.switches_[path] = new_state
+        yield from S('room[name={}]'.format(self.name)).attr('humans_present', self.are_humans_present()).run()
+
+
 @asyncio.coroutine
-def handle_switch_change(S, room_name: str, switch_path: str, switch_data: dict):
-    log.info("switch state change: {}".format(switch_data))
-    #S('room[name={}]'.format(room_name)).attr('humans_present', switch_data)
+def handle_switch_change(S, room_state: RoomState, switch_path: str, switch_node: home.NodeData):
+    log.info("switch {} state change: {}".format(switch_path, get_state(switch_node)))
+    return room_state.update_switch(S, switch_path, get_state(switch_node))
+
 
 @asyncio.coroutine
 def main():
@@ -35,15 +55,14 @@ def main():
 
     room_states = {}
     rooms = yield from S('room').run()
-    for room_path, room in rooms.items():
-        room_name = room['attrs']['name']
-        room_states[room_name] = RoomState(room_name)
+    for room_path, room_node in rooms.items():
+        room_name = room_node.attrs['name']
+        room_state = room_states[room_name] = RoomState(room_name)
 
         switches = yield from S('room[name={}] > wemo-switch'.format(room_name)).run()
-        for switch_path, switch in switches.items():
-            yield from S.subscribe(switch_path, functools.partial(handle_switch_change, S, room_name))
-
-
+        for switch_path, switch_node in switches.items():
+            room_state.add_switch(switch_path, get_state(switch_node))
+            yield from S.subscribe(switch_path, functools.partial(handle_switch_change, S, room_states[room_name]))
 
 
 if __name__ == '__main__':

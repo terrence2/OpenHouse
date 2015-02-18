@@ -51,6 +51,14 @@ Connection.prototype.subscribe = function(path, callback) {
         callbacks = [];
     callbacks.push(callback);
     conn.subscriptions.set(path, callbacks);
+
+    function subscribe_ready(accept, reject) {
+        var token = ++conn.token;
+        var msg = {token: token, message: {type: 'subscribe', target: path}};
+        conn.message_map.set(token, {accept: accept, reject: reject});
+        conn.socket.send(JSON.stringify(msg));
+    }
+    return new Promise(subscribe_ready);
 };
 
 
