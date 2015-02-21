@@ -5,6 +5,7 @@ var $ = require('jquery');
 var R = require('ramda');
 var jss = require('jss');
 var home = require('./home');
+var util = require('./util');
 
 function parse_size(size) {
     var FEET_TO_METERS = 0.3048;
@@ -15,6 +16,11 @@ function parse_size(size) {
     if (groups)
         return (Number(groups[1]) + (Number(groups[2]) / 12)) * FEET_TO_METERS;
     return 0;
+}
+
+function parse_bool(value) {
+    util.assert(value === 'true' || value === 'false');
+    return value === 'true';
 }
 
 var METERS_TO_PX = 100;
@@ -62,6 +68,8 @@ function display_room(data, global_scenes_msg, elem, conn)
         .css('top', get_display_offset(data.attrs.y, $(elem).offset().top))
         .appendTo(elem);
 
+    var cnt = 0;
+
     // Unless it has noborder, draw an outline around it.
     if (data.attrs.noborder === undefined)
         e.css('border', '1px solid black');
@@ -92,7 +100,9 @@ function display_room(data, global_scenes_msg, elem, conn)
                     $(sel).val(data.attrs.scene || 'auto');
 
                     // Listen for future changes.
-                    conn.subscribe(path, (pathArg, msg) => {
+                    conn.subscribe(path, (_, msg) => {
+                        $(e).css('background-color', parse_bool(msg.attrs.humans_present)
+                                                     ? '#d7ffea' : '');
                         $(sel).val(msg.attrs.scene || 'auto');
                     });
                 });
