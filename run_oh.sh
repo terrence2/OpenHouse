@@ -24,6 +24,15 @@ pid_hue=$!
 ./oh_scene/oh_scene.py --daemonize &
 pid_scene=$!
 
+./oh_wemo/oh_wemo --daemonize &
+pid_wemo=$!
+
+./oh_presence/oh_presence --daemonize &
+pid_presence=$!
+
+./oh_presence/oh_controller --daemonize &
+pid_controller=$!
+
 { pushd oh_web && ./oh_web_sabot.py; popd; } &
 pid_web=$!
 
@@ -31,8 +40,14 @@ pid_web=$!
 echo "pid home:  "$pid_home
 echo "pid hue:   "$pid_hue
 echo "pid scene: "$pid_scene
+echo "pid wemo: "$pid_wemo
+echo "pid presence: "$pid_presence
+echo "pid controller: "$pid_controller
 echo "pid web:   "$pid_web
 wait $pid_web
+wait $pid_controller
+wait $pid_presence
+wait $pid_wemo
 wait $pid_scene
 wait $pid_hue
 wait $pid_home

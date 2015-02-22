@@ -101,7 +101,7 @@
     <wemo-motion name="m-office-desk0"></wemo-motion>
     <wemo-motion name="m-office-west"></wemo-motion>
     <wemo-motion name="m-office-east"></wemo-motion>
-    <wemo-switch name="s-office-desk1"></wemo-switch>
+    <wemo-switch name="s-office-desk1" ontrue="/eyrie[humans=movie]" onfalse="/eyrie[humans=yes]"></wemo-switch>
     <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
@@ -126,6 +126,7 @@
     <hue name="livingroom-tower1"></hue>
     <hue name="livingroom-tower2"></hue>
     <hue name="livingroom-console0"></hue>
+    <wemo-switch name="s-livingroom-couch" ontrue="/eyrie[humans=movie]" onfalse="/eyrie[humans=yes]"></wemo-switch>
     <wemo-motion name="north"></wemo-motion>
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
