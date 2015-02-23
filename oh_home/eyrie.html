@@ -82,60 +82,61 @@
     +-------------------------------------@@@@@@@@@@@@--------------------------------+----------------+
   </comment>
   <room name="bedroom" x="12ft" y="0ft" w="12ft" l="10ft">
-    <hue name="bedroom-bed" off_at_night="true"></hue>
-    <hue name="bedroom-desk0" off_at_night="true"></hue>
-    <hue name="bedroom-desk1" off_at_night="true"></hue>
-    <hue name="bedroom-tree0" off_at_night="true"></hue>
-    <hue name="bedroom-tree1" off_at_night="true"></hue>
-    <hue name="bedroom-tree2"></hue>
-    <hue name="bedroom-ceiling" off_at_night="true"></hue>
-    <wemo-motion name="desk"></wemo-motion>
-    <wemo-motion name="south"></wemo-motion>
+    <light kind="hue" name="bedroom-bed" off_at_night="true"></light>
+    <light kind="hue" name="bedroom-desk0" off_at_night="true"></light>
+    <light kind="hue" name="bedroom-desk1" off_at_night="true"></light>
+    <light kind="hue" name="bedroom-tree0" off_at_night="true"></light>
+    <light kind="hue" name="bedroom-tree1" off_at_night="true"></light>
+    <light kind="hue" name="bedroom-tree2"></light>
+    <light kind="hue" name="bedroom-ceiling" off_at_night="true"></light>
+    <motion kind="wemo" name="desk"></motion>
+    <motion kind="wemo" name="south"></motion>
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="office" x="0ft" y="0ft" w="10ft" l="13ft">
     <hue-bridge name="huebridge" ipv4="hue-bridge" username="MasterControlProgram"></hue-bridge>
-    <hue name="office-ceiling1"></hue>
-    <hue name="office-ceiling2"></hue>
-    <hue name="office-torch"></hue>
-    <wemo-motion name="m-office-desk0"></wemo-motion>
-    <wemo-motion name="m-office-west"></wemo-motion>
-    <wemo-motion name="m-office-east"></wemo-motion>
-    <wemo-switch name="s-office-desk1" ontrue="/eyrie[humans=movie]" onfalse="/eyrie[humans=yes]"></wemo-switch>
+    <light kind="hue" name="office-ceiling1"></light>
+    <light kind="hue" name="office-ceiling2"></light>
+    <light kind="hue" name="office-torch"></light>
+    <motion kind="wemo" name="m-office-desk0"></motion>
+    <motion kind="wemo" name="m-office-west"></motion>
+    <motion kind="wemo" name="m-office-east"></motion>
+    <switch kind="wemo" name="s-office-desk1"></switch>
     <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
     <closet name="hall-closet" x="6ft" y="3ft" w="1ft" l="3ft"></closet>
-    <hue name="hall-ceiling0"></hue>
-    <hue name="hall-ceiling1" off_at_night="true"></hue>
+    <light kind="hue" name="hall-ceiling0"></light>
+    <light kind="hue" name="hall-ceiling1" off_at_night="true"></light>
   </room>
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
   </room>
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
-    <wemo-motion name="sink"></wemo-motion>
-    <wemo-motion name="west"></wemo-motion>
+    <motion kind="wemo" name="sink"></motion>
+    <motion kind="wemo" name="west"></motion>
   </room>
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
-    <hue name="utility-ceiling"></hue>
-    <wemo-motion name="north"></wemo-motion>
+    <light kind="hue" name="utility-ceiling"></light>
+    <motion kind="wemo" name="north"></motion>
   </room>
   <room name="livingroom" x="0ft" y="13ft" w="13ft" l="19ft9in">
-    <hue name="livingroom-couch"></hue>
-    <hue name="livingroom-torch"></hue>
-    <hue name="livingroom-tower0"></hue>
-    <hue name="livingroom-tower1"></hue>
-    <hue name="livingroom-tower2"></hue>
-    <hue name="livingroom-console0"></hue>
-    <wemo-switch name="s-livingroom-couch" ontrue="/eyrie[humans=movie]" onfalse="/eyrie[humans=yes]"></wemo-switch>
-    <wemo-motion name="north"></wemo-motion>
+    <light kind="hue" name="livingroom-couch"></light>
+    <light kind="hue" name="livingroom-torch"></light>
+    <light kind="hue" name="livingroom-tower0"></light>
+    <light kind="hue" name="livingroom-tower1"></light>
+    <light kind="hue" name="livingroom-tower2"></light>
+    <light kind="hue-livingcolors" name="livingroom-console0"></light>
+    <switch kind="wemo" name="s-livingroom-couch" ontrue="/eyrie[scene=movie]" onfalse="/eyrie[scene=on]"></switch>
+    <motion kind="wemo" name="north"></motion>
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
-    <hue name="diningroom-shelves"></hue>
-    <hue name="diningroom-ceiling"></hue>
+    <light kind="hue" name="diningroom-shelves"></light>
+    <light kind="hue" name="diningroom-ceiling"></light>
   </room>
 
   <scene name="on">
-    <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">hue</rule>
+    <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
+    <rule name="1" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
   </scene>
 
   <scene name="off">
@@ -143,12 +144,26 @@
   </scene>
 
   <scene name="sleep">
-    <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">hue</rule>
-    <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">hue[off_at_night='true']</rule>
+    <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
+    <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[off_at_night='true']</rule>
+  </scene>
+
+  <scene name="movie">
+    <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
+    <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+    <rule name="2" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
+    <rule name="3" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
+  </scene>
+
+  <scene name="game-study">
+    <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
+    <rule name="1" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+    <rule name="2" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
+    <rule name="3" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
   </scene>
 
   <scene name="low">
-    <rule name="0" style="color:bhs(0,34495,232);animation-duration:5;visibility:visible;">hue</rule>
+    <rule name="0" style="color:bhs(0,34495,232);animation-duration:5;visibility:visible;">light</rule>
   </scene>
 
   <runtime name="runtime"></runtime>

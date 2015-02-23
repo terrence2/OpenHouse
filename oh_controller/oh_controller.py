@@ -2,6 +2,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+"""
+Map changes to a room's humans state to the current scene.
+"""
 import asyncio
 import functools
 import logging
@@ -13,27 +16,29 @@ class RoomState:
     def __init__(self, name: str, node: home.NodeData):
         self.log = logging.getLogger('oh_controller.' + name)
         self.name = name
-        self.humans_present = self.parse_boolean(node.attrs.get('humans_present', 'false'))
-        self.present_scene = 'on'
-        self.absent_scene = 'auto'
+        self.humans = node.attrs.get('humans', 'yes')
+        self.default_scenes = {
+            'yes': 'on',
+            'no': 'auto',
+            'movie': 'movie'
+        }
+        self.fallback_scene = 'auto'
 
-    @staticmethod
-    def parse_boolean(value: str) -> bool:
-        assert value in ('true', 'false')
-        return value == 'true'
+    def are_humans_present(self) -> bool:
+        return self.humans != 'no'
 
     @asyncio.coroutine
     def on_changed(self, S: home.Home, path: str, node: home.NodeData):
-        new_present = self.parse_boolean(node.attrs.get('humans_present', 'false'))
+        new_present = node.attrs.get('humans', 'no')
 
         # Skip the callback we get when changing the state, or other unrelated changes.
-        if new_present == self.humans_present:
-            self.log.debug("skipping update of office with duplicate humans_present")
+        if new_present == self.humans:
+            self.log.debug("skipping update of office because same humans value")
             return
-        self.log.debug("room {} state transition {} -> {}".format(self.name, self.humans_present, new_present))
-        self.humans_present = new_present
+        self.log.debug("room {} state transition {} -> {}".format(self.name, self.humans, new_present))
+        self.humans = new_present
 
-        next_scene = self.present_scene if self.humans_present else self.absent_scene
+        next_scene = self.default_scenes.get(self.humans, self.fallback_scene)
         self.log.info("Updating {} to scene {}".format(self.name, next_scene))
         yield from S('room[name={}]'.format(node.attrs['name'])).attr('scene', next_scene).run()
 

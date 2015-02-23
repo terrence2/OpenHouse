@@ -18,11 +18,6 @@ function parse_size(size) {
     return 0;
 }
 
-function parse_bool(value) {
-    util.assert(value === 'true' || value === 'false');
-    return value === 'true';
-}
-
 var METERS_TO_PX = 100;
 
 function get_display_size(size) {
@@ -101,8 +96,7 @@ function display_room(data, global_scenes_msg, elem, conn)
 
                     // Listen for future changes.
                     conn.subscribe(path, (_, msg) => {
-                        $(e).css('background-color', parse_bool(msg.attrs.humans_present)
-                                                     ? '#d7ffea' : '');
+                        $(e).css('background-color', msg.attrs.humans != 'no' ? '#d7ffea' : '');
                         $(sel).val(msg.attrs.scene || 'auto');
                     });
                 });

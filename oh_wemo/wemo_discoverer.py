@@ -108,6 +108,9 @@ def discover_local_wemos(wemo_coro):
                                   local_addr=(util.get_own_internal_ip_slow(), 54321))
     yield from connected
     assert connected.result() == transport
+
+    protocol.send_search_request(transport)
+    yield from asyncio.sleep(5)
     while True:
         protocol.send_search_request(transport)
         yield from asyncio.sleep(20 * 60)

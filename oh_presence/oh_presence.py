@@ -23,7 +23,7 @@ from pprint import pformat
 
 import shared.util as util
 
-log = logging.getLogger("oh_databind")
+log = logging.getLogger("oh_presence")
 
 
 def get_state(node: home.NodeData) -> str:
@@ -68,12 +68,16 @@ class SwitchState:
             action_path = self.path
         elif action_path == 'parent':
             action_path = self.owner.path
+
+        if action_path == self.path:
+            log.warn("invalid action format: using 'self' as the target would recurse")
+            raise ActionFormatError(action)
+
         query = home.Home.path_to_query(action_path)
         return query, attr, value
 
     @asyncio.coroutine
     def on_change(self, S: home.Home, room: 'RoomState', path: str, new_node: home.NodeData):
-        log.info("{} == {}".format(path, self.path))
         assert path == self.path
         assert room is self.owner
         self.last_node = new_node
@@ -89,6 +93,7 @@ class SwitchState:
 
         # If an action is set for the current state, act on it.
         try:
+            log.info("switch {} applying action: {}".format(path, action))
             query, attr, value = self.parse_action(action)
             yield from S(query).attr(attr, value).run()
         except ActionFormatError:
@@ -113,11 +118,6 @@ class RoomState:
     @asyncio.coroutine
     def state_changed(self, S: home.Home):
         yield from S('room[name={}]'.format(self.name)).attr('humans_present', self.are_humans_present()).run()
-
-
-@asyncio.coroutine
-def handle_switch_change(S: home.Home, room_state: RoomState, switch_path: str, switch_node: home.NodeData):
-    return room_state.update_switch(S, switch_path, switch_node)
 
 
 @asyncio.coroutine

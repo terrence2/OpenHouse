@@ -48,7 +48,7 @@ def main():
             bridges.append(Bridge(name, node['attrs']['ipv4'], node['attrs']['username'], home))
 
         # Find all configured lights.
-        res = home.query("hue").run()
+        res = home.query("light[kind=hue], light[kind=hue-livingcolors]").run()
         lights = []
         for path, node in res.items():
             try:

@@ -32,7 +32,7 @@ def main():
 def manage_devices():
     home = yield from aiohome.connect(('localhost', 8080))
 
-    nodes = yield from home('wemo-switch').run()
+    nodes = yield from home('switch[kind=wemo]').run()
     device_names = [node.attrs['name'] for node in nodes.values()]
 
     # Start the reply server, sending events to the wemo devices in |devices|.
