@@ -3,30 +3,26 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 #
-#  Map switch states => human states.
+#  Use switch and motion states to infer human presence and activity.
 #
 #      Default logic for switches is:
 #           /home/room[humans] :- any(/home/room/switch[state=true])
 #
 #      This can be overridden by using the switches on<state> properties, e.g.:
-#          <wemo-switch state="foo" onfoo="/path[attr=value]"></wemo-switch>
-#        FIXME:
 #          <switch kind="wemo" state="foo" onfoo="/path[attr=value]"></switch>
 
+import argparse
 import asyncio
 import functools
 import logging
 import re
-import shared.aiohome as home
-
-from pprint import pformat
-
+import shared.aiohome as aiohome
 import shared.util as util
 
 log = logging.getLogger("oh_presence")
 
 
-def get_state(node: home.NodeData) -> str:
+def get_state(node: aiohome.NodeData) -> str:
     return node.attrs.get('state', 'false')
 
 
@@ -40,7 +36,7 @@ class ActionFormatError(Exception):
 
 
 class SwitchState:
-    def __init__(self, room: 'RoomState', path: str, node: home.NodeData):
+    def __init__(self, room: 'RoomState', path: str, node: aiohome.NodeData):
         self.owner = room
         self.path = path
         self.last_node = node
@@ -73,11 +69,11 @@ class SwitchState:
             log.warn("invalid action format: using 'self' as the target would recurse")
             raise ActionFormatError(action)
 
-        query = home.Home.path_to_query(action_path)
+        query = aiohome.Home.path_to_query(action_path)
         return query, attr, value
 
     @asyncio.coroutine
-    def on_change(self, S: home.Home, room: 'RoomState', path: str, new_node: home.NodeData):
+    def on_change(self, home: aiohome.Home, room: 'RoomState', path: str, new_node: aiohome.NodeData):
         assert path == self.path
         assert room is self.owner
         self.last_node = new_node
@@ -88,14 +84,14 @@ class SwitchState:
         # By default the switch state should just notify the room and let is_enabled control the 'humans' property.
         if not action:
             log.info("switch {} state change -> {}".format(path, get_state(new_node)))
-            yield from self.owner.state_changed(S)
+            yield from self.owner.state_changed(home)
             return
 
         # If an action is set for the current state, act on it.
         try:
             log.info("switch {} applying action: {}".format(path, action))
             query, attr, value = self.parse_action(action)
-            yield from S(query).attr(attr, value).run()
+            yield from home(query).attr(attr, value).run()
         except ActionFormatError:
             return
 
@@ -116,21 +112,26 @@ class RoomState:
         self.switches_[switch.path] = switch
 
     @asyncio.coroutine
-    def state_changed(self, S: home.Home):
-        yield from S('room[name={}]'.format(self.name)).attr('humans_present', self.are_humans_present()).run()
+    def state_changed(self, home: aiohome.Home):
+        next_state = 'yes' if self.are_humans_present() else 'no'
+        yield from home('room[name={}]'.format(self.name)).attr('humans', next_state).run()
 
 
 @asyncio.coroutine
 def main():
-    util.enable_logging('output.log', 'DEBUG')
-    S = yield from home.connect(('localhost', 8080))
+    parser = argparse.ArgumentParser(description='Interpret switch and motion states to infer human activity.')
+    util.add_common_args(parser)
+    args = parser.parse_args()
+
+    util.enable_logging(args.log_target, args.log_level)
+    S = yield from aiohome.connect(('localhost', 8080))
 
     rooms = yield from S('room').run()
     for room_path, room_node in rooms.items():
         room_name = room_node.attrs['name']
         room = RoomState(room_path, room_name)
 
-        switches = yield from S('room[name={}] > wemo-switch'.format(room_name)).run()
+        switches = yield from S('room[name={}] > switch'.format(room_name)).run()
         for item in switches.items():
             switch = SwitchState(room, *item)
             room.add_switch(switch)

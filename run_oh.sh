@@ -3,8 +3,15 @@ function kill_all_jobs { jobs -p | xargs kill; }
 trap kill_all_jobs SIGINT
 
 # Ensure that openhouse exists and is accessible.
+# FIXME: this won't be needed after we remove zmq.
 mkdir -p /var/run/openhouse
 mkdir -p /var/run/openhouse/home
+
+# Ensure that we have the log dir.
+LOG_TIME=`date +%Y-%m-%d-%T`
+LOGDIR="log/$LOG_TIME"
+mkdir -p $LOGDIR
+pushd log; rm -f latest; ln -s $LOG_TIME latest; popd
 
 # Ensure that any subcommands we need are built.
 make -C oh_home
@@ -18,37 +25,37 @@ pid_home=$!
 sleep 2; # FIXME: oh_home needs to have a server behind the named socks before the
          # other daemons can startup successfully.
 
-./oh_hue/oh_hue.py --daemonize &
+./oh_hue/oh_hue.py --daemonize -L $LOGDIR/oh_hue.log &
 pid_hue=$!
 
-./oh_scene/oh_scene.py --daemonize &
-pid_scene=$!
+./oh_apply_scene/oh_apply_scene.py --daemonize -L $LOGDIR/oh_apply_scene.log &
+pid_apply_scene=$!
 
-./oh_wemo/oh_wemo.py &
+./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log &
 pid_wemo=$!
 
-#./oh_presence/oh_presence.py &
-#pid_presence=$!
+./oh_presence/oh_presence.py -L $LOGDIR/oh_presence.log &
+pid_presence=$!
 
-#./oh_presence/oh_controller.py &
-#pid_controller=$!
+./oh_select_scene/oh_select_scene.py -L $LOGDIR/oh_select_scene.log &
+pid_select_scene=$!
 
 { pushd oh_web && ./oh_web_sabot.py; popd; } &
 pid_web=$!
 
 
-echo "pid home:  "$pid_home
-echo "pid hue:   "$pid_hue
-echo "pid scene: "$pid_scene
-echo "pid wemo:  "$pid_wemo
-#echo "pid presence: "$pid_presence
-#echo "pid controller: "$pid_controller
+echo "pid home:    "$pid_home
+echo "pid wemo:    "$pid_wemo
+echo "pid presence: "$pid_presence
+echo "pid select: "$pid_select_scene
+echo "pid apply:   "$pid_apply_scene
+echo "pid hue:     "$pid_hue
 echo "pid web:   "$pid_web
 wait $pid_web
-#wait $pid_controller
-#wait $pid_presence
-wait $pid_wemo
-wait $pid_scene
 wait $pid_hue
+wait $pid_apply_scene
+wait $pid_select_scene
+wait $pid_presence
+wait $pid_wemo
 wait $pid_home
 

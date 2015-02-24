@@ -4,4 +4,4 @@ __pycache__
 .virtualenv*
 oh_*/build/
 oh_*/node_modules/
-events.log
+log/

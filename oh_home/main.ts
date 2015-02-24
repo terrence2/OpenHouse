@@ -306,7 +306,7 @@ function loaded_jsdom(errors, window)
             spark.on('data', function (data) {
                 var token = data.token;
                 var message = data.message;
-                log.info({data:data, token:token, message:message}, 'websocket data');
+                log.info({len: message.length}, 'handling websocket message');
                 var output;
                 if (message.type == 'subscribe')
                     output = handle_subscribe(ctx, message, spark);

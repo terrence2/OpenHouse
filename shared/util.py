@@ -26,8 +26,7 @@ def add_common_args(parser: argparse.ArgumentParser):
 
 def enable_logging(filename: str, level: str):
     #formatter = logging.Formatter('%(pathname)s [%(module)s] - %(funcName)s:L%(lineno)d : %(message)s')
-    formatter = logging.Formatter(fmt='%(asctime)s:%(levelname)s:%(name)s:%(message)s',
-            datefmt="%H")
+    formatter = logging.Formatter(fmt='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
     # File logger captures everything.
     file_handler = logging.FileHandler(filename)

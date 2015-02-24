@@ -53,4 +53,3 @@ def manage_devices():
 
 if __name__ == '__main__':
     main()
-

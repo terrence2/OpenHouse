@@ -14,7 +14,7 @@ import shared.util as util
 
 class RoomState:
     def __init__(self, name: str, node: home.NodeData):
-        self.log = logging.getLogger('oh_controller.' + name)
+        self.log = logging.getLogger('oh_select_scene.' + name)
         self.name = name
         self.humans = node.attrs.get('humans', 'yes')
         self.default_scenes = {

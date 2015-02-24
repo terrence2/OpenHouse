@@ -12,7 +12,7 @@ import shared.util as util
 from shared.home import Home, QueryGroup
 
 
-log = logging.getLogger('oh_scene')
+log = logging.getLogger('oh_apply_scene')
 
 
 class Scene:
