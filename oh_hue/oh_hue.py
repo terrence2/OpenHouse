@@ -25,8 +25,7 @@ class BridgeNotFound(Exception):
 
 
 def find_bridge_owning_light(bridges: [Bridge], light_node) -> (Bridge, str):
-    # FIXME: fix this name hack and rename the lights in my house.
-    name = 'hue-' + light_node['attrs']['name']
+    name = light_node['attrs']['name']
     for bridge in bridges:
         if bridge.owns_light_named(name):
             return bridge, bridge.get_id_for_light_named(name)
