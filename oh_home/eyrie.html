@@ -100,7 +100,7 @@
     <!--<light kind="hue" name="office-torch"></light>-->
     <motion kind="wemo" name="m-office-desk0"></motion>
     <motion kind="wemo" name="m-office-west"></motion>
-    <motion kind="wemo" name="m-office-east"></motion>
+    <motion kind="wemo" name="m-office-east" context="room[name=office], room[name=hall]"></motion>
     <switch kind="wemo" name="s-office-desk1"></switch>
     <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
   </room>
@@ -113,10 +113,12 @@
   </room>
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
     <light kind="hue" name="kitchen-sink"></light>
+    <light kind="hue" name="kitchen-ceiling0"></light>
     <light kind="hue" name="kitchen-ceiling1"></light>
     <light kind="hue" name="kitchen-ceiling2"></light>
     <light kind="hue" name="kitchen-ceiling3"></light>
     <light kind="hue" name="kitchen-ceiling4"></light>
+    <switch kind="wemo" name="s-kitchen-sink"></switch>
     <motion kind="wemo" name="sink"></motion>
     <motion kind="wemo" name="west"></motion>
   </room>
@@ -131,7 +133,7 @@
     <light kind="hue" name="livingroom-tower1"></light>
     <light kind="hue" name="livingroom-tower2"></light>
     <light kind="hue-livingcolors" name="livingroom-console0"></light>
-    <switch kind="wemo" name="s-livingroom-couch" ontrue="/eyrie[scene=movie]" onfalse="/eyrie[scene=on]"></switch>
+    <switch kind="wemo" name="s-livingroom-couch" activity="movie" context="home"></switch>
     <motion kind="wemo" name="north"></motion>
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">

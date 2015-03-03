@@ -96,7 +96,10 @@ function display_room(data, global_scenes_msg, elem, conn)
 
                     // Listen for future changes.
                     conn.subscribe(path, (_, msg) => {
-                        $(e).css('background-color', msg.attrs.humans != 'no' ? '#d7ffea' : '');
+                        var color = '';
+                        if (msg.attrs.humans !== undefined && msg.attrs.humans != 'no')
+                            color = '#d7ffea'
+                        $(e).css('background-color', color);
                         $(sel).val(msg.attrs.scene || 'auto');
                     });
                 });

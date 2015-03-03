@@ -19,6 +19,9 @@ class NodeData:
         self.text = node['text']
         self.attrs = node['attrs']
 
+        # Name is special: we need a name to even refer to the node, so we can assume it is present.
+        self.name = node['attrs']['name']
+
     def __str__(self):
         if self.text:
             return "<{} {}>{}</{}>".format(self.tagName, self.attrs, self.text, self.tagName)
