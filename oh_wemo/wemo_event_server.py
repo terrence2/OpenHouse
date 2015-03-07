@@ -23,7 +23,8 @@ class WemoEventHandler(aiohttp.server.ServerHttpProtocol):
     @asyncio.coroutine
     def handle_state_change(self, device: WemoDevice, state: bool):
         log.info("Device {} changed state to {}".format(device.name, state))
-        yield from self.home("[name='{}']".format(device.name)).attr('state', state).run()
+        attribute = 'raw-state' if device.tagName == 'motion' else 'state'
+        yield from self.home("[name='{}']".format(device.name)).attr(attribute, state).run()
 
     @asyncio.coroutine
     def handle_request(self, message, payload):

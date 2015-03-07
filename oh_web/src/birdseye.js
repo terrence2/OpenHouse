@@ -37,20 +37,23 @@ function create_home_area(data, elem, conn) {
         .height(get_display_size(data.attrs.l))
         .appendTo(elem);
 
-    conn.query('home > scene').run()
-        .then(scenes_msg => {
+    conn.query('[activity]').run()
+        .then(activities_msg => {
+            var activities = ["yes", "unknown"];
+            for (var path in activities_msg)
+                activities.push(activities_msg[path].attrs.activity);
             conn.query('home > room').run()
-                .then(msg => display_rooms(msg, scenes_msg, e, conn));
+                .then(msg => display_rooms(msg, activities, e, conn));
         });
 }
 
-function display_rooms(rooms_msg, global_scenes_msg, elem, conn)
+function display_rooms(rooms_msg, activities, elem, conn)
 {
     for (var path in rooms_msg)
-        display_room(rooms_msg[path], global_scenes_msg, elem, conn);
+        display_room(rooms_msg[path], activities, elem, conn);
 }
 
-function display_room(data, global_scenes_msg, elem, conn)
+function display_room(data, activities, elem, conn)
 {
     var room_name = data.attrs.name;
 
@@ -78,36 +81,27 @@ function display_room(data, global_scenes_msg, elem, conn)
 
     // Create and populate the scene selection dropdown in each room.
     var sel = $(`<select id="birdseye-room-${room_name}-select"></select>`)
-        .append(`<option value="auto">auto</option>`)
         .appendTo(e);
-    R.map((v) => $(sel).append(`<option value="${v.attrs.name}">${v.attrs.name}</option>`),
-          R.values(global_scenes_msg));
-    conn.query(`room[name=${room_name}] > scene`).run()
-        .then(R.values)
-        .then(R.map((data) => data.attrs.name))
-        .then(R.map((n) => $(sel).append(`<option value="${n}">${n}</option>`)))
-        .then((_) => {
-            // Get the current value of the room's scene.
-            conn.query(`room[name=${room_name}]`).run()
-                .then(msg => {
-                    var path = R.last(R.keys(msg));
-                    var data = R.last(R.values(msg));
-                    $(sel).val(data.attrs.scene || 'auto');
+    R.map((v) => $(sel).append(`<option value="${v}">${v}</option>`), activities);
+    // Get the current value of the room's activity.
+    conn.query(`room[name=${room_name}]`).run()
+        .then(msg => {
+            var path = R.last(R.keys(msg));
+            var data = R.last(R.values(msg));
+            $(sel).val(data.attrs.activity || 'unknown');
 
-                    // Listen for future changes.
-                    conn.subscribe(path, (_, msg) => {
-                        var color = '';
-                        if (msg.attrs.humans !== undefined && msg.attrs.humans != 'no')
-                            color = '#d7ffea'
-                        $(e).css('background-color', color);
-                        $(sel).val(msg.attrs.scene || 'auto');
-                    });
-                });
+            // Listen for future changes.
+            conn.subscribe(path, (_, msg) => {
+                var activity = msg.attrs.activity || 'unknown';
+                var color = activity == 'unknown' ? '' : '#d7ffea';
+                $(e).css('background-color', color);
+                $(sel).val(activity);
+            });
         });
     sel.on('change', (e) => {
         var switchValue = e.target.options[e.target.selectedIndex].value;
-        console.log(`Changing room ${room_name} to scene ${switchValue}`);
-        conn.query(`room[name=${room_name}]`).attr('scene', switchValue).run();
+        console.log(`Changing room ${room_name} to activity ${switchValue}`);
+        conn.query(`room[name=${room_name}]`).attr('activity', switchValue).run();
     });
 }
 

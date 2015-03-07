@@ -10,8 +10,9 @@ from urllib.parse import urljoin
 
 
 class WemoDevice:
-    def __init__(self, name: str, setup_location: str, callback_address: (str, int)):
+    def __init__(self, name: str, setup_location: str, tagName: str, callback_address: (str, int)):
         self.name = name
+        self.tagName = tagName
         self.event_url = urljoin(setup_location, "/upnp/event/basicevent1")
         self.log = logging.getLogger("wemo_device.{}".format(name))
         self.callback_address = "<http://{}:{}>".format(*callback_address)

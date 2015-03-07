@@ -25,6 +25,14 @@ def add_common_args(parser: argparse.ArgumentParser):
 
 
 def enable_logging(filename: str, level: str):
+    class Squelch(logging.Filter):
+        def filter(self, record):
+            if record.levelno == logging.DEBUG:
+                return not record.name.startswith('asyncio') and \
+                       not record.name.startswith('websockets') and \
+                       not record.name.startswith('aiohttp')
+            return True
+
     #formatter = logging.Formatter('%(pathname)s [%(module)s] - %(funcName)s:L%(lineno)d : %(message)s')
     formatter = logging.Formatter(fmt='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
 
@@ -42,10 +50,12 @@ def enable_logging(filename: str, level: str):
         color_lineno=('green', None, False),
     )
     stream_handler.setLevel(getattr(logging, level))
+    stream_handler.addFilter(Squelch())
 
     # Set an output format.
     stream_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(Squelch())
 
     # Add handlers to root.
     root = logging.getLogger('')

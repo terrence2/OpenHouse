@@ -32,8 +32,8 @@ def main():
 def manage_devices():
     home = yield from aiohome.connect(('localhost', 8080))
 
-    nodes = yield from home('switch[kind=wemo]').run()
-    device_names = [node.name for node in nodes.values()]
+    nodes = yield from home('switch[kind=wemo], motion[kind=wemo]').run()
+    config_devices = {node.name: node.tagName for node in nodes.values()}
 
     # Start the reply server, sending events to the wemo devices in |devices|.
     device_map = {}
@@ -42,8 +42,8 @@ def manage_devices():
     # Start looking for wemos, passing them our server's address.
     @asyncio.coroutine
     def found_new_device(info: WemoDeviceInfo):
-        if info.name in device_names:
-            device = WemoDevice(info.name, info.location, callback_address)
+        if info.name in config_devices:
+            device = WemoDevice(info.name, info.location, config_devices[info.name], callback_address)
             log.info("following wemo {} at {}".format(info.name, info.location))
             yield from device.follow_device(device_map)
         else:

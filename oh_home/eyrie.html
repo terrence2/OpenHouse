@@ -112,6 +112,9 @@
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
   </room>
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
+    <!--<door facing="north" x="6in" y="0ft" into="hall">-->
+      <motion kind="wemo" name="m-kitchen-north"></motion>
+    <!--</door>-->
     <light kind="hue" name="kitchen-sink"></light>
     <light kind="hue" name="kitchen-ceiling0"></light>
     <light kind="hue" name="kitchen-ceiling1"></light>
@@ -119,8 +122,7 @@
     <light kind="hue" name="kitchen-ceiling3"></light>
     <light kind="hue" name="kitchen-ceiling4"></light>
     <switch kind="wemo" name="s-kitchen-sink"></switch>
-    <motion kind="wemo" name="sink"></motion>
-    <motion kind="wemo" name="west"></motion>
+    <motion kind="wemo" name="m-kitchen-sink"></motion>
   </room>
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
     <light kind="hue" name="utility-ceiling"></light>
@@ -133,7 +135,7 @@
     <light kind="hue" name="livingroom-tower1"></light>
     <light kind="hue" name="livingroom-tower2"></light>
     <light kind="hue-livingcolors" name="livingroom-console0"></light>
-    <switch kind="wemo" name="s-livingroom-couch" activity="movie" context="home"></switch>
+    <switch kind="wemo" name="s-livingroom-couch" context="home" attribute="scene" value="movie"></switch>
     <motion kind="wemo" name="north"></motion>
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
@@ -142,8 +144,8 @@
   </room>
 
   <scene name="on">
-    <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
-    <rule name="1" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+    <rule name="0" style="color:bhs(255,34495,232);animation-duration:1;visibility:visible;">light</rule>
+    <rule name="1" style="color:bhs(255,34495,232);animation-duration:1;visibility:hidden;">light[kind=hue-livingcolors]</rule>
   </scene>
 
   <scene name="off">
@@ -153,6 +155,9 @@
   <scene name="sleep">
     <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
     <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[off_at_night='true']</rule>
+    <activity name="yes">
+      <rule name="0" style="color:bhs(128,34495,232);animation-duration:5;visibility:visible;">light</rule>
+    </activity>
   </scene>
 
   <scene name="movie">
@@ -160,6 +165,9 @@
     <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
     <rule name="2" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
     <rule name="3" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
+    <activity name="yes">
+      <rule name="0" style="color:bhs(128,34495,232);animation-duration:5;visibility:visible;">light</rule>
+    </activity>
   </scene>
 
   <scene name="game-study">
