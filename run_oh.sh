@@ -1,11 +1,9 @@
 #!/usr/bin/bash
+# This Source Code Form is subject to the terms of the GNU General Public
+# License, version 3. If a copy of the GPL was not distributed with this file,
+# You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 function kill_all_jobs { jobs -p | xargs kill; }
 trap kill_all_jobs SIGINT
-
-# Ensure that openhouse exists and is accessible.
-# FIXME: this won't be needed after we remove zmq.
-mkdir -p /var/run/openhouse
-mkdir -p /var/run/openhouse/home
 
 # Ensure that we have the log dir.
 LOG_TIME=`date +%Y-%m-%d-%T`
