@@ -50,7 +50,7 @@ def enable_logging(filename: str, level: str):
         color_lineno=('green', None, False),
     )
     stream_handler.setLevel(getattr(logging, level))
-    stream_handler.addFilter(Squelch())
+    #stream_handler.addFilter(Squelch())
 
     # Set an output format.
     stream_handler.setFormatter(formatter)

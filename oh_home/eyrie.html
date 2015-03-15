@@ -149,14 +149,14 @@
   </scene>
 
   <scene name="off">
-    <rule name="0" style="visibility:hidden;">hue</rule>
+    <rule name="0" style="visibility:hidden;">light</rule>
   </scene>
 
   <scene name="sleep">
     <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
     <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[off_at_night='true']</rule>
     <activity name="yes">
-      <rule name="0" style="color:bhs(128,34495,232);animation-duration:5;visibility:visible;">light</rule>
+      <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
     </activity>
   </scene>
 
@@ -166,7 +166,7 @@
     <rule name="2" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
     <rule name="3" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
     <activity name="yes">
-      <rule name="0" style="color:bhs(128,34495,232);animation-duration:5;visibility:visible;">light</rule>
+      <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
     </activity>
   </scene>
 

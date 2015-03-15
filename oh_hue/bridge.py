@@ -1,67 +1,39 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import aiohttp
+import asyncio
 import json
 import logging
+import os
 
 from collections import defaultdict, namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from queue import Queue, Empty
 from pprint import pprint, pformat
 
 import requests
 
-import shared.util as util
-
-from shared.home import Home
+from shared.aiohome import Home
 
 
 log = logging.getLogger('oh_hue.bridge')
-
-
-class QueueThread(util.ExitableThread):
-    class ExitMarker: pass
-
-    def __init__(self):
-        super().__init__()
-        self.queue_ = Queue()
-
-    def exit(self):
-        self.queue_.put(self.ExitMarker())
 
 
 # The message type of a light update request.
 LightUpdate = namedtuple('LightUpdate', ['request_time', 'light_id', 'json_data'])
 
 
-class Bridge(QueueThread):
-    def __init__(self, name: str, addr: str, username: str, home: Home):
+class Bridge:
+    def __init__(self, path: str, addr: str, username: str, home: Home):
         super().__init__()
         self.home = home
-        self.name = name
-        self.bridge_query = Home.path_to_query(self.name)
+        self.path = path
+        self.bridge_query = Home.path_to_query(self.path)
 
         # Bridge access.
         self.address = addr
         self.username = username
-
-        # Make initial status query.
-        res = requests.get(self.url(''))
-        self.status_ = res.json()
-        log.debug(pformat(self.status_))
-
-        # Derive initial group list.
-        self.known_groups_ = {
-            frozenset(self.status_['lights'].keys()): '0'
-        }
-        # TODO: record any other well-known groups.
-
-        # Inject the hue-bridge config under the bridge node.
-        query_group = self.home.group()
-        query_group.query(self.bridge_query).empty()
-        query_group.reflect_as_properties(self.bridge_query, self.status_['config'])
-        query_group.run()
 
         # Keep a list of lights we have queried info for so we can
         # report any that are probably unconfigured.
@@ -72,6 +44,30 @@ class Bridge(QueueThread):
         # Keep requests in a window so that we can group requests.
         self.nagle_window_ = []
 
+        # Set to true while the watching task is running.
+        self.watching = False
+
+        # Set async after creation:
+        self.status_ = {}
+        self.known_groups_ = {}
+
+    @classmethod
+    @asyncio.coroutine
+    def create(cls, path: str, addr: str, username: str, home: Home) -> 'Bridge':
+        bridge = cls(path, addr, username, home)
+
+        # Make initial status query.
+        res = yield from aiohttp.request('GET', bridge.url(''))
+        bridge.status_ = yield from res.json()
+
+        # Derive initial group list.
+        bridge.known_groups_ = {
+            frozenset(bridge.status_['lights'].keys()): '0'
+        }
+        # TODO: record any other well-known groups.
+
+        return bridge
+
     def url(self, target: str) -> str:
         """
         Build a url to interact with api |target|.
@@ -79,12 +75,19 @@ class Bridge(QueueThread):
         return "http://{}/api/{}{}".format(self.address, self.username, target)
 
     def owns_light_named(self, light_name: str) -> bool:
+        """
+        Return true if the given light is controlled by this bridge. In theory, two bridges could have
+        a light with the same name: we simply assume this does not happen.
+        """
         for light_id, light_state in self.status_['lights'].items():
             if light_state['name'] == light_name:
                 return True
         return False
 
     def get_id_for_light_named(self, light_name: str) -> bool:
+        """
+        Map a light name (as configured in openhouse and the hue gui) to a light id used for controlling the light.
+        """
         for light_id, light_state in self.status_['lights'].items():
             if light_state['name'] == light_name:
                 self.queried_lights_.add(light_name)
@@ -92,13 +95,12 @@ class Bridge(QueueThread):
         raise Exception("Attempted to get id for unowned light.")
 
     def show_unqueried_lights(self):
+        """
+        Log any lights that have not had their name->id mapping requested.
+        """
         for light_id, light_state in self.status_['lights'].items():
             if light_state['name'] not in self.queried_lights_:
                 log.error("Found unconfigured light: {}".format(light_state['name']))
-
-    def set_light_state(self, light_id: str, json_data: str):
-        log.debug("Light request for {} @ {}".format(light_id, datetime.now()))
-        self.queue_.put(LightUpdate(datetime.now(), light_id, json_data))
 
     # The nagle window is the maximum amount of time between the first message is received and the last message is
     # received that we will wait before sending the message group.
@@ -111,24 +113,21 @@ class Bridge(QueueThread):
     # Time to wait when not inside a nagle window.
     NONWINDOW_DELAY = timedelta(seconds=5)  # 5s
 
-    def run(self):
-        while True:
-            try:
-                # Use a longer delay if we're not currently accumulating messages.
-                next_delay = self.NAGLE_WINDOW_DELAY if len(self.nagle_window_) > 0 else self.NONWINDOW_DELAY
-                entry = self.queue_.get(True, next_delay.total_seconds())
+    @asyncio.coroutine
+    def set_light_state(self, light_id: str, json_data: str):
+        log.debug("Light request for {} @ {}".format(light_id, datetime.now()))
+        self.nagle_window_.append(LightUpdate(datetime.now(), light_id, json_data))
+        if self.watching:
+            return
+        self.watching = True
+        yield from asyncio.async(self.watch_window())
 
-                if isinstance(entry, self.ExitMarker):
-                    self.maybe_dispatch_nagle_window()
-                    return
-
-                elif isinstance(entry, LightUpdate):
-                    self.nagle_window_.append(entry)
-                    self.maybe_dispatch_nagle_window()
-
-            except Empty:
-                # The nagle delay (or more) has expired, so send any messages.
-                self.maybe_dispatch_nagle_window()
+    @asyncio.coroutine
+    def watch_window(self):
+        while self.nagle_window_:
+            yield from self.maybe_dispatch_nagle_window()
+            yield from asyncio.sleep(0.050)
+        self.watching = False
 
     def nagle_window_has_expired(self):
         if not self.nagle_window_:
@@ -138,8 +137,24 @@ class Bridge(QueueThread):
         log.debug("size:{}; delay:{}".format(window_size, window_delay))
         return window_size > self.NAGLE_WINDOW_SIZE or window_delay > self.NAGLE_WINDOW_DELAY
 
+    @asyncio.coroutine
+    def maybe_dispatch_nagle_window(self):
+        """
+        Dispatch the nagle window if the window has expired. Return True if we sent the window.
+        """
+        if not self.nagle_window_has_expired():
+            return
+
+        group_list = self.assort_groups(self.nagle_window_)
+        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
+        log.debug(pformat(group_list))
+        self.nagle_window_ = []
+
+        for item in group_list:
+            yield from self.update_group(*item)
+
     @staticmethod
-    def assort_groups(updates: [LightUpdate]) -> [(frozenset, str)]:
+    def assort_groups(updates: [LightUpdate]) -> [(frozenset, bytes)]:
         """
         Maps the updates list from individual updates to a list with id's grouped by common properties.
             [(_, id, props)] => [(set(id), props)]
@@ -150,63 +165,75 @@ class Bridge(QueueThread):
         out = [(frozenset(v), k) for k, v in groups.items()]
         return sorted(out, key=lambda item: len(item[0]), reverse=True)
 
+    @asyncio.coroutine
+    def update_group(self, group: frozenset, json_data: bytes):
+        """
+        Set a group of lights to state given by json_data.
+        """
+        # Send a group request for well-known groups.
+        if group in self.known_groups_:
+            yield from self.update_well_known_group(self.known_groups_[group], json_data)
+            yield from asyncio.sleep(0.100)
+
+        # Make a temporary group if there is not one we know about.
+        # It takes a request each to create, set, and delete a group,
+        # so only both if we will save at least one request.
+        elif len(group) > 3:
+            yield from self.update_unknown_group(group, json_data)
+            yield from asyncio.sleep(0.300)
+
+        # Otherwise apply the lights manually.
+        else:
+            for light_id in group:
+                yield from self.update_single_light(light_id, json_data)
+                yield from asyncio.sleep(0.50)
+
+    @asyncio.coroutine
+    def update_well_known_group(self, group_id: str, json_data: bytes) -> bool:
+        """
+        Set the state of a pre-configured group of lights. Return True on success.
+        """
+        url = self.url('/groups/{}/action'.format(group_id))
+        response = yield from aiohttp.request("PUT", url, data=json_data)
+        content = yield from response.json()
+        self.show_response_errors(content)
+
+    @asyncio.coroutine
+    def update_unknown_group(self, group: frozenset, json_data: bytes):
+        """
+        Set the state of an unconfigured group of lights. Return True on success.
+        """
+        create_data = json.dumps({'lights': list(group), 'name': 'temporary'})
+        response = yield from aiohttp.request('POST', self.url('/groups'), data=create_data)
+        content = yield from response.json()
+        result = self.show_response_errors(content)
+        if not result:
+            return
+        group_id = content[0]['success']['id']
+        try:
+            yield from self.update_well_known_group(group_id, json_data)
+        finally:
+            response = yield from aiohttp.request('DELETE', self.url('/groups/{}'.format(group_id)))
+            content = yield from response.json()
+            self.show_response_errors(content)
+
+    @asyncio.coroutine
+    def update_single_light(self, light_id: str, json_data: bytes) -> bool:
+        """
+        Set the state of a single light. Return True on success.
+        """
+        url = self.url('/lights/{}/state'.format(light_id))
+        response = yield from aiohttp.request("PUT", url, data=json_data)
+        content = yield from response.json()
+        self.show_response_errors(content)
+
     @staticmethod
-    def show_response_errors(res: requests.Response) -> bool:
+    def show_response_errors(response: object) -> bool:
         """
         Returns True if there were no errors in the response.
         """
-        errors = [item['error'] for item in res.json() if 'error' in item]
+        errors = [item['error'] for item in response if 'error' in item]
         for error in errors:
             log.error(error)
         return len(errors) == 0
 
-    def update_well_known_group(self, group_id: str, json_data: bytes) -> bool:
-        """
-        Return True on success.
-        """
-        url = self.url('/groups/{}/action'.format(group_id))
-        res = requests.put(url, data=json_data)
-        return self.show_response_errors(res)
-
-    @contextmanager
-    def temporary_group(self, group: frozenset):
-        create_data = json.dumps({'lights': list(group), 'name': 'temporary'})
-        response = requests.post(self.url('/groups'), data=create_data)
-        result = self.show_response_errors(response)
-        if not result:
-            yield None
-            return
-        group_id = response.json()[0]['success']['id']
-        try:
-            yield group_id
-        finally:
-            response = requests.delete(self.url('/groups/{}'.format(group_id)))
-            self.show_response_errors(response)
-
-    def maybe_dispatch_nagle_window(self):
-        if not self.nagle_window_has_expired():
-            return
-
-        group_list = self.assort_groups(self.nagle_window_)
-        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
-        log.debug(pformat(group_list))
-        self.nagle_window_ = []
-
-        for group, json_data in group_list:
-            # Send a group request for well-known groups.
-            log.warning("group {} in known: {} -> len: {}".format(group, group in self.known_groups_, len(group)))
-            if group in self.known_groups_:
-                if self.update_well_known_group(self.known_groups_[group], json_data):
-                    continue
-
-            # Make a temporary group if there is not one we know about.
-            elif len(group) > 0:
-                with self.temporary_group(group) as group_id:
-                    if group_id is not None and self.update_well_known_group(group_id, json_data):
-                        continue
-
-            # Otherwise apply the lights manually.
-            for light_id in group:
-                url = self.url('/lights/{}/state'.format(light_id))
-                res = requests.put(url, data=json_data)
-                self.show_response_errors(res)
