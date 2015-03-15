@@ -13,8 +13,6 @@ from rainbow_logging_handler import RainbowLoggingHandler
 
 def add_common_args(parser: argparse.ArgumentParser):
     group = parser.add_argument_group('OpenHouse Common Arguments')
-    group.add_argument('--daemonize', '-d', action='store_true',
-                       help="Do not enter a REPL.")
     group.add_argument('--log-level', '-l', default='DEBUG',
                        help="The logging level. (default DEBUG)")
     group.add_argument('--log-target', '-L', default='events.log',

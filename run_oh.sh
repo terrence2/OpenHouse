@@ -23,10 +23,10 @@ make -C oh_home
 { node ./oh_home/build/main.js ./oh_home/eyrie.html | bunyan; } &
 pid_home=$!
 
-./oh_hue/oh_hue.py --daemonize -L $LOGDIR/oh_hue.log &
+./oh_hue/oh_hue.py -L $LOGDIR/oh_hue.log &
 pid_hue=$!
 
-./oh_apply_scene/oh_apply_scene.py --daemonize -L $LOGDIR/oh_apply_scene.log &
+./oh_apply_scene/oh_apply_scene.py -L $LOGDIR/oh_apply_scene.log &
 pid_apply_scene=$!
 
 ./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log &
@@ -35,7 +35,7 @@ pid_wemo=$!
 ./oh_infer_activity/oh_infer_activity.py -L $LOGDIR/oh_infer_activity.log &
 pid_infer_activity=$!
 
-{ pushd oh_web && ./oh_web_sabot.py; popd; } &
+{ pushd oh_web && ./oh_web_sabot.py -L $LOGDIR/oh_web.log; popd; } &
 pid_web=$!
 
 
