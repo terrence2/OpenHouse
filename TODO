@@ -1,0 +1,23 @@
+TODO
+====
+Stop logging direct motion events to the console.
+Implement oh_motion_filter so we get good motion detector states.
+Make oh_home debug logging only go to the log file, not the console.
+Implement portals.
+Show devices in birdseye.
+Make home connections block on the server being ready.
+Auto-exit oh_ daemonts when oh_home goes down --
+            no point staying up since our state will be out of sync anyway.
+Pass port and address to oh_home on command line.
+Implement oh_manage:
+  oh run [all|<daemon-list>]
+  oh stop [all|<daemon-list>]
+  oh log [all|<daemon-list>]
+  oh watch
+Use implicit on/off scenes.
+Add nerves back into the network.
+
+DONE
+====
+Switch apply-scene to work on home only and make it understand room/home activity states.
+Remove zmq support from oh_home.
