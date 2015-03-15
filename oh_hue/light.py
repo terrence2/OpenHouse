@@ -6,9 +6,7 @@ import logging
 import json
 import shared.aiohome as aiohome
 
-from pprint import pformat
 from shared.color import parse_css_color, Color, RGB, BHS, Mired
-from shared.home import Home
 from bridge import Bridge
 
 
@@ -33,7 +31,7 @@ class Light:
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, id_: str, path: str, node: aiohome.NodeData, bridge: Bridge, home: Home):
+    def create(cls, id_: str, path: str, node: aiohome.NodeData, bridge: Bridge, home: aiohome.Home):
         light = cls(id_, path, node.name, bridge, node)
         yield from home.subscribe(path, light.on_change)
         light.log.info("subscribed to light at {}".format(path))

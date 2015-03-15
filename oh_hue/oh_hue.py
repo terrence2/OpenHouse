@@ -5,18 +5,11 @@
 import asyncio
 import argparse
 import logging
-
-from pprint import pprint
-from threading import RLock
-
+import shared.aiohome as aiohome
 import shared.util as util
-from shared.home import Home
 
 from bridge import Bridge
 from light import Light
-
-import shared.aiohome as aiohome
-
 
 log = logging.getLogger('oh_hue')
 
@@ -67,21 +60,6 @@ def main():
     # Show lights that may be unconfigured.
     for bridge in bridges:
         bridge.show_unqueried_lights()
-
-    """
-    # Start all bridge threads.
-    for bridge in bridges:
-        bridge.start()
-
-    # Show the interactive prompt.
-    util.wait_for_exit(args.daemonize, globals(), locals())
-
-    # Stop all bridge threads.
-    for bridge in bridges:
-        bridge.quit()
-    for bridge in bridges:
-        bridge.join()
-    """
 
 
 if __name__ == '__main__':

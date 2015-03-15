@@ -22,8 +22,6 @@ make -C oh_home
 
 { node ./oh_home/build/main.js ./oh_home/eyrie.html | bunyan; } &
 pid_home=$!
-sleep 2; # FIXME: oh_home needs to have a server behind the named socks before the
-         # other daemons can startup successfully.
 
 ./oh_hue/oh_hue.py --daemonize -L $LOGDIR/oh_hue.log &
 pid_hue=$!

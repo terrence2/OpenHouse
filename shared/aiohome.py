@@ -41,25 +41,6 @@ class QueryGroup:
         self.query_group.append(q)
         return q
 
-    def reflect_as_properties(self, query: str, props: dict):
-        for key, value in props.items():
-            assert isinstance(key, str)
-            key = key.replace(' ', '_')
-
-            if isinstance(value, list):
-                property_content = '<div kind="property-group" name="{}"></div>'.format(key)
-                property_query = query + " > [kind='property-group'][name='{}']".format(key)
-                self.query(query).append(property_content)
-                self.reflect_as_properties(property_query, {str(i): v for i, v in enumerate(value)})
-            elif isinstance(value, dict):
-                property_content = '<div kind="property-group" name="{}"></div>'.format(key)
-                property_query = query + " > [kind='property-group'][name='{}']".format(key)
-                self.query(query).append(property_content)
-                self.reflect_as_properties(property_query, value)
-            else:
-                content = '<div kind="property" name="{}" {}="{}"></div>'.format(key, key, html.escape(str(value)))
-                self.query(query).append(content)
-
     @asyncio.coroutine
     def run(self) -> NodeMap:
         return self.home._execute_query_group(self.query_group)
@@ -189,7 +170,14 @@ class Home:
 
 @asyncio.coroutine
 def connect(address: (str, int)) -> Home:
-    websock = yield from websockets.connect('ws://{}:{}/primus'.format(*address))
+    while True:
+        try:
+            websock = yield from websockets.connect('ws://{}:{}/primus'.format(*address))
+            break
+        except ConnectionRefusedError:
+            log.warn("Failed to connect, retrying in 0.5s")
+            yield from asyncio.sleep(0.5)
+
     yield from websock.send(json.dumps({'token': 0, 'message': {'type': 'ping', 'ping': 'flimfniffle'}}))
     raw = yield from websock.recv()
     frame = json.loads(raw)

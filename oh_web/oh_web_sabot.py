@@ -2,22 +2,11 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import argparse
 import os
-
-from threading import RLock
-
-from shared.home import Home
+import shared.util as util
 
 from bottle import route, run, template, static_file
-
-
-def query_websock_info():
-    h = Home((3, 0), RLock())
-    ws = h.get_websocket_info()
-    return ws
-
-
-websocket_info = query_websock_info()
 
 
 @route('/')
@@ -38,4 +27,19 @@ def resources(name):
     return static_file(RESOURCES[name], root=os.getcwd())
 
 
-run(server='waitress', host="0.0.0.0", port=8887)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='OpenHouse interface server.')
+    parser.add_argument('--address', '-a', default='0.0.0.0', type=str,
+                        help="The address to listen on.")
+    parser.add_argument('--port', '-p', default=8887, type=int,
+                        help="The port to listen on.")
+    util.add_common_args(parser)
+    args = parser.parse_args()
+
+    websocket_info = {
+        'address': "ws://{}:{}/primus".format(args.home_address, args.home_port),
+        'client_code': "http://{}:{}/primus/primus.js".format(args.home_address, args.home_port)
+    }
+
+    util.enable_logging(args.log_target, args.log_level)
+    run(server='waitress', host=args.address, port=args.port)

@@ -7,13 +7,11 @@
 /// <reference path="interfaces/bunyan.d.ts" />
 /// <reference path="interfaces/jsdom.d.ts" />
 /// <reference path="interfaces/primus.d.ts" />
-/// <reference path="interfaces/zmq.d.ts" />
 import fs = require('fs');
 
 import bunyan = require('bunyan');
 import jsdom = require('jsdom');
 import primus = require('primus');
-import zmq = require('zmq');
 
 
 var log = bunyan.createLogger({
@@ -28,9 +26,6 @@ var log = bunyan.createLogger({
 // Protocol constants.
 var query_major_version: number = 3;
 var query_minor_version: number = 0;
-// 0MQ constants.
-var query_address: string = "ipc:///var/run/openhouse/home/query";
-var event_address: string = "ipc:///var/run/openhouse/home/events";
 // WebSocket constants.
 var websocket_ipv4: string = "192.168.0.16";
 var websocket_port: number = 8080;
@@ -39,16 +34,6 @@ var websocket_client_code: string = "http://" + websocket_ipv4 + ":" + websocket
 // Configuration constants.
 var home_html: string = "home.xhtml";
 var autosave_interval: number = 5 * 60 * 1000;
-
-
-function check_zmq_version(): boolean {
-    var parts = zmq.version.split(".");
-    return Number(parts[0]) > 2;
-}
-if (!check_zmq_version()) {
-    log.fatal("ZMQ version must be >=3.0.0... stopping");
-    process.exit(1);
-}
 
 
 function print_usage(message) {
@@ -82,13 +67,11 @@ interface Subscriptions {
 class Context {
     $: any; // I'm not even going to try to type jquery.
     window: any; // or jsdom.
-    pub_sock: zmq.Socket;
     ws_subscriptions: Subscriptions;
 
-    constructor(window, pub_sock: zmq.Socket) {
+    constructor(window) {
         this.window = window;
         this.$ = window.$;
-        this.pub_sock = pub_sock;
         this.ws_subscriptions = {};
     }
 }
@@ -136,10 +119,6 @@ function handle_ping(data: PingMessage): PingResponse {
     var result: PingResponse = {
         pong: data.ping,
         version: version,
-        zmq: {
-            query_address: query_address,
-            event_address: event_address
-        },
         websocket: {
             address: websocket_address,
             client_code: websocket_client_code
@@ -191,7 +170,7 @@ interface QueryResponse {
     [index: string]: QueryResult;
 }
 function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
-    log.info("handling query group");
+    log.debug("handling query group");
 
    // Keep a list of all touched and changed nodes for output and subscription updates.
     var touched: QueryResponse = {};
@@ -205,8 +184,6 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     for (var path in changed) {
         if (path === '')
             continue;
-
-        ctx.pub_sock.send(path + " " + JSON.stringify(changed[path]));
 
         if (ctx.ws_subscriptions[path] !== undefined) {
             for (var i in ctx.ws_subscriptions[path])
@@ -250,15 +227,6 @@ function handle_subscribe(ctx: Context, data: SubscribeMessage, spark): Subscrib
 }
 
 
-function save_jsdom(window)
-{
-    log.info("saving snapshot");
-    fs.writeFile('snapshot.html', jsdom.serializeDocument(window.document), function (err) {
-        if (err)
-            console.error("Failed to save snapshot.");
-    });
-}
-
 function loaded_jsdom(errors, window)
 {
     if (errors) {
@@ -267,63 +235,38 @@ function loaded_jsdom(errors, window)
     }
     log.info("Loaded home: " + home_html);
 
-    // Setup occasional autosave of the current state for inspection.
-    setInterval(function() {save_jsdom(window);}, autosave_interval);
+    // Setup broadcast sockets and listen for connections via WebSockets.
+    var ctx = new Context(window);
 
-    // Setup broadcast sockets and listen for connections via ZMQ.
-    var pub_sock = zmq.socket("pub");
-    pub_sock.bind(event_address, function(error) {
-        if (error) {
-            log.fatal("Failed to bind event socket: " + error);
-            process.exit(1);
+    // Listen for websocket connections.
+    var primus_server = primus.createServer({
+        port: websocket_port,
+        protocol: "JSON",
+        timeout: false
+    });
+    primus_server.on('connection', function (spark) {
+        log.info({address: spark.address}, 'new primus connection');
+
+        spark.on('data', function (data) {
+            var token = data.token;
+            var message = data.message;
+            log.debug({len: message.length}, 'handling websocket message');
+            var output;
+            if (message.type == 'subscribe')
+                output = handle_subscribe(ctx, message, spark);
+            else
+                output = handle_message(ctx, message);
+            spark.write({token: token, message: output});
+        });
+    });
+    primus_server.on('disconnection', function(spark) {
+        for (var key in ctx.ws_subscriptions) {
+            ctx.ws_subscriptions[key] = ctx.ws_subscriptions[key].filter(
+                                            function(val, i, arr) { return val !== spark; });
+            if (ctx.ws_subscriptions[key].length === 0) {
+                delete ctx.ws_subscriptions[key];
+            }
         }
-
-        var ctx = new Context(window, pub_sock);
-
-        // Listen for zmq connections.
-        var query_sock = zmq.socket("rep");
-        query_sock.bind(query_address, function(error) {
-            if (error) {
-                log.fatal("Failed to bind query socket: " + error);
-                process.exit(1);
-            }
-
-            query_sock.on('message', function(msg) {
-                var output = handle_message(ctx, JSON.parse(msg.toString()));
-                query_sock.send(JSON.stringify(output));
-            });
-        });
-
-        // Listen for websocket connections.
-        var primus_server = primus.createServer({
-            port: 8080,
-            protocol: "JSON",
-            timeout: false
-        });
-        primus_server.on('connection', function (spark) {
-            log.info({address: spark.address}, 'new primus connection');
-
-            spark.on('data', function (data) {
-                var token = data.token;
-                var message = data.message;
-                log.info({len: message.length}, 'handling websocket message');
-                var output;
-                if (message.type == 'subscribe')
-                    output = handle_subscribe(ctx, message, spark);
-                else
-                    output = handle_message(ctx, message);
-                spark.write({token: token, message: output});
-            });
-        });
-        primus_server.on('disconnection', function(spark) {
-            for (var key in ctx.ws_subscriptions) {
-                ctx.ws_subscriptions[key] = ctx.ws_subscriptions[key].filter(
-                                                function(val, i, arr) { return val !== spark; });
-                if (ctx.ws_subscriptions[key].length === 0) {
-                    delete ctx.ws_subscriptions[key];
-                }
-            }
-        });
     });
 }
 

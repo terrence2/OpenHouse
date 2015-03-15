@@ -7,9 +7,6 @@ import socket
 import sys
 import time
 
-from contextlib import contextmanager
-from threading import Thread
-
 from prompt_toolkit.contrib.repl import embed
 from rainbow_logging_handler import RainbowLoggingHandler
 
@@ -22,6 +19,10 @@ def add_common_args(parser: argparse.ArgumentParser):
                        help="The logging level. (default DEBUG)")
     group.add_argument('--log-target', '-L', default='events.log',
                        help="The logging target. (default events.log)")
+    group.add_argument('--home-address', '-H', default='localhost', type=str,
+                       help="The HOMe daemon's ipv4 address.")
+    group.add_argument('--home-port', '-P', default=8080, type=int,
+                       help="The HOMe daemon's ipv4 port.")
 
 
 def enable_logging(filename: str, level: str):
@@ -50,7 +51,7 @@ def enable_logging(filename: str, level: str):
         color_lineno=('green', None, False),
     )
     stream_handler.setLevel(getattr(logging, level))
-    #stream_handler.addFilter(Squelch())
+    stream_handler.addFilter(Squelch())
 
     # Set an output format.
     stream_handler.setFormatter(formatter)
@@ -91,20 +92,4 @@ def get_own_internal_ip_slow() -> str:
         # Don't wait around for the GC.
         s.close()
         del s
-
-
-class ExitableThread(Thread):
-    """
-    A thread that defines an exit routine.
-    """
-    def exit(self):
-        raise NotImplementedError("This method must be overridden.")
-
-
-@contextmanager
-def run_thread(thread: ExitableThread):
-    thread.start()
-    yield thread
-    thread.exit()
-    thread.join()
 
