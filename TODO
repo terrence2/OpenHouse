@@ -2,7 +2,6 @@ TODO
 ====
 Stop logging direct motion events to the console.
 Implement oh_motion_filter so we get good motion detector states.
-Make oh_home debug logging only go to the log file, not the console.
 Implement portals.
 Show devices in birdseye.
 Make home connections block on the server being ready.
@@ -21,3 +20,4 @@ DONE
 ====
 Switch apply-scene to work on home only and make it understand room/home activity states.
 Remove zmq support from oh_home.
+Make oh_home debug logging only go to the log file, not the console.

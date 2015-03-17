@@ -12,14 +12,15 @@ from rainbow_logging_handler import RainbowLoggingHandler
 
 
 def add_common_args(parser: argparse.ArgumentParser):
+    internal_ip = get_own_internal_ip_slow()
     group = parser.add_argument_group('OpenHouse Common Arguments')
     group.add_argument('--log-level', '-l', default='DEBUG',
                        help="The logging level. (default DEBUG)")
     group.add_argument('--log-target', '-L', default='events.log',
                        help="The logging target. (default events.log)")
-    group.add_argument('--home-address', '-H', default='localhost', type=str,
-                       help="The HOMe daemon's ipv4 address.")
-    group.add_argument('--home-port', '-P', default=8080, type=int,
+    group.add_argument('--home-address', '-H', default=internal_ip, type=str,
+                       help="The HOMe daemon's ipv4 address. (default {}".format(internal_ip))
+    group.add_argument('--home-port', '-P', default=8887, type=int,
                        help="The HOMe daemon's ipv4 port.")
 
 
