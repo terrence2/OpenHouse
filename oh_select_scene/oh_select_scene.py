@@ -46,7 +46,7 @@ class RoomState:
 @asyncio.coroutine
 def main():
     util.enable_logging('output.log', 'DEBUG')
-    S = yield from home.connect(('localhost', 8080))
+    S = yield from home.connect((args.home_address, args.home_port))
 
     room_states = {}
     rooms = yield from S('room').run()

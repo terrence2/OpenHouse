@@ -22,16 +22,15 @@ def main():
     args = parser.parse_args()
 
     util.enable_logging(args.log_target, args.log_level)
+    home = yield from aiohome.connect((args.home_address, args.home_port))
     try:
-        asyncio.get_event_loop().run_until_complete(manage_devices())
+        asyncio.get_event_loop().run_until_complete(manage_devices(home))
     except KeyboardInterrupt:
         return 0
 
 
 @asyncio.coroutine
-def manage_devices():
-    home = yield from aiohome.connect(('localhost', 8080))
-
+def manage_devices(home):
     nodes = yield from home('switch[kind=wemo], motion[kind=wemo]').run()
     config_devices = {node.name: node.tagName for node in nodes.values()}
 

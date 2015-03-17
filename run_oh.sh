@@ -11,6 +11,8 @@ LOGDIR="log/$LOG_TIME"
 mkdir -p $LOGDIR
 pushd log; rm -f latest; ln -s $LOG_TIME latest; popd
 
+PORT=8182
+
 # Ensure that any subcommands we need are built.
 make -C oh_home
 
@@ -18,22 +20,22 @@ make -C oh_home
 . .virtualenv3/bin/activate
 
 
-{ node ./oh_home/build/main.js ./oh_home/eyrie.html | bunyan; } &
+{ node ./oh_home/build/main.js ./oh_home/eyrie.html -L $LOGDIR/oh_home.log -p $PORT | bunyan; } &
 pid_home=$!
 
-./oh_hue/oh_hue.py -L $LOGDIR/oh_hue.log &
+./oh_hue/oh_hue.py -L $LOGDIR/oh_hue.log -P $PORT &
 pid_hue=$!
 
-./oh_apply_scene/oh_apply_scene.py -L $LOGDIR/oh_apply_scene.log &
+./oh_apply_scene/oh_apply_scene.py -L $LOGDIR/oh_apply_scene.log -P $PORT &
 pid_apply_scene=$!
 
-./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log &
+./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log -P $PORT &
 pid_wemo=$!
 
-./oh_infer_activity/oh_infer_activity.py -L $LOGDIR/oh_infer_activity.log &
+./oh_infer_activity/oh_infer_activity.py -L $LOGDIR/oh_infer_activity.log -P $PORT &
 pid_infer_activity=$!
 
-{ pushd oh_web && ./oh_web_sabot.py -L $LOGDIR/oh_web.log; popd; } &
+{ pushd oh_web && ./oh_web_sabot.py -L ../$LOGDIR/oh_web.log -p 8080 -P $PORT; popd; } &
 pid_web=$!
 
 

@@ -7,18 +7,57 @@
 /// <reference path="interfaces/bunyan.d.ts" />
 /// <reference path="interfaces/jsdom.d.ts" />
 /// <reference path="interfaces/primus.d.ts" />
+/// <reference path="interfaces/yargs.d.ts" />
 import fs = require('fs');
 
 import bunyan = require('bunyan');
 import jsdom = require('jsdom');
 import primus = require('primus');
+import yargs = require('yargs');
+
+// Parse command line.
+var args = yargs.usage("OpenHouse HOMe server.", {
+    'help': {
+        description: "Show this help message",
+        boolean: true,
+        alias: 'h'
+    },
+    'log-level': {
+        description: "The logging level for stdout messages",
+        type: 'string',
+        default: 'info',
+        alias: 'l'
+    },
+    'log-target': {
+        description: "The debug logging target file",
+        type: 'string',
+        default: 'events.log',
+        alias: 'L'
+    },
+    'address': {
+        description: "The address to listen on",
+        type: 'string',
+        default: '0.0.0.0',
+        alias: 'a'
+    },
+    'port': {
+        description: "The port to listen on",
+        type: 'string',
+        default: 8887,
+        alias: 'p'
+    }
+}).argv;
+if (args.help) {
+    yargs.showHelp();
+    process.exit(0);
+}
 
 
 var log = bunyan.createLogger({
   name: 'HOMe',
   streams: [
-    { level: 'debug', stream: process.stdout },
-    { level: 'debug', path: 'debug.log' }
+    { level: args.logLevel.toLowerCase(), stream: process.stdout },
+    { level: 'debug', path: args.logTarget }
   ]
 });
 
@@ -27,8 +66,8 @@ var log = bunyan.createLogger({
 var query_major_version: number = 3;
 var query_minor_version: number = 0;
 // WebSocket constants.
-var websocket_ipv4: string = "192.168.0.16";
-var websocket_port: number = 8080;
+var websocket_ipv4: string = args.address;
+var websocket_port: number = args.port;
 var websocket_address: string = "ws://" + websocket_ipv4 + ":" + websocket_port + "/primus";
 var websocket_client_code: string = "http://" + websocket_ipv4 + ":" + websocket_port + "/primus/primus.js";
 // Configuration constants.
@@ -119,10 +158,6 @@ function handle_ping(data: PingMessage): PingResponse {
     var result: PingResponse = {
         pong: data.ping,
         version: version,
-        websocket: {
-            address: websocket_address,
-            client_code: websocket_client_code
-        }
     };
     return result;
 }
@@ -240,10 +275,12 @@ function loaded_jsdom(errors, window)
 
     // Listen for websocket connections.
     var primus_server = primus.createServer({
+        hostname: websocket_ipv4,
         port: websocket_port,
         protocol: "JSON",
         timeout: false
     });
+    log.info("Listening on " + websocket_ipv4 + ":" + websocket_port);
     primus_server.on('connection', function (spark) {
         log.info({address: spark.address}, 'new primus connection');
 

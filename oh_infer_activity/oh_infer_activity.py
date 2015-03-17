@@ -167,7 +167,7 @@ def main():
     args = parser.parse_args()
 
     util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect(('localhost', 8080))
+    home = yield from aiohome.connect((args.home_address, args.home_port))
 
     # List all contexts that can have an 'activity' attribute.
     contexts = yield from find_valid_contexts(home)

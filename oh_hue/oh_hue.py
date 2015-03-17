@@ -35,7 +35,7 @@ def main():
     args = parser.parse_args()
 
     util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect(('localhost', 8080))
+    home = yield from aiohome.connect((args.home_address, args.home_port))
 
     # Find all configured bridges.
     res = yield from home("hue-bridge").run()
