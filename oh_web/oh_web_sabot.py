@@ -17,11 +17,10 @@ def index():
 
 RESOURCES = {
     'oh.js': 'build/oh_web.js',
-    'home32.png': 'static/images/home32.png',
-    'room32.png': 'static/images/room32.png',
-    'hue32.png': 'static/images/hue32.png',
-    'wemomotion32.png': 'static/images/wemomotion32.png',
 }
+for filename in os.listdir('static/images'):
+    RESOURCES[filename] = 'static/images/' + filename
+
 @route('/resources/<name>')
 def resources(name):
     return static_file(RESOURCES[name], root=os.getcwd())

@@ -9,7 +9,7 @@
     "jquery-color": "~1.0.0",
     "browserify": "~6.3.2",
     "tsify": "~0.6.2",
-    "ramda": "~0.8.0",
+    "ramda": "~0.11.x",
     "jss": "~0.8.1"
   },
   "devDependencies": {

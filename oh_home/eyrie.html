@@ -89,8 +89,7 @@
     <light kind="hue" name="bedroom-tree1" off_at_night="true"></light>
     <light kind="hue" name="bedroom-tree2"></light>
     <light kind="hue" name="bedroom-ceiling" off_at_night="true"></light>
-    <motion kind="wemo" name="desk"></motion>
-    <motion kind="wemo" name="south"></motion>
+    <!-- <motion kind="wemo" name="m-bedroom-south"></motion> -->
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="office" x="0ft" y="0ft" w="10ft" l="13ft">
@@ -98,10 +97,13 @@
     <light kind="hue" name="office-ceiling1"></light>
     <light kind="hue" name="office-ceiling2"></light>
     <!--<light kind="hue" name="office-torch"></light>-->
+    <!--
     <motion kind="wemo" name="m-office-desk0"></motion>
     <motion kind="wemo" name="m-office-west"></motion>
     <motion kind="wemo" name="m-office-east" context="room[name=office], room[name=hall]"></motion>
-    <switch kind="wemo" name="s-office-desk1"></switch>
+    -->
+    <switch kind="wemo" name="s-office-desk1" x="3ft" y="1ft6in"></switch>
+    <motion kind="wemo" name="m-office-desk2" x="3ft" y="6in"></motion>
     <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
   </room>
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
@@ -113,7 +115,7 @@
   </room>
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
     <!--<door facing="north" x="6in" y="0ft" into="hall">-->
-      <motion kind="wemo" name="m-kitchen-north"></motion>
+      <motion kind="wemo" name="m-kitchen-north" x="3ft6in" y="0in"></motion>
     <!--</door>-->
     <light kind="hue" name="kitchen-sink"></light>
     <light kind="hue" name="kitchen-ceiling0"></light>
@@ -121,12 +123,12 @@
     <light kind="hue" name="kitchen-ceiling2"></light>
     <light kind="hue" name="kitchen-ceiling3"></light>
     <light kind="hue" name="kitchen-ceiling4"></light>
-    <switch kind="wemo" name="s-kitchen-sink"></switch>
-    <motion kind="wemo" name="m-kitchen-sink"></motion>
+    <switch kind="wemo" name="s-kitchen-sink" x="11ft" y="4ft10in"></switch>
+    <motion kind="wemo" name="m-kitchen-sink" x="11ft" y="1ft4in"></motion>
   </room>
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
     <light kind="hue" name="utility-ceiling"></light>
-    <motion kind="wemo" name="north"></motion>
+    <motion kind="wemo" name="m-utility-north" x="4in" y="1ft6in"></motion>
   </room>
   <room name="livingroom" x="0ft" y="13ft" w="13ft" l="19ft9in">
     <light kind="hue" name="livingroom-couch"></light>
@@ -135,8 +137,8 @@
     <light kind="hue" name="livingroom-tower1"></light>
     <light kind="hue" name="livingroom-tower2"></light>
     <light kind="hue-livingcolors" name="livingroom-console0"></light>
-    <switch kind="wemo" name="s-livingroom-couch" context="home" attribute="scene" value="movie"></switch>
-    <motion kind="wemo" name="north"></motion>
+    <switch kind="wemo" name="s-livingroom-couch" x="1ft6in" y="4ft" context="home" attribute="scene" value="movie"></switch>
+    <!-- <motion kind="wemo" name="north"></motion> -->
   </room>
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
     <light kind="hue" name="diningroom-shelves"></light>

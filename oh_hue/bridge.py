@@ -3,9 +3,9 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import aiohttp
 import asyncio
+import itertools
 import json
 import logging
-import os
 
 from collections import defaultdict, namedtuple
 from contextlib import contextmanager
@@ -50,6 +50,7 @@ class Bridge:
         # Set async after creation:
         self.status_ = {}
         self.known_groups_ = {}
+        self.temp_group_id_ = itertools.count()
 
     @classmethod
     @asyncio.coroutine
@@ -59,6 +60,10 @@ class Bridge:
         # Make initial status query.
         res = yield from aiohttp.request('GET', bridge.url(''))
         bridge.status_ = yield from res.json()
+        for i, (light_id, props) in enumerate(bridge.status_['lights'].items()):
+            log.debug("light#{:<2} {:>2} : {:20} : {} : {}".format(i, light_id, props['name'], props['modelid'],
+                                                                   props['swversion'], props['uniqueid']))
+        #log.debug(pformat(bridge.status_))
 
         # Derive initial group list.
         bridge.known_groups_ = {
@@ -84,7 +89,7 @@ class Bridge:
                 return True
         return False
 
-    def get_id_for_light_named(self, light_name: str) -> bool:
+    def get_id_for_light_named(self, light_name: str) -> str:
         """
         Map a light name (as configured in openhouse and the hue gui) to a light id used for controlling the light.
         """
@@ -146,9 +151,14 @@ class Bridge:
             return
 
         group_list = self.assort_groups(self.nagle_window_)
-        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
-        log.debug(pformat(group_list))
         self.nagle_window_ = []
+
+        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
+        for group, json_data in group_list:
+            log.debug("Sending {} to:".format(json_data))
+            light_names = sorted([(self.status_['lights'][light_id]['name'], light_id) for light_id in group])
+            for name, lid in light_names:
+                log.debug("\t{:20} @ {}".format(name, lid))
 
         for item in group_list:
             yield from self.update_group(*item)
@@ -194,6 +204,7 @@ class Bridge:
         Set the state of a pre-configured group of lights. Return True on success.
         """
         url = self.url('/groups/{}/action'.format(group_id))
+        log.debug("PUT {} <- {}".format(url, json_data))
         response = yield from aiohttp.request("PUT", url, data=json_data)
         content = yield from response.json()
         self.show_response_errors(content)
@@ -203,7 +214,8 @@ class Bridge:
         """
         Set the state of an unconfigured group of lights. Return True on success.
         """
-        create_data = json.dumps({'lights': list(group), 'name': 'temporary'})
+        create_data = json.dumps({'lights': list(group), 'name': 'temp' + str(next(self.temp_group_id_))})
+        log.debug("POST {} <- {}".format(self.url('/groups'), create_data))
         response = yield from aiohttp.request('POST', self.url('/groups'), data=create_data)
         content = yield from response.json()
         result = self.show_response_errors(content)
@@ -213,6 +225,7 @@ class Bridge:
         try:
             yield from self.update_well_known_group(group_id, json_data)
         finally:
+            log.debug("DELETE {}".format(self.url('/groups/{}'.format(group_id))))
             response = yield from aiohttp.request('DELETE', self.url('/groups/{}'.format(group_id)))
             content = yield from response.json()
             self.show_response_errors(content)
@@ -223,6 +236,7 @@ class Bridge:
         Set the state of a single light. Return True on success.
         """
         url = self.url('/lights/{}/state'.format(light_id))
+        log.debug("PUT {} <- {}".format(url, json_data))
         response = yield from aiohttp.request("PUT", url, data=json_data)
         content = yield from response.json()
         self.show_response_errors(content)

@@ -27,7 +27,8 @@ class Light:
 
         # The current open-house side light state.
         self.color, self.on, self.transitiontime = Mired(52), True, 10
-        self.set_light_state_from_oh(node)
+        if 'style' in node.attrs:
+            self.set_light_state_from_oh(node)
 
     @classmethod
     @asyncio.coroutine

@@ -20,7 +20,7 @@ make -C oh_home
 . .virtualenv3/bin/activate
 
 
-{ node ./oh_home/build/main.js ./oh_home/eyrie.html -L $LOGDIR/oh_home.log -p $PORT | bunyan; } &
+{ node ./oh_home/build/main.js ./oh_home/eyrie.html -l info -L $LOGDIR/oh_home.log -p $PORT | bunyan; } &
 pid_home=$!
 
 ./oh_hue/oh_hue.py -L $LOGDIR/oh_hue.log -P $PORT &

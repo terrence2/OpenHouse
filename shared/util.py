@@ -31,6 +31,8 @@ def enable_logging(filename: str, level: str):
                 return not record.name.startswith('asyncio') and \
                        not record.name.startswith('websockets') and \
                        not record.name.startswith('aiohttp')
+            elif record.levelno == logging.INFO and record.name.startswith('asyncio'):
+                return False
             return True
 
     #formatter = logging.Formatter('%(pathname)s [%(module)s] - %(funcName)s:L%(lineno)d : %(message)s')

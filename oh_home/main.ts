@@ -221,8 +221,13 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
             continue;
 
         if (ctx.ws_subscriptions[path] !== undefined) {
-            for (var i in ctx.ws_subscriptions[path])
-                ctx.ws_subscriptions[path][i].write({path: path, message: changed[path]});
+            log.debug("dispatching %s change to %d subscriptions", path,
+                      ctx.ws_subscriptions[path].length);
+            for (var i in ctx.ws_subscriptions[path]) {
+                var spark = ctx.ws_subscriptions[path][i];
+                log.debug("sending change to %s:%s", spark.address.ip, spark.address.port);
+                spark.write({path: path, message: changed[path]});
+            }
         }
     }
 
@@ -258,6 +263,8 @@ function handle_subscribe(ctx: Context, data: SubscribeMessage, spark): Subscrib
     if (ctx.ws_subscriptions[data.target] === undefined)
         ctx.ws_subscriptions[data.target] = [];
     ctx.ws_subscriptions[data.target].push(spark);
+    log.debug("added subscription to %s -- %s total", data.target,
+              ctx.ws_subscriptions[data.target].length);
     return {};
 }
 

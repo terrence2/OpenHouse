@@ -78,7 +78,8 @@ function connect(address) {
                     var callbacks = conn.message_map.get(token);
                     if (message.error !== undefined)
                         callbacks.reject(message);
-                    callbacks.accept(message);
+                    else
+                        callbacks.accept(message);
                     conn.message_map.delete(token);
                 } else {
                     // Subscription case:
