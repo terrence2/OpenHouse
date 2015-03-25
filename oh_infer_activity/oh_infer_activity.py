@@ -49,19 +49,19 @@ Motion Detectors are configured as:
     filtered-state - a post-processed state that tries to take into account the inherently unstable nature of
                      motion detectors.
 """
-import argparse
 import asyncio
 import functools
 import logging
-import shared.aiohome as aiohome
-import shared.util as util
+from oh_shared.args import parse_default_args
+from oh_shared.home import Home, NodeData
+from oh_shared.log import enable_logging
 from pathlib import PurePath
 
 log = logging.getLogger("oh_infer_activity")
 
 
 class SwitchState:
-    def __init__(self, path: str, node: aiohome.NodeData):
+    def __init__(self, path: str, node: NodeData):
         self.path = path
         self.cached_node = node
 
@@ -79,7 +79,7 @@ class SwitchState:
         self.contexts_.append(context)
 
     @asyncio.coroutine
-    def on_change(self, home: aiohome.Home, path: str, node: aiohome.NodeData):
+    def on_change(self, home: Home, path: str, node: NodeData):
         assert path == self.path
         self.cached_node = node
         target = log.debug if node.tagName == 'MOTION' else log.info
@@ -125,21 +125,21 @@ class ActivityContext:
         self.switches_.append(switch)
 
     @asyncio.coroutine
-    def on_state_changed(self, home: aiohome.Home):
+    def on_state_changed(self, home: Home):
         activity = self.get_tightest_activity()
         log.debug("{} changed activity to {}".format(self.path, activity))
-        yield from home(home.path_to_query(self.path)).attr('activity', activity).run()
+        yield from home.query_path(self.path).attr('activity', activity).run()
 
 
 @asyncio.coroutine
-def find_valid_contexts(home: aiohome.Home) -> {str: ActivityContext}:
-    nodes = yield from home('home, room').run()
+def find_valid_contexts(home: Home) -> {str: ActivityContext}:
+    nodes = yield from home.query('home, room').run()
     return {path: ActivityContext(path, node.name) for path, node in nodes.items()}
 
 
 @asyncio.coroutine
-def get_context_paths_for_switch(home: aiohome.Home, contexts: {str, ActivityContext}, path: str,
-                                 node: aiohome.NodeData) -> [str]:
+def get_context_paths_for_switch(home: Home, contexts: {str, ActivityContext}, path: str,
+                                 node: NodeData) -> [str]:
     # If no context is specified, return the tightest bound context.
     if 'context' not in node.attrs:
         while path not in contexts:
@@ -150,7 +150,7 @@ def get_context_paths_for_switch(home: aiohome.Home, contexts: {str, ActivityCon
 
     # Otherwise query with the contexts attr and return all matching contexts.
     query = node.attrs['context']
-    nodes = yield from home(query).run()
+    nodes = yield from home.query(query).run()
     out = []
     for path, node in nodes.items():
         if path not in contexts:
@@ -163,19 +163,16 @@ def get_context_paths_for_switch(home: aiohome.Home, contexts: {str, ActivityCon
 
 @asyncio.coroutine
 def main():
-    parser = argparse.ArgumentParser(description='Interpret switch and motion states to infer human activity.')
-    util.add_common_args(parser)
-    args = parser.parse_args()
-
-    util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect((args.home_address, args.home_port))
+    args = parse_default_args('Interpret switch and motion states to infer human activity.')
+    enable_logging(args.log_target, args.log_level)
+    home = yield from Home.connect((args.home_address, args.home_port))
 
     # List all contexts that can have an 'activity' attribute.
     contexts = yield from find_valid_contexts(home)
     log.info("Found {} contexts".format(len(contexts)))
 
     # Iterate all switches and associate them with a context.
-    switches = yield from home('switch, motion').run()
+    switches = yield from home.query('switch, motion').run()
     log.info("Found {} switches".format(len(switches)))
     for path, node in switches.items():
         # Create a cache of each switch state, so that one switch's changes don't result in queries for other switches.
