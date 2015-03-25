@@ -32,7 +32,10 @@ pid_apply_scene=$!
 ./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log -P $PORT &
 pid_wemo=$!
 
-./oh_infer_activity/oh_infer_activity.py -L $LOGDIR/oh_infer_activity.log -P $PORT &
+./oh_motion_filter/oh_motion_filter.py -L $LOGDIR/oh_motion_filter.log -P $PORT &
+pid_motion_filter=$!
+
+./oh_infer_activity/oh_infer_activity.py -l INFO -L $LOGDIR/oh_infer_activity.log -P $PORT &
 pid_infer_activity=$!
 
 { pushd oh_web && ./oh_web_sabot.py -L ../$LOGDIR/oh_web.log -p 8080 -P $PORT; popd; } &
@@ -41,6 +44,7 @@ pid_web=$!
 
 echo "pid home:           "$pid_home
 echo "pid wemo:           "$pid_wemo
+echo "pid motion filter:  "$pid_motion_filter
 echo "pid infer activity: "$pid_infer_activity
 echo "pid apply scene:    "$pid_apply_scene
 echo "pid hue:            "$pid_hue
@@ -49,6 +53,7 @@ wait $pid_web
 wait $pid_hue
 wait $pid_apply_scene
 wait $pid_infer_activity
+wait $pid_motion_filter
 wait $pid_wemo
 wait $pid_home
 

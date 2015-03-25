@@ -28,14 +28,11 @@ class WemoEventHandler(aiohttp.server.ServerHttpProtocol):
         if device.tagName.lower() == 'switch':
             attribute = 'state'
             log.info("Device {} changed {} to {}".format(device.name, attribute, state))
-        else:
-            log.debug("Device {} changed {} to {}".format(device.name, attribute, state))
 
         yield from self.home("[name='{}']".format(device.name)).attr(attribute, state).run()
 
     @asyncio.coroutine
     def handle_request(self, message, payload):
-
         # Ensure this is actually a notification for a WeMo.
         if (message.method != 'NOTIFY' or
                     'NT' not in message.headers or

@@ -133,9 +133,9 @@ class Room:
     def on_room_changed(self, path: str, node: aiohome.NodeData):
         assert path == self.path_
         new_activity = node.attrs.get('activity', 'unknown')
-        log.info("room state changed from {} to {}".format(self.last_activity_, new_activity))
         if new_activity == self.last_activity_:
             return
+        log.info("room state changed from {} to {}".format(self.last_activity_, new_activity))
         self.last_activity_ = new_activity
         if self.owner_:
             yield from self.owner_.on_room_changed(node.name)

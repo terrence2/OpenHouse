@@ -82,9 +82,10 @@ class SwitchState:
     def on_change(self, home: aiohome.Home, path: str, node: aiohome.NodeData):
         assert path == self.path
         self.cached_node = node
-        log.info("switch {} changed state to {}; applying to {}".format(node.name,
-                                                                        node.attrs.get('state', 'unset'),
-                                                                        [ctx.name for ctx in self.contexts_]))
+        target = log.debug if node.tagName == 'MOTION' else log.info
+        target("{} {} changed state to {}; applying to {}".format(node.tagName.lower(), node.name,
+                                                                  node.attrs.get('state', 'unset'),
+                                                                  ', '.join([ctx.name for ctx in self.contexts_])))
         for context in self.contexts_:
             yield from context.on_state_changed(home)
 
@@ -126,7 +127,7 @@ class ActivityContext:
     @asyncio.coroutine
     def on_state_changed(self, home: aiohome.Home):
         activity = self.get_tightest_activity()
-        log.info("{} changed activity to {}".format(self.path, activity))
+        log.debug("{} changed activity to {}".format(self.path, activity))
         yield from home(home.path_to_query(self.path)).attr('activity', activity).run()
 
 
@@ -174,8 +175,7 @@ def main():
     log.info("Found {} contexts".format(len(contexts)))
 
     # Iterate all switches and associate them with a context.
-    #switches = yield from home('switch, motion').run()
-    switches = yield from home('switch').run()
+    switches = yield from home('switch, motion').run()
     log.info("Found {} switches".format(len(switches)))
     for path, node in switches.items():
         # Create a cache of each switch state, so that one switch's changes don't result in queries for other switches.

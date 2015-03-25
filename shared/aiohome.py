@@ -129,7 +129,11 @@ class Home:
                 token = frame['token']
                 message = frame['message']
                 assert token in self.waiting
-                self.waiting[token].set_result(message)
+                if self.waiting[token].cancelled():
+                    log.debug("dropping result message for cancelled waiter")
+                    del self.waiting[token]
+                else:
+                    self.waiting[token].set_result(message)
             else:
                 path = frame['path']
                 message = NodeData(frame['message'])

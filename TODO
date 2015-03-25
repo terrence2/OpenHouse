@@ -1,8 +1,13 @@
 TODO
 ====
-Show switch devices in birdseye.
-Implement doors.
+Implement activity="no" to turn the lights off.
+Implement activity="<something>" to turn the lights to something per-room.
 Implement oh_motion_filter so we get good motion detector states.
+s/aiohome/home/ and remove namespacing
+Implement doors.
+Implement symbolic colors:
+  * shorter, more readable style rules in scenes
+  * allow the underlying color to change with time-of-day, season, etc.
 Expose a raw query console in the web interface.
 Implement oh_manage:
   oh run [all|<daemon-list>]
@@ -10,7 +15,7 @@ Implement oh_manage:
   oh log [all|<daemon-list>]
   oh watch
 Show lights in birdseye and make individually editable via an easy interface.
-Make scene editor.
+Make a scene editor.
 Use implicit on/off scenes.
 Add nerves back into the network.
 Auto-exit oh_ daemonts when oh_home goes down --
@@ -18,6 +23,7 @@ Auto-exit oh_ daemonts when oh_home goes down --
 
 DONE
 ====
+Show switch devices in birdseye.
 Pass port and address to oh_home on command line.
 Make home connections block on the server being ready.
 Show motion devices in birdseye.
