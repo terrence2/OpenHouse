@@ -6,16 +6,9 @@ import asyncio
 import itertools
 import json
 import logging
-
 from collections import defaultdict, namedtuple
-from contextlib import contextmanager
 from datetime import datetime, timedelta
-from pprint import pprint, pformat
-
-import requests
-
-from shared.aiohome import Home
-
+from oh_shared.home import Home
 
 log = logging.getLogger('oh_hue.bridge')
 

@@ -3,13 +3,12 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import asyncio
-import argparse
 import logging
-import shared.aiohome as aiohome
-import shared.util as util
-
-from bridge import Bridge
-from light import Light
+from hue.bridge import Bridge
+from hue.light import Light
+from oh_shared.args import parse_default_args
+from oh_shared.home import Home, NodeData
+from oh_shared.log import enable_logging
 
 log = logging.getLogger('oh_hue')
 
@@ -20,7 +19,7 @@ class BridgeNotFound(Exception):
         self.light_name = light_name
 
 
-def find_bridge_owning_light(bridges: [Bridge], light_node: aiohome.NodeData) -> (Bridge, str):
+def find_bridge_owning_light(bridges: [Bridge], light_node: NodeData) -> (Bridge, str):
     name = light_node.attrs['name']
     for bridge in bridges:
         if bridge.owns_light_named(name):
@@ -30,22 +29,19 @@ def find_bridge_owning_light(bridges: [Bridge], light_node: aiohome.NodeData) ->
 
 @asyncio.coroutine
 def main():
-    parser = argparse.ArgumentParser(description='Map light style changes to hue commands.')
-    util.add_common_args(parser)
-    args = parser.parse_args()
-
-    util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect((args.home_address, args.home_port))
+    args = parse_default_args('Map light style changes to hue commands.')
+    enable_logging(args.log_target, args.log_level)
+    home = yield from Home.connect((args.home_address, args.home_port))
 
     # Find all configured bridges.
-    res = yield from home("hue-bridge").run()
+    res = yield from home.query("hue-bridge").run()
     bridges = []
     for path, node in res.items():
         bridge = yield from Bridge.create(path, node.attrs['ipv4'], node.attrs['username'], home)
         bridges.append(bridge)
 
     # Find all configured lights.
-    res = yield from home("light[kind=hue], light[kind=hue-livingcolors]").run()
+    res = yield from home.query("light[kind=hue], light[kind=hue-livingcolors]").run()
     lights = []
     for path, node in res.items():
         try:

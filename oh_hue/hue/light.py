@@ -4,14 +4,13 @@
 import asyncio
 import logging
 import json
-import shared.aiohome as aiohome
-
-from shared.color import parse_css_color, Color, RGB, BHS, Mired
-from bridge import Bridge
+from .bridge import Bridge
+from oh_shared.color import parse_css_color, Color, RGB, BHS, Mired
+from oh_shared.home import Home, NodeData
 
 
 class Light:
-    def __init__(self, id_: str, path: str, name: str, bridge: Bridge, node: aiohome.NodeData):
+    def __init__(self, id_: str, path: str, name: str, bridge: Bridge, node: NodeData):
         # Log to a logger with our exact name in it.
         self.log = logging.getLogger("oh_hue.light.{}".format(name))
 
@@ -32,13 +31,13 @@ class Light:
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, id_: str, path: str, node: aiohome.NodeData, bridge: Bridge, home: aiohome.Home):
+    def create(cls, id_: str, path: str, node: NodeData, bridge: Bridge, home: Home):
         light = cls(id_, path, node.name, bridge, node)
         yield from home.subscribe(path, light.on_change)
         light.log.info("subscribed to light at {}".format(path))
         return light
 
-    def set_light_state_from_oh(self, node: aiohome.NodeData) -> (Color, bool, int):
+    def set_light_state_from_oh(self, node: NodeData) -> (Color, bool, int):
         try:
             style = node.attrs['style']
         except KeyError as ex:
@@ -73,7 +72,7 @@ class Light:
                 self.transitiontime)
 
     @asyncio.coroutine
-    def on_change(self, target: str, data: aiohome.NodeData):
+    def on_change(self, target: str, data: NodeData):
         assert target == self.path_
         self.set_light_state_from_oh(data)
         self.log.info("applying light state: {}".format(str(self)))
