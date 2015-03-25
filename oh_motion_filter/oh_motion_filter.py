@@ -5,15 +5,16 @@
 import argparse
 import asyncio
 import logging
+
+from oh_shared.home import Home, NodeData
 import shared.util as util
-import shared.aiohome as aiohome
 
 
 log = logging.getLogger('oh_motion_filter')
 
 
 class MotionDetector:
-    def __init__(self, name: str, home: aiohome.Home):
+    def __init__(self, name: str, home: Home):
         self.home = home
         self.log = logging.getLogger('oh_motion_filter.' + name)
         self.raw_state_ = False
@@ -21,14 +22,14 @@ class MotionDetector:
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, home: aiohome.Home, path: str, node: aiohome.NodeData) -> 'MotionDetector':
+    def create(cls, home: Home, path: str, node: NodeData) -> 'MotionDetector':
         motion = cls(node.name, home)
         motion.log.debug("watching {}".format(path))
         yield from home.subscribe(path, motion.on_state_change)
         return motion
 
     @asyncio.coroutine
-    def on_state_change(self, path: str, node: aiohome.NodeData):
+    def on_state_change(self, path: str, node: NodeData):
         prior_raw_state = self.raw_state_
         next_raw_state = node.attrs.get('raw-state', 'false') == "true"
         current_state = node.attrs.get('state', 'false') == "true"
@@ -59,12 +60,12 @@ class MotionDetector:
         self.log.debug("waiting {} sec before setting {}[state=false]".format(delay, path))
         yield from asyncio.sleep(delay)
         self.log.info("{}[state=false]".format(path))
-        yield from self.home(self.home.path_to_query(path)).attr('state', False).run()
+        yield from self.home.query_path(path).attr('state', False).run()
 
     @asyncio.coroutine
     def set_true(self, path: str):
         self.log.info("{}[state=true]".format(path))
-        yield from self.home(self.home.path_to_query(path)).attr('state', True).run()
+        yield from self.home.query_path(path).attr('state', True).run()
 
 
 @asyncio.coroutine
@@ -74,10 +75,10 @@ def main():
     args = parser.parse_args()
 
     util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect((args.home_address, args.home_port))
+    home = yield from Home.connect((args.home_address, args.home_port))
 
     motion_detectors = []
-    nodes = yield from home("motion").run()
+    nodes = yield from home.query("motion").run()
     for path, node in nodes.items():
         motion = yield from MotionDetector.create(home, path, node)
         motion_detectors.append(motion)
