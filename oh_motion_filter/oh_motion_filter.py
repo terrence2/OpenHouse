@@ -2,12 +2,12 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-import argparse
 import asyncio
 import logging
 
 from oh_shared.home import Home, NodeData
-import shared.util as util
+from oh_shared.args import parse_default_args
+from oh_shared.log import enable_logging
 
 
 log = logging.getLogger('oh_motion_filter')
@@ -70,11 +70,8 @@ class MotionDetector:
 
 @asyncio.coroutine
 def main():
-    parser = argparse.ArgumentParser(description='Filter raw motion states to get a more coherent and stable output.')
-    util.add_common_args(parser)
-    args = parser.parse_args()
-
-    util.enable_logging(args.log_target, args.log_level)
+    args = parse_default_args('Filter raw motion states to get a more coherent and stable output.')
+    enable_logging(args.log_target, args.log_level)
     home = yield from Home.connect((args.home_address, args.home_port))
 
     motion_detectors = []
