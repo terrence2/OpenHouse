@@ -4,9 +4,9 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import argparse
 import os
-import shared.util as util
-
 from bottle import route, run, template, static_file
+from oh_shared.args import add_common_args
+from oh_shared.log import enable_logging
 
 
 @route('/')
@@ -21,6 +21,7 @@ RESOURCES = {
 for filename in os.listdir('static/images'):
     RESOURCES[filename] = 'static/images/' + filename
 
+
 @route('/resources/<name>')
 def resources(name):
     return static_file(RESOURCES[name], root=os.getcwd())
@@ -32,7 +33,7 @@ if __name__ == '__main__':
                         help="The address to listen on.")
     parser.add_argument('--port', '-p', default=8887, type=int,
                         help="The port to listen on.")
-    util.add_common_args(parser)
+    add_common_args(parser)
     args = parser.parse_args()
 
     websocket_info = {
@@ -40,5 +41,5 @@ if __name__ == '__main__':
         'client_code': "http://{}:{}/primus/primus.js".format(args.home_address, args.home_port)
     }
 
-    util.enable_logging(args.log_target, args.log_level)
+    enable_logging(args.log_target, args.log_level)
     run(server='waitress', host=args.address, port=args.port)
