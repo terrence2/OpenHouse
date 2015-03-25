@@ -2,7 +2,7 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import argparse
-from ip import get_own_internal_ip_slow
+from .ip import get_own_internal_ip_slow
 
 
 def add_common_args(parser: argparse.ArgumentParser):

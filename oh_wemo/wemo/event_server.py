@@ -6,10 +6,9 @@ import aiohttp
 import aiohttp.server
 import logging
 import re
-
-from shared.aiohome import Home
-from shared.util import get_own_internal_ip_slow
-from wemo_device import WemoDevice
+from oh_shared.home import Home
+from oh_shared.ip import get_own_internal_ip_slow
+from .device import WemoDevice
 
 log = logging.getLogger('oh_wemo.event_server')
 
@@ -29,7 +28,7 @@ class WemoEventHandler(aiohttp.server.ServerHttpProtocol):
             attribute = 'state'
             log.info("Device {} changed {} to {}".format(device.name, attribute, state))
 
-        yield from self.home("[name='{}']".format(device.name)).attr(attribute, state).run()
+        yield from self.home.query("[name='{}']".format(device.name)).attr(attribute, state).run()
 
     @asyncio.coroutine
     def handle_request(self, message, payload):

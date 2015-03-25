@@ -24,7 +24,7 @@ class MotionDetector:
     @asyncio.coroutine
     def create(cls, home: Home, path: str, node: NodeData) -> 'MotionDetector':
         motion = cls(node.name, home)
-        motion.log.debug("watching {}".format(path))
+        motion.log.debug("filtering motion events for {}".format(path))
         yield from home.subscribe(path, motion.on_state_change)
         return motion
 

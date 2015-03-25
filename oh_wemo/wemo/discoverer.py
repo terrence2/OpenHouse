@@ -6,10 +6,9 @@ import aiohttp
 import asyncio
 import logging
 import re
-
 from collections import namedtuple
-
-import shared.util as util
+from oh_shared.ip import get_own_internal_ip_slow
+from oh_shared.log import enable_logging
 
 log = logging.getLogger("oh_wemo.discoverer")
 
@@ -105,7 +104,7 @@ def discover_local_wemos(wemo_coro):
     connected = asyncio.Future()
     transport, protocol = yield from asyncio.get_event_loop() \
         .create_datagram_endpoint(lambda: WemoDiscoveryProtocol(connected, wemo_coro),
-                                  local_addr=(util.get_own_internal_ip_slow(), 54321))
+                                  local_addr=(get_own_internal_ip_slow(), 54321))
     yield from connected
     assert connected.result() == transport
 
@@ -117,7 +116,7 @@ def discover_local_wemos(wemo_coro):
 
 
 if __name__ == '__main__':
-    util.enable_logging('output.log', 'INFO')
+    enable_logging('output.log', 'INFO')
     @asyncio.coroutine
     def report(info):
         log.info("{} @ {}".format(info.name, info.location))

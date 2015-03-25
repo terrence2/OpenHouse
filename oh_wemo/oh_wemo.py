@@ -2,34 +2,25 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-import argparse
 import asyncio
 import logging
-import shared.util as util
-
-from wemo_discoverer import discover_local_wemos, WemoDeviceInfo
-from wemo_event_server import listen_for_wemo_events
-from wemo_device import WemoDevice
-
-import shared.aiohome as aiohome
+from oh_shared.args import parse_default_args
+from oh_shared.home import Home
+from oh_shared.log import enable_logging
+from wemo.device import WemoDevice
+from wemo.discoverer import discover_local_wemos, WemoDeviceInfo
+from wemo.event_server import listen_for_wemo_events
 
 log = logging.getLogger('oh_wemo')
 
 
 @asyncio.coroutine
 def main():
-    parser = argparse.ArgumentParser(description='Bridge between OpenHouse and local WeMo devices.')
-    util.add_common_args(parser)
-    args = parser.parse_args()
+    args = parse_default_args('Bridge between OpenHouse and local WeMo devices.')
+    enable_logging(args.log_target, args.log_level)
+    home = yield from Home.connect((args.home_address, args.home_port))
 
-    util.enable_logging(args.log_target, args.log_level)
-    home = yield from aiohome.connect((args.home_address, args.home_port))
-    yield from manage_devices(home)
-
-
-@asyncio.coroutine
-def manage_devices(home):
-    nodes = yield from home('switch[kind=wemo], motion[kind=wemo]').run()
+    nodes = yield from home.query('switch[kind=wemo], motion[kind=wemo]').run()
     config_devices = {node.name: node.tagName for node in nodes.values()}
     log.debug("Searching for configured devices:")
     for i, (name, type) in enumerate(config_devices.items()):

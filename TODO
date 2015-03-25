@@ -1,8 +1,7 @@
 TODO
 ====
-Implement activity="no" to turn the lights off.
 Implement activity="<something>" to turn the lights to something per-room.
-Implement oh_motion_filter so we get good motion detector states.
+Implement activity="no" to turn the lights off.
 s/aiohome/home/ and remove namespacing
 Implement doors.
 Implement symbolic colors:
@@ -23,6 +22,7 @@ Auto-exit oh_ daemonts when oh_home goes down --
 
 DONE
 ====
+Implement oh_motion_filter so we get good motion detector states.
 Show switch devices in birdseye.
 Pass port and address to oh_home on command line.
 Make home connections block on the server being ready.
