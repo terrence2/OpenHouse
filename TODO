@@ -2,7 +2,6 @@ TODO
 ====
 Implement activity="<something>" to turn the lights to something per-room.
 Implement activity="no" to turn the lights off.
-s/aiohome/home/ and remove namespacing
 Implement doors.
 Implement symbolic colors:
   * shorter, more readable style rules in scenes
@@ -22,6 +21,7 @@ Auto-exit oh_ daemonts when oh_home goes down --
 
 DONE
 ====
+s/aiohome/home/ and remove namespacing
 Implement oh_motion_filter so we get good motion detector states.
 Show switch devices in birdseye.
 Pass port and address to oh_home on command line.
