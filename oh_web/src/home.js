@@ -13,6 +13,13 @@ Query.prototype.attr = function(key, value) {
     });
     return this;
 };
+Query.prototype.css = function(key, value) {
+    this.transforms.push({
+        method: 'css',
+        args: [key, value]
+    });
+    return this;
+};
 Query.prototype.run = function() {
     return this.connection._do_query(this);
 };

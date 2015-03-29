@@ -10,6 +10,7 @@ var alarmView = require('./alarm');
 var birdseyeView = require('./birdseye');
 var switchView = require('./switch');
 var treeView = require('./tree');
+var queryView = require('./query_console');
 
 function main() {
     var styles = jss.createStyleSheet({
@@ -36,6 +37,7 @@ function main() {
                    <div id="alarm"></div>
                  </div>
                  <div id="birdseye"></div>
+                 <div id="query">Query Console:</div>
                  <div id="tree">Raw Tree View:</div>`);
 
     home.connect(HOME_ADDRESS)
@@ -43,6 +45,7 @@ function main() {
             switchView.attach(conn, $("#switch"));
             //alarmView.attach(conn, $("#alarm"));
             birdseyeView.attach(conn, $("#birdseye"));
+            queryView.attach(conn, $("#query"));
             treeView.attach(conn, $("#tree"));
         });
 }

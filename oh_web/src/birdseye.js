@@ -153,9 +153,9 @@ function attach(conn, elem)
         },
         '.birdseye-motion': {
             'background-image': 'url(/resources/wemomotion32.png)',
-            'padding': '5px',
-            'width': '16px',
-            'height': '16px',
+            'padding': '0px',
+            'width': '32px',
+            'height': '32px',
         },
         '.birdseye-motion.active': {
             'background-image': 'url(/resources/wemomotion32_active.png)',
@@ -174,9 +174,9 @@ function attach(conn, elem)
         },
         '.birdseye-switch': {
             'background-image': 'url(/resources/wemoswitch32.png)',
-            'padding': '5px',
-            'width': '16px',
-            'height': '16px',
+            'padding': '0px',
+            'width': '32px',
+            'height': '32px',
         },
         '.birdseye-switch.active': {
             'background-image': 'url(/resources/wemoswitch32_active.png)',
