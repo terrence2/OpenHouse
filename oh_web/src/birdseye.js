@@ -76,7 +76,7 @@ function display_room(activities, elem, conn, node)
     conn.query(`room[name=${room_name}] > closet`).run()
         .then(R.mapObj(R.curry(display_closet)(room_elem)));
 
-    // Create and populate the scene selection dropdown in each room.
+    // Create and populate the activity selection dropdown in each room.
     var sel = $(`<select id="birdseye-room-${room_name}-select"></select>`)
         .appendTo(room_elem);
     R.map((v) => $(sel).append(`<option value="${v}">${v}</option>`), activities);
@@ -102,7 +102,7 @@ function display_room(activities, elem, conn, node)
         conn.query(`room[name=${room_name}]`).attr('activity', switchValue).run();
     });
 
-    // Overlay motion detectors.
+    // Overlay motion detectors and switches.
     conn.query(`room[name=${room_name}] motion, room[name=${room_name}] switch`).run()
         .then(R.mapObjIndexed((node, path, msg) => {
             var name = node.attrs.name;

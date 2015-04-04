@@ -186,20 +186,31 @@ interface QueryMessage extends Message {
 interface Attributes {
     [index: string]: string;
 }
-function attrs($, node): Attributes {
+function get_attrs($, node): Attributes {
     var attrs: Attributes = {};
     $(node.attributes).each(function() { attrs[this.nodeName] = this.nodeValue; });
     return attrs;
+}
+function get_styles(window, elem): Attributes {
+    var styles: Attributes = {};
+    var css = window.getComputedStyle(elem, '');
+    for (var i = 0; i < css.length; ++i)
+        styles[css.item(i)] = css.getPropertyValue(css.item(i));
+    return styles;
 }
 interface QueryResult {
     text: string;
     attrs: Attributes;
 }
-function to_result($, node): QueryResult {
+function to_result(ctx, node): QueryResult {
     // Text, with text of children stripped out.
-    var text = $(node).clone().children().remove().end().text().trim();
-    var tagName = $(node).prop('tagName');
-    return { attrs: attrs($, node), text: text, tagName: tagName };
+    var text = ctx.$(node).clone().children().remove().end().text().trim();
+    var tagName = ctx.$(node).prop('tagName');
+    var attrs = get_attrs(ctx.$, node);
+    //var styles = get_styles(ctx.window, ctx.$(node)[0]);
+    ctx.window.getComputedStyle(ctx.$(node)[0], '');
+    var styles = {};
+    return { attrs: attrs, styles: styles, text: text, tagName: tagName };
 }
 interface QueryResponse {
     [index: string]: QueryResult;
@@ -237,7 +248,7 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
 function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, changed: QueryResponse) {
     // Perform the base query.
     var nodes = ctx.$(query.query);
-    nodes.each(function(i, node) { touched[pathof(ctx.$, node)] = to_result(ctx.$, node); });
+    nodes.each(function(i, node) { touched[pathof(ctx.$, node)] = to_result(ctx, node); });
 
     // Apply each transform to the initial query.
     for (var i in query.transforms) {
@@ -246,7 +257,7 @@ function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, ch
 
         nodes = nodes[method_name].apply(nodes, args);
         nodes.each(function(i, node) {
-            var map = to_result(ctx.$, node);
+            var map = to_result(ctx, node);
             touched[pathof(ctx.$, node)] = map;
             changed[pathof(ctx.$, node)] = map;
         });

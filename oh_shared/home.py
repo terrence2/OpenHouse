@@ -39,6 +39,9 @@ class QueryGroup:
         self.query_group.append(q)
         return q
 
+    def query_path(self, path: str) -> 'Query':
+        return self.query(Home.path_to_query(path))
+
     @asyncio.coroutine
     def run(self) -> NodeMap:
         return self.home._execute_query_group(self.query_group)
@@ -54,36 +57,6 @@ class Query:
         self.query = query
         self.transforms = []  # {method: str, args: [str]}
 
-    def after(self, content: str) -> 'Query':
-        self.transforms.append({'method': 'after', 'args': [content]})
-        return self
-
-    def append(self, content: str) -> 'Query':
-        self.transforms.append({'method': 'append', 'args': [content]})
-        return self
-
-    def attr(self, name: str, value: str) -> 'Query':
-        args = [name] if value is None else [name, value]
-        self.transforms.append({'method': 'attr', 'args': args})
-        return self
-
-    def css(self, name: str, value: str) -> 'Query':
-        args = [name] if value is None else [name, value]
-        self.transforms.append({'method': 'css', 'args': args})
-        return self
-
-    def empty(self) -> 'Query':
-        self.transforms.append({'method': 'empty', 'args': []})
-        return self
-
-    def parent(self) -> 'Query':
-        self.transforms.append({'method': 'parent', 'args': []})
-        return self
-
-    def children(self) -> 'Query':
-        self.transforms.append({'method': 'children', 'args': []})
-        return self
-
     @asyncio.coroutine
     def run(self) -> NodeMap:
         return self.home._execute_single_query(self)
@@ -91,6 +64,31 @@ class Query:
     def __str__(self):
         xforms = [".{}({})".format(xform['method'], ', '.join(xform['args'])) for xform in self.transforms]
         return "$({}){}".format(self.query, ''.join(xforms))
+
+    def attr(self, *args, **kwargs):
+        pass
+
+_jquery_methods = [
+    'after',
+    'addClass',
+    'append',
+    'attr',
+    'children',
+    'css',
+    'empty',
+    'parent',
+    'removeClass',
+    'toggleClass',
+]
+for name in _jquery_methods:
+    def make_method(bound_name):
+        def inner(self, *args):
+            self.transforms.append({'method': bound_name, 'args': args})
+            return self
+        inner.__name__ = name
+        return inner
+    method = make_method(name)
+    setattr(Query, method.__name__, method)
 
 
 class Home:

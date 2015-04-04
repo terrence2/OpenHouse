@@ -53,10 +53,19 @@ class Bridge:
         # Make initial status query.
         res = yield from aiohttp.request('GET', bridge.url(''))
         bridge.status_ = yield from res.json()
+        #log.debug(pformat(bridge.status_))
+
+        # Print light configuration.
         for i, (light_id, props) in enumerate(bridge.status_['lights'].items()):
             log.debug("light#{:<2} {:>2} : {:20} : {} : {}".format(i, light_id, props['name'], props['modelid'],
                                                                    props['swversion'], props['uniqueid']))
-        #log.debug(pformat(bridge.status_))
+
+        # Print any pre-configured groups.
+        for i, (group_id, props) in enumerate(bridge.status_['groups'].items()):
+            log.warning("removing pre-existing group {}".format(group_id))
+            response = yield from aiohttp.request('DELETE', bridge.url('/groups/{}'.format(group_id)))
+            content = yield from response.json()
+            bridge.show_response_errors(content)
 
         # Derive initial group list.
         bridge.known_groups_ = {
@@ -144,9 +153,9 @@ class Bridge:
             return
 
         group_list = self.assort_groups(self.nagle_window_)
+        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
         self.nagle_window_ = []
 
-        log.debug("Dispatching {} messages in nagle window in {} groups".format(len(self.nagle_window_), len(group_list)))
         for group, json_data in group_list:
             log.debug("Sending {} to:".format(json_data))
             light_names = sorted([(self.status_['lights'][light_id]['name'], light_id) for light_id in group])

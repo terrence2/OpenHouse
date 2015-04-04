@@ -6,20 +6,6 @@ function Query(conn, query_text) {
     this.query_text = query_text;
     this.transforms = [];
 }
-Query.prototype.attr = function(key, value) {
-    this.transforms.push({
-        method: 'attr',
-        args: [key, value]
-    });
-    return this;
-};
-Query.prototype.css = function(key, value) {
-    this.transforms.push({
-        method: 'css',
-        args: [key, value]
-    });
-    return this;
-};
 Query.prototype.run = function() {
     return this.connection._do_query(this);
 };
@@ -29,6 +15,32 @@ Query.prototype.get_query = function() {
 Query.prototype.get_transforms = function() {
     return this.transforms;
 };
+var _jquery_methods = [
+    'after',
+    'addClass',
+    'append',
+    'attr',
+    'children',
+    'css',
+    'empty',
+    'parent',
+    'removeClass',
+    'toggleClass',
+];
+function _make_method(bound_name) {
+    return function() {
+        var real_args = [];
+        for (var i = 0; i < arguments.length; ++i)
+            real_args.push(arguments[i]);
+        this.transforms.push({
+            method: bound_name,
+            args: real_args
+        });
+        return this;
+    };
+}
+for (var name of _jquery_methods)
+    Query.prototype[name] = _make_method(name);
 
 
 function Connection(sock) {

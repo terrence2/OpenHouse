@@ -17,7 +17,7 @@ function attach(conn, elem)
     var gswitch = $('#global_switch');
 
     // Load the set of available options.
-    conn.query('scene').run()
+    conn.query('home > scene').run()
         .then(R.values)
         .then(R.map((data) => data.attrs.name))
         .then(R.map((name) => `<option value="${name}">${name}</option>`))

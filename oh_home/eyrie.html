@@ -2,6 +2,11 @@
 <head>
   <meta charset="UTF-8"></meta>
   <title>Eyrie</title>
+  <style>
+    light {
+      padding: 10px;
+    }
+  </style>
 </head>
 
 <home name="eyrie" scene="on" w="24ft" l="32ft6in">
@@ -81,55 +86,84 @@
     |                                                                                 |                |
     +-------------------------------------@@@@@@@@@@@@--------------------------------+----------------+
   </comment>
+
   <room name="bedroom" x="12ft" y="0ft" w="12ft" l="10ft">
-    <light kind="hue" name="bedroom-bed" off_at_night="true"></light>
-    <light kind="hue" name="bedroom-desk0" off_at_night="true"></light>
-    <light kind="hue" name="bedroom-desk1" off_at_night="true"></light>
-    <light kind="hue" name="bedroom-tree0" off_at_night="true"></light>
-    <light kind="hue" name="bedroom-tree1" off_at_night="true"></light>
-    <light kind="hue" name="bedroom-tree2"></light>
-    <light kind="hue" name="bedroom-ceiling" off_at_night="true"></light>
-    <!-- <motion kind="wemo" name="m-bedroom-south"></motion> -->
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
+
+    <light kind="hue" name="bedroom-bed"></light>
+    <light kind="hue" name="bedroom-desk0"></light>
+    <light kind="hue" name="bedroom-desk1"></light>
+    <light kind="hue" name="bedroom-tree0"></light>
+    <light kind="hue" name="bedroom-tree1"></light>
+    <light kind="hue" name="bedroom-tree2" on_at_night="true"></light>
+    <light kind="hue" name="bedroom-ceiling"></light>
+
+    <!-- <motion kind="wemo" name="m-bedroom-south"></motion> -->
+
+    <scene name="sleep" default-activity="sleeping">
+      <activity name="sleeping">
+        <rule name="0" style="visibility:hidden;">light:not([on_at_night])</rule>
+      </activity>
+    </scene>
   </room>
+
   <room name="office" x="0ft" y="0ft" w="10ft" l="13ft">
+    <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
+
     <hue-bridge name="huebridge" ipv4="hue-bridge" username="MasterControlProgram"></hue-bridge>
+
     <light kind="hue" name="office-ceiling1"></light>
     <light kind="hue" name="office-ceiling2"></light>
     <!--<light kind="hue" name="office-torch"></light>-->
+
     <!--
     <motion kind="wemo" name="m-office-desk0"></motion>
     <motion kind="wemo" name="m-office-west"></motion>
     <motion kind="wemo" name="m-office-east" context="room[name=office], room[name=hall]"></motion>
     -->
-    <switch kind="wemo" name="s-office-desk1" x="3ft" y="1ft6in"></switch>
     <motion kind="wemo" name="m-office-desk1" x="3ft" y="6in"></motion>
-    <closet name="office-closet" x="10ft" y="5ft" w="2ft" l="5ft"></closet>
+
+    <switch kind="wemo" name="s-office-desk1" x="3ft" y="1ft6in"></switch>
   </room>
+
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
     <closet name="hall-closet" x="6ft" y="3ft" w="1ft" l="3ft"></closet>
+
     <light kind="hue" name="hall-ceiling0"></light>
     <light kind="hue" name="hall-ceiling1" off_at_night="true"></light>
+
+    <scene name="sleep" default-activity="sleeping">
+      <activity name="sleeping">
+        <rule name="0" style="visibility:hidden;">light</rule>
+      </activity>
+    </scene>
   </room>
+
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
   </room>
+
   <room name="kitchen" x="13ft" y="16ft" w="11ft" l="8ft">
     <!--<door facing="north" x="6in" y="0ft" into="hall">-->
       <motion kind="wemo" name="m-kitchen-north" x="3ft6in" y="0in"></motion>
     <!--</door>-->
+
     <light kind="hue" name="kitchen-sink"></light>
     <light kind="hue" name="kitchen-ceiling0"></light>
     <light kind="hue" name="kitchen-ceiling1"></light>
     <light kind="hue" name="kitchen-ceiling2"></light>
     <light kind="hue" name="kitchen-ceiling3"></light>
     <light kind="hue" name="kitchen-ceiling4"></light>
+
     <switch kind="wemo" name="s-kitchen-sink" x="11ft" y="4ft10in"></switch>
+
     <motion kind="wemo" name="m-kitchen-sink" x="11ft" y="1ft4in"></motion>
   </room>
+
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
     <light kind="hue" name="utility-ceiling"></light>
     <motion kind="wemo" name="m-utility-north" x="4in" y="1ft6in"></motion>
   </room>
+
   <room name="livingroom" x="0ft" y="13ft" w="13ft" l="19ft9in">
     <light kind="hue" name="livingroom-couch"></light>
     <light kind="hue" name="livingroom-torch"></light>
@@ -137,19 +171,25 @@
     <light kind="hue" name="livingroom-tower1"></light>
     <light kind="hue" name="livingroom-tower2"></light>
     <light kind="hue-livingcolors" name="livingroom-console0"></light>
+
     <switch kind="wemo" name="s-livingroom-couch" x="1ft6in" y="4ft" context="home" attribute="scene" value="movie"></switch>
     <!-- <motion kind="wemo" name="north"></motion> -->
   </room>
+
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
     <light kind="hue" name="diningroom-shelves"></light>
     <light kind="hue" name="diningroom-ceiling"></light>
   </room>
 
-  <scene name="on">
-    <rule name="0" style="color:bhs(255,34495,232);animation-duration:1;visibility:visible;">light</rule>
-    <rule name="1" style="color:bhs(255,34495,232);animation-duration:1;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+  <scene name="on" default-activity="yes">
+    <activity name="yes">
+      <rule name="0" style="color:bhs(255,34495,232);animation-duration:1;visibility:visible;">light[kind=hue]</rule>
+      <rule name="1" style="color:bhs(255,34495,232);animation-duration:1;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+    <activity>
+
     <activity name="no">
-      <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light</rule>
+      <rule name="0" style="color:bhs(0,47000,255);animation-duration:1;visibility:hidden;">light[kind=hue]</rule>
+      <rule name="0" style="color:bhs(0,47000,255);animation-duration:1;visibility:visible;">light[kind=hue-livingcolors]</rule>
     </activity>
   </scene>
 
@@ -157,9 +197,11 @@
     <rule name="0" style="visibility:hidden;">light</rule>
   </scene>
 
-  <scene name="sleep">
-    <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
-    <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[off_at_night='true']</rule>
+  <scene name="sleep" default-activity="sleeping">
+    <activity name="sleeping">
+      <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
+    </activity>
+
     <activity name="yes">
       <rule name="0" style="color:bhs(64,34495,232);animation-duration:5;visibility:visible;">light</rule>
     </activity>
