@@ -191,25 +191,43 @@ function get_attrs($, node): Attributes {
     $(node.attributes).each(function() { attrs[this.nodeName] = this.nodeValue; });
     return attrs;
 }
-function get_styles(window, elem): Attributes {
-    var styles: Attributes = {};
-    var css = window.getComputedStyle(elem, '');
-    for (var i = 0; i < css.length; ++i)
-        styles[css.item(i)] = css.getPropertyValue(css.item(i));
-    return styles;
-}
 interface QueryResult {
     text: string;
     attrs: Attributes;
 }
-function to_result(ctx, node): QueryResult {
+function get_matching_css(ctx, elem) {
+    var sheets:CSSStyleSheet = ctx.window.document.styleSheets;
+    var matching_css = [];
+    for (var i in sheets) {
+        var rules = sheets[i].cssRules;
+        for (var r in rules) {
+            if (elem.matchesSelector(rules[r].selectorText)) {
+                matching_css.push(rules[r].style);
+            }
+        }
+    }
+    return matching_css;
+}
+function css_style_to_map(css, styles: Attributes) {
+    for (var i = 0; i < css.length; ++i) {
+        var key = css[i];
+        styles[key] = css.getPropertyValue(key);
+    }
+}
+function get_styles(ctx: Context, elem): Attributes {
+    var styles: Attributes = {};
+    var matching = get_matching_css(ctx, elem);
+    for (var i in matching) {
+        css_style_to_map(matching[i], styles);
+    }
+    return styles;
+}
+function to_result(ctx: Context, node): QueryResult {
     // Text, with text of children stripped out.
     var text = ctx.$(node).clone().children().remove().end().text().trim();
     var tagName = ctx.$(node).prop('tagName');
     var attrs = get_attrs(ctx.$, node);
-    //var styles = get_styles(ctx.window, ctx.$(node)[0]);
-    ctx.window.getComputedStyle(ctx.$(node)[0], '');
-    var styles = {};
+    var styles = get_styles(ctx, ctx.$(node)[0]);
     return { attrs: attrs, styles: styles, text: text, tagName: tagName };
 }
 interface QueryResponse {

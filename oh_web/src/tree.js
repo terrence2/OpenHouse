@@ -12,7 +12,12 @@ function attach_data(conn, path, data, parent) {
         if (attr === 'name' || attr === 'kind')
             continue;
 
-        $(parent).append(`<div name="${attr}">{ <span type="key">${attr}</span>: <span type="value">${data.attrs[attr]}</span> }</div>`);
+        $(parent).append(`<div name="${attr}">{ <span type="key">${attr}</span>:` +
+                         ` <span type="value">${data.attrs[attr]}</span> }</div>`);
+    }
+    for (var prop in data.styles) {
+        $(parent).append(`<div name="${prop}">&lt;style&gt; <span type="key">${prop}</span>:` +
+                         ` <span type="value">${data.styles[prop]}</span> &lt/style&gt;</div>`);
     }
     if (data.text === undefined)
         return;

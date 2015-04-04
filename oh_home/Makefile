@@ -15,3 +15,7 @@ clean:
 
 run: build/main.js vardir
 	node build/main.js eyrie.html | bunyan
+
+watch:
+	while inotifywait -e close -r .; do make; done
+
