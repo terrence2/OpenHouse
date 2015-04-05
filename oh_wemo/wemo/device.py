@@ -61,7 +61,8 @@ class WemoDevice:
             self.log.exception(ex)
             self.log.error("Failed to resubscribe to device: {}".format(self.name))
             del device_map[sid]
-            return self._subscribe(device_map)
+            sid, timeout, delay = yield from self._subscribe(device_map)
+            return sid, timeout, delay
         assert sid == next_sid
         self.log.debug("re-subscribed to {} at sid {}, with timeout {} s; resubscribe in {} s.".format(
             self.name, sid, timeout, delay))

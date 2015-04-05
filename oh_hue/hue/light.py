@@ -38,15 +38,11 @@ class Light:
         return light
 
     def set_light_state_from_oh(self, node: NodeData) -> (Color, bool, int):
-        try:
-            style = node.attrs['style']
-        except KeyError as ex:
-            self.log.warn("No style set on light.")
-            return
+        css = node.styles
 
-        # FIXME: use DOM to getComputedStyle so that we can use CSS, etc.
-        css = {}
-        parts = style.strip(';').split(';')
+        # FIXME: use a real css parser.
+        local_styles = node.attrs.get('style', '')
+        parts = local_styles.strip(';').split(';')
         for part in parts:
             key, _, value = part.strip().partition(':')
             css[key.strip()] = value.strip()

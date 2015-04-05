@@ -16,6 +16,7 @@ class NodeData:
         self.tagName = node['tagName']
         self.text = node['text']
         self.attrs = node['attrs']
+        self.styles = node['styles']
 
         # Name is special: we need a name to even refer to the node, so we can assume it is present.
         self.name = node['attrs']['name']

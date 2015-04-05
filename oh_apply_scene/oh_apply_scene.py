@@ -16,7 +16,7 @@ class SceneProxy:
     """
     Holds information about a <scene> node somewhere in the tree.
     """
-    SceneRule = namedtuple('SceneRule', ['name', 'lookup', 'style'])
+    SceneRule = namedtuple('SceneRule', ['name', 'lookup', 'style', 'class_'])
     RuleList = ['SceneProxy.SceneRule']
 
     def __init__(self, home: Home, path: str, default_activity: str, activity_rules: {str: 'RuleList'}):
@@ -48,8 +48,11 @@ class SceneProxy:
     def get_scene_rules_at(cls, home: Home, path: str) -> 'RuleList':
         query = home.path_to_query(path)
         rule_nodes = yield from home.query(query + ' > rule').run()
-        rules = [cls.SceneRule(node.name, node.text, node.attrs['style']) for path, node in rule_nodes.items()]
-        rules = sorted(rules, key=lambda rule: rule.name)
+        rules = []
+        for path, node in rule_nodes.items():
+            rule = cls.SceneRule(node.name, node.text, node.attrs.get('style', ''), node.attrs.get('class', ''))
+            rules.append(rule)
+        rules = sorted(rules, key=lambda r: r.name)
         return rules
 
     @asyncio.coroutine
@@ -76,9 +79,9 @@ class SceneProxy:
         log.debug("applying rules for {} in context {} for activity {}".format(self.path_, context, activity))
         change_map = {}
         for rule in self.activity_rules_[activity]:
-            log.debug("\tquery '{}' and set style to {}".format(rule.lookup, rule.style))
+            log.debug("\tquery '{}' and set style: {}, class: {}".format(rule.lookup, rule.style, rule.class_))
             results = yield from self.home_.query(rule.lookup).run()
-            changes = {path: rule.style for path in results if path.startswith(context)}
+            changes = {path: rule for path in results if path.startswith(context)}
             change_map.update(changes)
         return change_map
 
@@ -236,8 +239,8 @@ class HomeProxy:
     @asyncio.coroutine
     def _apply_changes(self, change_map):
         group = self.home_.group()
-        for path, style in change_map.items():
-            group.query_path(path).attr('style', style)
+        for path, rule in change_map.items():
+            group.query_path(path).attr('style', rule.style).attr('class', rule.class_)
         yield from group.run()
 
 

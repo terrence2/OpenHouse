@@ -4,8 +4,23 @@
   <title>Eyrie</title>
   <style>
     light {
-      padding: 10px;
-      lorem: ipsem;
+      animation-duration: 1;
+    }
+    .off {
+      visibility: hidden;
+      color: bhs(0, 47000, 255);
+    }
+    .low {
+      visibility: visible;
+      color: bhs(64, 34495, 232);
+    }
+    .moonlight {
+      visibility: visible;
+      color: bhs(0, 47000, 255);
+    }
+    .daylight {
+      visibility: visible;
+      color: bhs(255, 34495, 232);
     }
   </style>
 </head>
@@ -184,50 +199,53 @@
 
   <scene name="on" default-activity="yes">
     <activity name="yes">
-      <rule name="0" style="color:bhs(255,34495,232);animation-duration:1;visibility:visible;">light[kind=hue]</rule>
-      <rule name="1" style="color:bhs(255,34495,232);animation-duration:1;visibility:hidden;">light[kind=hue-livingcolors]</rule>
+      <rule name="0" class="daylight">light</rule>
+      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
     <activity>
 
     <activity name="no">
-      <rule name="0" style="color:bhs(0,47000,255);animation-duration:1;visibility:hidden;">light[kind=hue]</rule>
-      <rule name="0" style="color:bhs(0,47000,255);animation-duration:1;visibility:visible;">light[kind=hue-livingcolors]</rule>
+      <rule name="0" class="off">light</rule>
+      <rule name="0" class="moonlight">light[kind=hue-livingcolors]</rule>
     </activity>
   </scene>
 
-  <scene name="off">
-    <rule name="0" style="visibility:hidden;">light</rule>
+  <scene name="off" default-activity="no">
+    <rule name="0" class="off">light</rule>
   </scene>
 
   <scene name="sleep" default-activity="sleeping">
     <activity name="sleeping">
-      <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
+      <rule name="0" class="moonlight">light</rule>
     </activity>
-
     <activity name="yes">
-      <rule name="0" style="color:bhs(64,34495,232);animation-duration:5;visibility:visible;">light</rule>
+      <rule name="0" class="low">light</rule>
     </activity>
   </scene>
 
-  <scene name="movie">
-    <rule name="0" style="color:bhs(0,47000,255);animation-duration:5;visibility:visible;">light</rule>
-    <rule name="1" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
-    <rule name="2" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
-    <rule name="3" style="color:bhs(0,47000,255);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
+  <scene name="movie" default-activity="watching">
+    <activity name="watching">
+      <rule name="0" class="moonlight">light</rule>
+      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
+      <rule name="2" class="off">room[name='diningroom'] light</rule>
+      <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
+    </activity>
     <activity name="yes">
-      <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
+      <rule name="0" class="daylight">light</rule>
     </activity>
   </scene>
 
-  <scene name="game-study">
-    <rule name="0" style="color:bhs(255,34495,232);animation-duration:5;visibility:visible;">light</rule>
-    <rule name="1" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">light[kind=hue-livingcolors]</rule>
-    <rule name="2" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">room[name='diningroom'] light</rule>
-    <rule name="3" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">room[name='livingroom'] light[name*='tower']</rule>
-    <rule name="4" style="color:bhs(255,34495,232);animation-duration:5;visibility:hidden;">room[name='hall'] light</rule>
+  <scene name="game-study" default-activity="yes">
+    <activity name="yes">
+      <rule name="0" class="daytime">light</rule>
+      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
+      <rule name="2" class="off">room[name='diningroom'] light</rule>
+      <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
+      <rule name="4" class="off">room[name='hall'] light</rule>
+    </activity>
   </scene>
 
   <scene name="low">
-    <rule name="0" style="color:bhs(0,34495,232);animation-duration:5;visibility:visible;">light</rule>
+    <rule name="0" class="low">light</rule>
   </scene>
 
   <runtime name="runtime"></runtime>
