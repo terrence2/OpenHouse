@@ -25,7 +25,7 @@ var METERS_TO_PX = 100;
 
 function get_display_size(size) {
     // -1 to account for 1px borders.
-    return parse_size(size) * METERS_TO_PX - 1;
+    return parseInt(Math.round(parse_size(size) * METERS_TO_PX - 1));
 }
 
 function get_display_offset(size, offset) {
