@@ -11,6 +11,9 @@ from oh_shared.home import Home, NodeData
 
 log = logging.getLogger('oh_apply_scene')
 
+"""
+Applies scene and activity changes to light states.
+"""
 
 class SceneProxy:
     """
