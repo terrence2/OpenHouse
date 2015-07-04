@@ -138,6 +138,9 @@
     <motion kind="wemo" name="m-office-east" context="room[name=office], room[name=hall]"></motion>
     -->
     <motion kind="wemo" name="m-office-desk1" x="3ft" y="6in"></motion>
+    <motion kind="wemo" name="m-office-desk2" x="9ft" y="5ft"></motion>
+    <motion kind="wemo" name="m-office-south" x="0ft" y="10ft"></motion>
+    <motion kind="wemo" name="m-office-east" x="10ft" y="12ft"></motion>
 
     <switch kind="wemo" name="s-office-desk1" x="3ft" y="1ft6in"></switch>
   </room>
@@ -197,6 +200,8 @@
     <light kind="hue" name="diningroom-ceiling"></light>
   </room>
 
+  <alarm name="wakeup" scene="on"></alarm>
+
   <scene name="on" default-activity="yes">
     <activity name="yes">
       <rule name="0" class="daylight">light</rule>
@@ -209,8 +214,10 @@
     </activity>
   </scene>
 
-  <scene name="off" default-activity="no">
-    <rule name="0" class="off">light</rule>
+  <scene name="off" default-activity="any">
+    <activity name="any">
+      <rule name="0" class="off">light</rule>
+    </activity>
   </scene>
 
   <scene name="sleep" default-activity="sleeping">
@@ -236,7 +243,7 @@
 
   <scene name="game-study" default-activity="yes">
     <activity name="yes">
-      <rule name="0" class="daytime">light</rule>
+      <rule name="0" class="daylight">light</rule>
       <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
       <rule name="2" class="off">room[name='diningroom'] light</rule>
       <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
