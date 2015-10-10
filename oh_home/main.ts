@@ -121,6 +121,7 @@ interface Message {
 }
 interface Response {
     error?: string;
+    exception?: any;
 }
 function handle_message(ctx: Context, data): Response {
     var type: string = data.type;
@@ -193,7 +194,9 @@ function get_attrs($, node): Attributes {
 }
 interface QueryResult {
     text: string;
+    tagName: string;
     attrs: Attributes;
+    styles: Attributes;
 }
 function get_matching_css(ctx, elem) {
     var sheets:CSSStyleSheet = ctx.window.document.styleSheets;
@@ -264,6 +267,8 @@ function handle_query(ctx: Context, data: QueryMessage): QueryResponse {
     return touched;
 }
 function handle_one_query(ctx: Context, query: Query, touched: QueryResponse, changed: QueryResponse) {
+    log.debug({query:query}, "handling query");
+
     // Perform the base query.
     var nodes = ctx.$(query.query);
     nodes.each(function(i, node) { touched[pathof(ctx.$, node)] = to_result(ctx, node); });
