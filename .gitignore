@@ -2,6 +2,7 @@
 .idea
 __pycache__
 .virtualenv*
+.venv*
 oh_*/build/
 oh_*/node_modules/
 log/
