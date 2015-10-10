@@ -39,6 +39,7 @@ class WemoDevice:
             response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
             try:
                 sid, timeout, delay = self.parse_response_headers(response.headers)
+                response.close()
             except (aiohttp.errors.ClientOSError, KeyError) as ex:
                 self.log.exception(ex)
                 self.log.error("Failed to subscribe to device: {}".format(self.name))
@@ -57,6 +58,7 @@ class WemoDevice:
         response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
         try:
             next_sid, timeout, delay = self.parse_response_headers(response.headers)
+            response.close()
         except (aiohttp.errors.ClientOSError, KeyError) as ex:
             self.log.exception(ex)
             self.log.error("Failed to resubscribe to device: {}".format(self.name))
