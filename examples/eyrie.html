@@ -3,11 +3,21 @@
   <meta charset="UTF-8"></meta>
   <title>Eyrie</title>
   <style>
+    // Most IoT lights support some sort of hardware dimming. This sets the
+    // interval to 1 second by default, for devices that support such animation.
     light {
       animation-duration: 1;
     }
+
+    // Define classes for light styles we use below.
     .off {
+      // Visibility 'visible' lights are switched on, whereas 'hidden' lights
+      // are switched off.
       visibility: hidden;
+      // OpenHouse supports #rgb, #rrggbb, rgb(u8,u8,u8), as one would expect.
+      // It also support more specific modes like mired(N) to set a specific
+      // color-temperature on supporting bulbs as well as brightness-hue-
+      // saturation, bhs(u8,u16,u8).
       color: bhs(0, 47000, 255);
     }
     .low {
@@ -25,10 +35,12 @@
   </style>
 </head>
 
+<!-- The top-level layout element of the Home Text Markup Language is the "home". -->
 <home name="eyrie" scene="on" w="24ft" l="32ft6in">
+  <!-- This comment block describes in a more graphical form the layout elements that follow. -->
   <comment>
-    Horizontal: 4/ft
-    Vert: 2/ft
+    Horizontal: 4 '-' per ft
+    Vert: 2 '|' per ft
     Reference is upper-left corner.
     X is left-to-right.
     Y is top-to-bottom.
@@ -103,9 +115,25 @@
     +-------------------------------------@@@@@@@@@@@@--------------------------------+----------------+
   </comment>
 
+  <!--
+    -- Generally, you will want one <room> node for each walled-off bit of home.
+    -- Unlike with Hypertext, "name" should be unique. The "x" and "y" attributes
+    -- are the offsets from whatever origin you have defined. The "w" and "l"
+    -- attributes are for the width (x-axis) and length (y-axis) of the room.
+    -- Height via the "h" attribute is also supported, but is generally not
+    -- interesting, at least not in any houses that I can afford.
+    -->
   <room name="bedroom" x="12ft" y="0ft" w="12ft" l="10ft">
+    <!-- Closets are rooms that are dependent on another room for lighting. -->
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
 
+    <!--
+      -- Each IoT device should have its own node. The node's tag-name controls
+      -- how the device is controlled (e.g. light vs switch vs motion[detector]).
+      -- Whereas the "kind" attribute controls what protocol driver attempts to
+      -- drive the device. The "name" attribute should match whatever you've
+      -- configured the name as in the vendor's control panel.
+      -->
     <light kind="hue" name="bedroom-bed"></light>
     <light kind="hue" name="bedroom-desk0"></light>
     <light kind="hue" name="bedroom-desk1"></light>
