@@ -3,21 +3,28 @@
   <meta charset="UTF-8"></meta>
   <title>Eyrie</title>
   <style>
-    // Most IoT lights support some sort of hardware dimming. This sets the
-    // interval to 1 second by default, for devices that support such animation.
+    /*
+     * Most IoT lights support some sort of hardware dimming. This sets the
+     * interval to 1 second by default, for devices that support such animation.
+     */
     light {
       animation-duration: 1;
     }
 
-    // Define classes for light styles we use below.
+    /* Define classes for light styles we use below. */
     .off {
-      // Visibility 'visible' lights are switched on, whereas 'hidden' lights
-      // are switched off.
+      /*
+       * Visibility 'visible' lights are switched on, whereas 'hidden' lights
+       * are switched off.
+       */
       visibility: hidden;
-      // OpenHouse supports #rgb, #rrggbb, rgb(u8,u8,u8), as one would expect.
-      // It also support more specific modes like mired(N) to set a specific
-      // color-temperature on supporting bulbs as well as brightness-hue-
-      // saturation, bhs(u8,u16,u8).
+
+      /*
+       * OpenHouse supports #rgb, #rrggbb, rgb(u8,u8,u8), as one would expect.
+       * It also support more specific modes like mired(N) to set a specific
+       * color-temperature on supporting bulbs as well as brightness-hue-
+       * saturation, bhs(u8,u16,u8).
+       */
       color: bhs(0, 47000, 255);
     }
     .low {
