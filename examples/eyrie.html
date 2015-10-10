@@ -123,6 +123,82 @@
   </comment>
 
   <!--
+    -- A design describes how to configure the lighting (and other output devices) when requested to do so.
+    -- The following four designs just apply each class we defined above to all <light>s.
+    -->
+  <design name="all-on">
+    <rule name="0" class="daylight">light</rule>
+  </design>
+
+  <design name="all-off">
+    <rule name="0" class="off">light</rule>
+  </design>
+
+  <design name="moonlight">
+    <rule name="0" class="moonlight">light</rule>
+  </design>
+
+  <!-- This rule turns on the lights, but turns off philip's "livingcolors" series lamps. These lamps do
+       not have a white-phosphor diffuser. This allows them to achieve more vivid saturated colors, but
+       they never look quite white, so generally clash with "normal" lighting. -->
+  <design name="normal-on">
+    <!-- Rules are read in lexicographical order by name and only applied after concatenating all
+         effects; thus, the following rules will not turn on the livingcolor lights before turning them
+         back off. -->
+    <rule name="0" class="daylight">light</rule>
+    <rule name="1" class="off">light[kind=livingcolors]</rule>
+  </design>
+
+  <!-- This rule turns off the lights, but leaves "livingcolors" lights on at a low glimmer, giving our
+       living spaces a gentle moonlight glow at night. -->
+  <design name="nighttime-off">
+    <rule name="0" class="off">light</rule>
+    <rule name="1" class="moonlight">light[kind=livingcolors]</rule>
+  </design>
+
+  <!-- As with normal-on, but setting the lights to half-intensity. Useful when walking about at night. -->
+  <design name="normal-low">
+    <rule name="0" class="low">light</rule>
+    <rule name="1" class="off">light[kind=livingcolors]</rule>
+  </design>
+
+  <!--
+    -- A scene tells us what designs to use on the lights by default and when motion and switches are
+    -- activated in a room. For example, in the evening, you probably want all lights to come on when you
+    -- enter a room, but after going to bed, maybe you only want the lights to come on at half intensity,
+    -- or only some lights.
+    -->
+
+  <!-- During the daytime, we want lights to normally be off, but turn on when we enter a room. My house is
+       generally well lit, however, so we only need the lights on at half intensity. To do this we add an
+       activity node "yes" and set its design to "low" and an activity for "no" and set it to have a design
+       of "off". Unfortunately, I don't have motion detectors in all rooms yet, so in those cases we need
+       to default to low. In the few rooms without many windows, we can add per-room scene overrides to fix
+       this to turn on the lights all the way in rooms that need it. -->
+  <scene name="daytime" default-design="normal-low">
+    <activity name="yes" design="normal-low"></activity>
+    <activity name="no" design="off"></activity>
+  </scene>
+
+  <!-- In the evening, it is dark, so change off to low and low to on. -->
+  <scene name="evening" default-design="normal-on">
+    <activity name="yes" design="normal-on"></activity>
+    <activity name="no" design="normal-low"></activity>
+  </scene>
+
+  <!-- When sleeping, we want things to be mostly dark, but turn up the lights on motion so we don't
+       stumble into things. My bedroom doesn't have motion detectors, but if it did I would need to
+       add a <scene> node in the bedroom to keep the lights off when activity is "yes". -->
+  <scene name="sleeping" default-design="moonlight">
+    <activity name="yes" design="normal-low"></activity>
+    <activity name="no" design="nighttime-off"></activity>
+  </scene>
+
+
+  <!--
+    -- Rooms define sub-areas of a home. They can be independently configured with
+    -- overrides to the current and default light designs.
+    --
     -- Generally, you will want one <room> node for each walled-off bit of home.
     -- Unlike with Hypertext, "name" should be unique. The "x" and "y" attributes
     -- are the offsets from whatever origin you have defined. The "w" and "l"
@@ -149,12 +225,17 @@
     <light kind="hue" name="bedroom-tree2" on_at_night="true"></light>
     <light kind="hue" name="bedroom-ceiling"></light>
 
-    <!-- <motion kind="wemo" name="m-bedroom-south"></motion> -->
+    <!-- The bedroom has lots of lights, so override the moonlight design to be
+         be less overwhelming by shutting off all lights that are not tagged with
+         the on_at_night attribute. -->
+    <design name="moonlight">
+      <rule name="0" style="visibility:hidden;">light:not([on_at_night])</rule>
+    </design>
 
-    <scene name="sleep" default-activity="sleeping">
-      <activity name="sleeping">
-        <rule name="0" style="visibility:hidden;">light:not([on_at_night])</rule>
-      </activity>
+    <!-- The bedroom is also fairly dark, so update the daytime scene to turn
+         the lights on fully. -->
+    <scene name="daytime">
+      <activity name=""yes" design="normal-on"></activity>
     </scene>
   </room>
 
@@ -184,13 +265,12 @@
     <closet name="hall-closet" x="6ft" y="3ft" w="1ft" l="3ft"></closet>
 
     <light kind="hue" name="hall-ceiling0"></light>
-    <light kind="hue" name="hall-ceiling1" off_at_night="true"></light>
+    <light kind="hue" name="hall-ceiling1" on_at_night="true"></light>
 
-    <scene name="sleep" default-activity="sleeping">
-      <activity name="sleeping">
-        <rule name="0" style="visibility:hidden;">light</rule>
-      </activity>
-    </scene>
+    <!-- The hall is visible from the bedroom, so needs the same treatment. -->
+    <design name="moonlight">
+      <rule name="0" style="visibility:hidden;">light:not([on_at_night])</rule>
+    </design>
   </room>
 
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
@@ -235,17 +315,24 @@
     <light kind="hue" name="diningroom-ceiling"></light>
   </room>
 
+  <!--
   <alarm name="wakeup" scene="on"></alarm>
 
-  <scene name="on" default-activity="yes">
+  <scene name="always-on">
+  </scene>
+
+  <scene name="always-off">
+  </scene>
+
+  <scene name="always-on">
     <activity name="yes">
       <rule name="0" class="daylight">light</rule>
-      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
+      <rule name="1" class="off">light[kind=livingcolors]</rule>
     <activity>
 
     <activity name="no">
       <rule name="0" class="off">light</rule>
-      <rule name="0" class="moonlight">light[kind=hue-livingcolors]</rule>
+      <rule name="0" class="moonlight">light[kind=livingcolors]</rule>
     </activity>
   </scene>
 
@@ -267,7 +354,7 @@
   <scene name="movie" default-activity="watching">
     <activity name="watching">
       <rule name="0" class="moonlight">light</rule>
-      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
+      <rule name="1" class="off">light[kind=livingcolors]</rule>
       <rule name="2" class="off">room[name='diningroom'] light</rule>
       <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
     </activity>
@@ -279,7 +366,7 @@
   <scene name="game-study" default-activity="yes">
     <activity name="yes">
       <rule name="0" class="daylight">light</rule>
-      <rule name="1" class="off">light[kind=hue-livingcolors]</rule>
+      <rule name="1" class="off">light[kind=livingcolors]</rule>
       <rule name="2" class="off">room[name='diningroom'] light</rule>
       <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
       <rule name="4" class="off">room[name='hall'] light</rule>
@@ -289,6 +376,7 @@
   <scene name="low">
     <rule name="0" class="low">light</rule>
   </scene>
+  -->
 
   <runtime name="runtime"></runtime>
 </home>
