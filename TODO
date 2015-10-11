@@ -1,5 +1,7 @@
 TODO
 ====
+Make motion-negative events set presence to no, rather than unknown.
+Allow configuration of histeresis on individual motion controls, possibly controlled by scene.
 Implement alarms.
 Expand our network bindings with the full set of implementable jquery routines.
 Implement activity="<something>" to turn the lights to something per-room.
@@ -20,6 +22,9 @@ Auto-exit oh_ daemonts when oh_home goes down --
 
 DONE
 ====
+Add a dropdown under scene select that will force a design override on all rooms.
+Add direct control of design that overrides presence.
+Remove illusion of direct control of presence.
 Implement css style rules.
 Expose a raw query console in the web interface.
 s/aiohome/home/ and remove namespacing

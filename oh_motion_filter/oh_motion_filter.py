@@ -54,7 +54,6 @@ class MotionDetector:
             self.log.debug("{} raw-state true->false; turning off in {} seconds".format(path, delay))
             self.disable_handle_ = asyncio.async(self.set_false(delay, path))
 
-
     @asyncio.coroutine
     def set_false(self, delay: float or int, path: str):
         self.log.debug("waiting {} sec before setting {}[state=false]".format(delay, path))

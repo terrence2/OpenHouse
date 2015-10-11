@@ -91,7 +91,8 @@ function display_room(global_designs, elem, conn, node)
 
             // Listen for future changes.
             conn.subscribe(path, (_, msg) => {
-                var activity = msg.attrs.design || 'default';
+                var activity = msg.attrs.activity || 'unknown';
+                console.log("updating room " + path + " to " + activity);
                 var color = '';
                 if (activity == 'yes') color = '#d7ffea';
                 if (activity == 'no') color = '#ffead7';
