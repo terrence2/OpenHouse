@@ -40,18 +40,16 @@ function create_home_area(data, elem, conn) {
         .height(get_display_size(data.attrs.l))
         .appendTo(elem);
 
-    conn.query('[activity]').run()
-        .then(R.mapObj(v => v.attrs.activity))
-        .then(R.append("yes"))
-        .then(R.append("unknown"))
-        .then(R.uniq)
-        .then(activities => {
+    conn.query('home > design').run()
+        .then(R.values)
+        .then(R.map(v => v.attrs.name))
+        .then((global_designs) => {
             conn.query('home > room').run()
-                .then(R.mapObj(R.curry(display_room)(activities, elem, conn)));
+                .then(R.mapObj(R.curry(display_room)(global_designs, elem, conn)));
         });
 }
 
-function display_room(activities, elem, conn, node)
+function display_room(global_designs, elem, conn, node)
 {
     var room_name = node.attrs.name;
     var home_offset_left = $(elem).offset().left;
@@ -76,30 +74,35 @@ function display_room(activities, elem, conn, node)
     conn.query(`room[name=${room_name}] > closet`).run()
         .then(R.mapObj(R.curry(display_closet)(room_elem)));
 
-    // Create and populate the activity selection dropdown in each room.
+    // Create and populate the design selection dropdown in each room.
     var sel = $(`<select id="birdseye-room-${room_name}-select"></select>`)
         .appendTo(room_elem);
-    R.map((v) => $(sel).append(`<option value="${v}">${v}</option>`), activities);
+    $(sel).append('<option value="default">default</option>');
+    R.map((v) => $(sel).append(`<option value="${v}">${v}</option>`), global_designs);
 
     // Get the current value of the room's activity.
     conn.query(`room[name=${room_name}]`).run()
         .then(msg => {
             var path = R.last(R.keys(msg));
             var data = R.last(R.values(msg));
-            $(sel).val(data.attrs.activity || 'unknown');
+
+            // Update the dropdown to the current value.
+            $(sel).val(data.attrs.design || 'default');
 
             // Listen for future changes.
             conn.subscribe(path, (_, msg) => {
-                var activity = msg.attrs.activity || 'unknown';
-                var color = activity == 'unknown' ? '' : '#d7ffea';
+                var activity = msg.attrs.design || 'default';
+                var color = '';
+                if (activity == 'yes') color = '#d7ffea';
+                if (activity == 'no') color = '#ffead7';
                 $(room_elem).css('background-color', color);
                 $(sel).val(activity);
             });
         });
     sel.on('change', (e) => {
         var switchValue = e.target.options[e.target.selectedIndex].value;
-        console.log(`Changing room ${room_name} to activity ${switchValue}`);
-        conn.query(`room[name=${room_name}]`).attr('activity', switchValue).run();
+        console.log(`Changing room ${room_name} to design ${switchValue}`);
+        conn.query(`room[name=${room_name}]`).attr('design', switchValue).run();
     });
 
     // Overlay motion detectors and switches.

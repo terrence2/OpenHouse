@@ -98,6 +98,7 @@ class RoomProxy:
         self.design_overrides_ = designs
         self.scene_overrides_ = scenes
         self.last_activity_ = node.attrs.get('activity', 'unknown')
+        self.last_design_ = node.attrs.get('design', '__unset__')
 
     @classmethod
     @asyncio.coroutine
@@ -142,6 +143,14 @@ class RoomProxy:
         self.last_activity_ = new_activity
         return True
 
+    def change_design(self, node: NodeData) -> bool:
+        """Apply a new design from node. Return True if the design was changed."""
+        new_design = node.attrs.get('design', '__unset__')
+        if new_design == self.last_design_:
+            return False
+        self.last_design_ = new_design
+        return True
+
     @asyncio.coroutine
     def apply_overrides_to_room(self, global_scene: SceneProxy, global_designs: {str: DesignProxy}):
         """
@@ -162,6 +171,11 @@ class RoomProxy:
         if scene_name in self.scene_overrides_:
             if activity_name in self.scene_overrides_[scene_name].activities_:
                 best_design = self.scene_overrides_[scene_name].activities_[activity_name]
+
+        # The user may also have set an exact design to use on the room node. If so, obey that.
+        if self.last_design_ != '__unset__':
+            if self.last_design_ in global_designs or self.last_design_ in self.design_overrides_:
+                best_design = self.last_design_
 
         # If the room overrides the names of designs and the design we chose is one of them, use the different design.
         if best_design in self.design_overrides_:
@@ -267,7 +281,7 @@ class HomeProxy:
             log.warning("Current scene {} is not in scenes_".format(self.current_scene_))
             return
 
-        if not room.change_activity(node):
+        if not room.change_activity(node) and not room.change_design(node):
             return
 
         global_scene = self.scenes_[self.current_scene_]
