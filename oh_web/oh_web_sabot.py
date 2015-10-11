@@ -14,9 +14,15 @@ def index():
     with open('templates/index.html', 'r') as fp:
         return template(fp.read(), **websocket_info)
 
+@route('/mobile')
+def index():
+    with open('templates/mobile.html', 'r') as fp:
+        return template(fp.read(), **websocket_info)
+
 
 RESOURCES = {
-    'oh.js': 'build/oh_web.js',
+    'oh.js': 'build/oh.js',
+    'oh_mobile.js': 'build/oh_mobile.js',
 }
 for filename in os.listdir('static/images'):
     RESOURCES[filename] = 'static/images/' + filename

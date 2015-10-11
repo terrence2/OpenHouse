@@ -1,0 +1,22 @@
+<html>
+<head>
+    <title>OpenHouse</title>
+    <script src="{{client_code}}"></script>
+    <script>window.HOME_ADDRESS = "{{address}}";</script>
+    <script src="/resources/oh_mobile.js"></script>
+    <style>
+    button {
+        float: left;
+        clear: both;
+        width: 100%;
+        height: 25%;
+        font-size: 400%;
+    }
+    </style>
+</head>
+<body>
+    <button type="button" value="daytime" onclick="do_daytime()">Daytime</button>
+    <button type="button" value="evening" onclick="do_evening()">Evening</button>
+    <button type="button" value="sleep" onclick="do_sleep()">Sleep</button>
+</body>
+</html>
