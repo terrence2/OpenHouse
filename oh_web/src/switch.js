@@ -14,7 +14,10 @@ function attach(conn, elem)
 
     $(elem).append('<div class="scene_select">Scene Select: '+
                    '<select id="global_switch"></select></div>');
+    $(elem).append('<div class="design_override">Design Override: '+
+                   '<select id="global_override"></select></div>');
     var gswitch = $('#global_switch');
+    var goverride = $('#global_override');
 
     // Load the set of available options.
     conn.query('home > scene').run()
@@ -37,10 +40,25 @@ function attach(conn, elem)
                 });
         });
 
+    // Load the set of global designs.
+    goverride.append('<option value="__unset__"></option>');
+    conn.query('home > design').run()
+        .then(R.values)
+        .then(R.map((data) => data.attrs.name))
+        .then(R.map((name) => `<option value="${name}">${name}</option>`))
+        .then(R.map((opt) => $(goverride).append(opt)));
+
     gswitch.on('change', (e) => {
         var switchValue = e.target.options[e.target.selectedIndex].value;
         console.log("new switch val: " + switchValue);
         conn.query('home').attr('scene', switchValue).run();
+    });
+
+    // Respond to design changes.
+    goverride.on('change', (e) => {
+        var switchValue = e.target.options[e.target.selectedIndex].value;
+        console.log("overriding all room design attrs with: " + switchValue);
+        conn.query('home > room').attr('design', switchValue).run();
     });
 }
 

@@ -77,7 +77,7 @@ function display_room(global_designs, elem, conn, node)
     // Create and populate the design selection dropdown in each room.
     var sel = $(`<select id="birdseye-room-${room_name}-select"></select>`)
         .appendTo(room_elem);
-    $(sel).append('<option value="default">default</option>');
+    $(sel).append('<option value="__unset__"></option>');
     R.map((v) => $(sel).append(`<option value="${v}">${v}</option>`), global_designs);
 
     // Get the current value of the room's activity.
@@ -87,7 +87,7 @@ function display_room(global_designs, elem, conn, node)
             var data = R.last(R.values(msg));
 
             // Update the dropdown to the current value.
-            $(sel).val(data.attrs.design || 'default');
+            $(sel).val(data.attrs.design || '__unset__');
 
             // Listen for future changes.
             conn.subscribe(path, (_, msg) => {
