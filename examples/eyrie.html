@@ -235,7 +235,7 @@
     <!-- The bedroom is also fairly dark, so update the daytime scene to turn
          the lights on fully. -->
     <scene name="daytime">
-      <activity name=""yes" design="normal-on"></activity>
+      <activity name="yes" design="normal-on"></activity>
     </scene>
   </room>
 
@@ -317,65 +317,6 @@
 
   <!--
   <alarm name="wakeup" scene="on"></alarm>
-
-  <scene name="always-on">
-  </scene>
-
-  <scene name="always-off">
-  </scene>
-
-  <scene name="always-on">
-    <activity name="yes">
-      <rule name="0" class="daylight">light</rule>
-      <rule name="1" class="off">light[kind=livingcolors]</rule>
-    <activity>
-
-    <activity name="no">
-      <rule name="0" class="off">light</rule>
-      <rule name="0" class="moonlight">light[kind=livingcolors]</rule>
-    </activity>
-  </scene>
-
-  <scene name="off" default-activity="any">
-    <activity name="any">
-      <rule name="0" class="off">light</rule>
-    </activity>
-  </scene>
-
-  <scene name="sleep" default-activity="sleeping">
-    <activity name="sleeping">
-      <rule name="0" class="moonlight">light</rule>
-    </activity>
-    <activity name="yes">
-      <rule name="0" class="low">light</rule>
-    </activity>
-  </scene>
-
-  <scene name="movie" default-activity="watching">
-    <activity name="watching">
-      <rule name="0" class="moonlight">light</rule>
-      <rule name="1" class="off">light[kind=livingcolors]</rule>
-      <rule name="2" class="off">room[name='diningroom'] light</rule>
-      <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
-    </activity>
-    <activity name="yes">
-      <rule name="0" class="daylight">light</rule>
-    </activity>
-  </scene>
-
-  <scene name="game-study" default-activity="yes">
-    <activity name="yes">
-      <rule name="0" class="daylight">light</rule>
-      <rule name="1" class="off">light[kind=livingcolors]</rule>
-      <rule name="2" class="off">room[name='diningroom'] light</rule>
-      <rule name="3" class="off">room[name='livingroom'] light[name*='tower']</rule>
-      <rule name="4" class="off">room[name='hall'] light</rule>
-    </activity>
-  </scene>
-
-  <scene name="low">
-    <rule name="0" class="low">light</rule>
-  </scene>
   -->
 
   <runtime name="runtime"></runtime>
