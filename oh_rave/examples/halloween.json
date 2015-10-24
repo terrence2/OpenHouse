@@ -1,0 +1,40 @@
+{
+  "color": {
+    "red": {
+      "name": "gauss",
+      "parameters": {
+        "mu": 0.6,
+        "sigma": 0.2
+      },
+      "min": 0.0,
+      "max": 1.0
+    },
+    "green": {
+      "name": "gauss",
+      "parameters": {
+        "mu": 0.4,
+        "sigma": 0.2
+      },
+      "min": 0.0,
+      "max": 1.0
+    },
+    "blue": {
+      "name": "uniform",
+      "parameters": {
+        "a": 0.0,
+        "b": 1.0
+      },
+      "min": 0.0,
+      "max": 1.0
+    }
+  },
+  "transition": {
+    "name": "gauss",
+    "parameters": {
+      "mu": 60,
+      "sigma": 20
+    },
+    "min": 10,
+    "max": 120
+  }
+}
