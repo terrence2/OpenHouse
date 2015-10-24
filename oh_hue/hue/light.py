@@ -38,6 +38,12 @@ class Light:
         return light
 
     def set_light_state_from_oh(self, node: NodeData) -> (Color, bool, int):
+        """
+        Parse the node's style.
+          color => color
+          visibility => on
+          animation-duration => transitiontime
+        """
         css = node.styles
 
         # FIXME: use a real css parser.
