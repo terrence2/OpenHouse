@@ -38,6 +38,9 @@ pid_motion_filter=$!
 ./oh_infer_activity/oh_infer_activity.py -l INFO -L $LOGDIR/oh_infer_activity.log -P $PORT &
 pid_infer_activity=$!
 
+./oh_alarm/oh_alarm.py -l INFO -L $LOGDIR/oh_alarm.log -P $PORT &
+pid_alarm=$!
+
 { pushd oh_web && ./oh_web_sabot.py -L ../$LOGDIR/oh_web.log -p 8080 -P $PORT; popd; } &
 pid_web=$!
 
@@ -48,8 +51,10 @@ echo "pid motion filter:  "$pid_motion_filter
 echo "pid infer activity: "$pid_infer_activity
 echo "pid apply scene:    "$pid_apply_scene
 echo "pid hue:            "$pid_hue
+echo "pid alarm:          "$pid_alarm
 echo "pid web:            "$pid_web
 wait $pid_web
+wait $pid_alarm
 wait $pid_hue
 wait $pid_apply_scene
 wait $pid_infer_activity
