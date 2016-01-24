@@ -5,10 +5,8 @@ var home = require('./home');
 
 window.do_daytime = function(e) {set_scene("daytime")};
 window.do_evening = function(e) {set_scene("evening")};
-window.do_sleep = function(e) {
-    console.log("GOT HERE");
-    set_scene("sleep");
-};
+window.do_sleep = function(e) {set_scene("sleep");};
+window.do_movie = function(e) {set_scene("movie");};
 
 function set_scene(scene_name)
 {

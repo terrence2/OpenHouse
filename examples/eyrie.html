@@ -194,6 +194,11 @@
     <activity name="no" design="nighttime-off"></activity>
   </scene>
 
+  <!-- When using the screen, try to minimize all ambient lighting. -->
+  <scene name="movie" default-design="moonlight">
+    <activity name="yes" design="normal-low"></activity>
+    <activity name="no" design="off"></activity>
+  </scene>
 
   <!--
     -- Rooms define sub-areas of a home. They can be independently configured with
@@ -265,12 +270,15 @@
     <closet name="hall-closet" x="6ft" y="3ft" w="1ft" l="3ft"></closet>
 
     <light kind="hue" name="hall-ceiling0"></light>
-    <light kind="hue" name="hall-ceiling1" on_at_night="true"></light>
+    <light kind="hue" name="hall-ceiling1"></light>
 
     <!-- The hall is visible from the bedroom, so needs the same treatment. -->
     <design name="moonlight">
       <rule name="0" style="visibility:hidden;">light:not([on_at_night])</rule>
     </design>
+    <scene name="daytime">
+      <activity name="yes" design="normal-on"></activity>
+    </scene>
   </room>
 
   <room name="bathroom" x="17ft" y="10ft" w="7ft" l="6ft">
@@ -315,9 +323,9 @@
     <light kind="hue" name="diningroom-ceiling"></light>
   </room>
 
-  <!--
-  <alarm name="wakeup" scene="on"></alarm>
-  -->
+  <alarm name="daytime" hour="6" minutes="45" scene="daytime"></alarm>
+  <alarm name="evening" hour="17" minutes="0" scene="evening"></alarm>
+  <alarm name="sleep" hour="22" minutes="0" scene="sleep"></alarm>
 
   <runtime name="runtime"></runtime>
 </home>
