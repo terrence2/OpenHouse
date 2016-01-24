@@ -11,8 +11,6 @@ from oh_shared.args import parse_default_args
 from oh_shared.log import enable_logging
 from oh_shared.home import Home, NodeData
 
-import threading
-
 log = logging.getLogger('oh_alarm')
 
 CRON_KEYS = ('year', 'month', 'day', 'week', 'day_of_week', 'hour', 'minute', 'second')
