@@ -15,6 +15,7 @@ log = logging.getLogger('oh_alarm')
 
 CRON_KEYS = ('year', 'month', 'day', 'week', 'day_of_week', 'hour', 'minute', 'second')
 
+
 @asyncio.coroutine
 def on_alarm(home: Home, path: str):
     alarms = yield from home.query(home.path_to_query(path)).run()
