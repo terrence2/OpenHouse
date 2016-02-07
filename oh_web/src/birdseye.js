@@ -4,6 +4,7 @@
 var $ = require('jquery');
 var R = require('ramda');
 var jss = require('jss');
+var spectrum = require('spectrum-colorpicker');
 var home = require('./home');
 var util = require('./util');
 
@@ -106,21 +107,64 @@ function display_room(global_designs, elem, conn, node)
         conn.query(`room[name=${room_name}]`).attr('design', switchValue).run();
     });
 
-    // Overlay motion detectors and switches.
-    conn.query(`room[name=${room_name}] motion, room[name=${room_name}] switch`).run()
+    // Overlay devices.
+    conn.query(`room[name=${room_name}] motion, room[name=${room_name}] switch, room[name=${room_name}] light`).run()
         .then(R.mapObjIndexed((node, path, msg) => {
             var name = node.attrs.name;
             var tagname = node.tagName.toLowerCase();
-            var motion_elem = $(`<div class="birdseye-${tagname}"><span>${name}</span></div>`)
+            var element = $(`<div class="birdseye-${tagname}"><span>${name}</span></div>`)
                 .css('position', 'absolute')
                 .css('left', get_display_offset(node.attrs.x, -15))
                 .css('top', get_display_offset(node.attrs.y, -15))
                 .appendTo(room_elem);
+            if (tagname == 'light') {
+                //$(element).click(e => console.log("Hello, World!"));
+                var last_move = 0;
+                $(element).spectrum({
+                    move: color => {
+                        if (Date.now() - last_move > 200) {
+                            last_move = Date.now();
+                            conn.query(`room[name=${room_name}] light[name=${name}]`).css('color', color.toHexString()).run();
+                        }
+                    },
+                    change: color => {
+                        conn.query(`room[name=${room_name}] light[name=${name}]`).css('color', color.toHexString()).run();
+                    },
+                    showInput: true,
+                    //showInitial: bool,
+                    //allowEmpty: bool,
+                    //showAlpha: bool,
+                    //disabled: bool,
+                    //localStorageKey: string,
+                    showPalette: true,
+                    palette: [
+                      'white', 'red', 'green', 'blue'
+                    ],
+                    //showPaletteOnly: bool,
+                    //togglePaletteOnly: bool,
+                    //showSelectionPalette: bool,
+                    //clickoutFiresChange: bool,
+                    //cancelText: string,
+                    //chooseText: string,
+                    //togglePaletteMoreText: string,
+                    //togglePaletteLessText: string,
+                    //containerClassName: string,
+                    //replacerClassName: string,
+                    //preferredFormat: string,
+                    //maxSelectionSize: int,
+                    //selectionPalette: [string]
+                });
+            }
             conn.subscribe(path, (msg_path, msg_node) => {
-                if (msg_node.attrs['raw-state'] == 'true')
-                    motion_elem.addClass('active');
-                else
-                    motion_elem.removeClass('active');
+                var msg_tag = node.tagName.toLowerCase();
+                if (msg_tag == 'motion' || msg_tag == 'switch') {
+                    if (msg_node.attrs['raw-state'] == 'true')
+                        element.addClass('active');
+                    else
+                        element.removeClass('active');
+                } else if (msg_tag == 'light') {
+
+                }
             });
         }));
 }
@@ -184,6 +228,18 @@ function attach(conn, elem)
         },
         '.birdseye-switch.active': {
             'background-image': 'url(/resources/wemoswitch32_active.png)',
+        },
+        '.birdseye-light': {
+            'background-image': 'url(/resources/hue32.png)',
+            'padding': '0px',
+            'width': '32px',
+            'height': '32px',
+        },
+        '.birdseye-light> span': {
+            'display': 'none'
+        },
+        '.birdseye-light:hover > span': {
+            'display': 'inline'
         },
     });
     styles.attach();

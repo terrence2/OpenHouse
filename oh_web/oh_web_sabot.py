@@ -23,6 +23,7 @@ def index():
 RESOURCES = {
     'oh.js': 'build/oh.js',
     'oh_mobile.js': 'build/oh_mobile.js',
+    'spectrum.css': 'node_modules/spectrum-colorpicker/spectrum.css'
 }
 for filename in os.listdir('static/images'):
     RESOURCES[filename] = 'static/images/' + filename

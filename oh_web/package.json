@@ -11,7 +11,8 @@
     "tsify": "~0.6.2",
     "ramda": "~0.11.x",
     "jss": "~0.8.1",
-    "esprima": "~2.1.0"
+    "esprima": "~2.1.0",
+    "spectrum-colorpicker": "~1.8.0"
   },
   "devDependencies": {
     "typescript": ">=1.0.1"

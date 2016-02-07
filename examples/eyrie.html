@@ -138,9 +138,10 @@
     <rule name="0" class="moonlight">light</rule>
   </design>
 
-  <!-- This rule turns on the lights, but turns off philip's "livingcolors" series lamps. These lamps do
-       not have a white-phosphor diffuser. This allows them to achieve more vivid saturated colors, but
-       they never look quite white, so generally clash with "normal" lighting. -->
+  <!-- This rule turns on the lights, but turns off philip's "livingcolors" series lamps. The
+       livingcolors series of lamps do not have a white-phosphor diffuser, allowing them to
+       achieve more vivid saturated colors. They never look quite white, however, so they tend to
+       clash with "normal" lighting. -->
   <design name="normal-on">
     <!-- Rules are read in lexicographical order by name and only applied after concatenating all
          effects; thus, the following rules will not turn on the livingcolor lights before turning them
@@ -189,7 +190,7 @@
   <!-- When sleeping, we want things to be mostly dark, but turn up the lights on motion so we don't
        stumble into things. My bedroom doesn't have motion detectors, but if it did I would need to
        add a <scene> node in the bedroom to keep the lights off when activity is "yes". -->
-  <scene name="sleep" default-design="moonlight">
+  <scene name="sleep" default-design="nighttime-off">
     <activity name="yes" design="normal-low"></activity>
     <activity name="no" design="nighttime-off"></activity>
   </scene>
@@ -222,13 +223,13 @@
       -- drive the device. The "name" attribute should match whatever you've
       -- configured the name as in the vendor's control panel.
       -->
-    <light kind="hue" name="bedroom-bed"></light>
-    <light kind="hue" name="bedroom-desk0"></light>
-    <light kind="hue" name="bedroom-desk1"></light>
-    <light kind="hue" name="bedroom-tree0"></light>
-    <light kind="hue" name="bedroom-tree1"></light>
-    <light kind="hue" name="bedroom-tree2" on_at_night="true"></light>
-    <light kind="hue" name="bedroom-ceiling"></light>
+    <light kind="hue" name="bedroom-bookshelf0" x="10ft" y="1ft"></light>
+    <light kind="hue" name="bedroom-bookshelf1" x="4ft" y="8ft"></light>
+    <light kind="hue" name="bedroom-dresser" x="10ft" y="2ft"></light>
+    <light kind="hue" name="bedroom-tree0" x="1ft" y="2ft"></light>
+    <light kind="hue" name="bedroom-tree1" x="1ft" y="1ft"></light>
+    <light kind="hue" name="bedroom-tree2" x="2ft" y="1ft"></light>
+    <light kind="hue" name="bedroom-ceiling" x="6ft" y="6ft"></light>
 
     <!-- The bedroom has lots of lights, so override the moonlight design to be
          be less overwhelming by shutting off all lights that are not tagged with
@@ -249,8 +250,8 @@
 
     <hue-bridge name="huebridge" ipv4="hue-bridge" username="MasterControlProgram"></hue-bridge>
 
-    <light kind="hue" name="office-ceiling1"></light>
-    <light kind="hue" name="office-ceiling2"></light>
+    <light kind="hue" name="office-ceiling1" x="5ft" y="6ft"></light>
+    <light kind="hue" name="office-ceiling2" x="4ft" y="7ft"></light>
     <!--<light kind="hue" name="office-torch"></light>-->
 
     <!--
@@ -269,8 +270,8 @@
   <room name="hall" x="10ft" y="10ft" w="7ft" l="6ft" noborder>
     <closet name="hall-closet" x="6ft" y="3ft" w="1ft" l="3ft"></closet>
 
-    <light kind="hue" name="hall-ceiling0"></light>
-    <light kind="hue" name="hall-ceiling1"></light>
+    <light kind="hue" name="hall-ceiling0" x="4ft" y="2ft"></light>
+    <light kind="hue" name="hall-ceiling1" x="5ft" y="3ft"></light>
 
     <!-- The hall is visible from the bedroom, so needs the same treatment. -->
     <design name="moonlight">
@@ -289,12 +290,12 @@
       <motion kind="wemo" name="m-kitchen-north" x="3ft6in" y="0in"></motion>
     <!--</door>-->
 
-    <light kind="hue" name="kitchen-sink"></light>
-    <light kind="hue" name="kitchen-ceiling0"></light>
-    <light kind="hue" name="kitchen-ceiling1"></light>
-    <light kind="hue" name="kitchen-ceiling2"></light>
-    <light kind="hue" name="kitchen-ceiling3"></light>
-    <light kind="hue" name="kitchen-ceiling4"></light>
+    <light kind="hue" name="kitchen-sink" x="9ft" y="1ft"></light>
+    <light kind="hue" name="kitchen-ceiling0" x="2ft" y="6ft"></light>
+    <light kind="hue" name="kitchen-ceiling1" x="3ft" y="5ft"></light>
+    <light kind="hue" name="kitchen-ceiling2" x="4ft" y="4ft"></light>
+    <light kind="hue" name="kitchen-ceiling3" x="5ft" y="3ft"></light>
+    <light kind="hue" name="kitchen-ceiling4" x="6ft" y="2ft"></light>
 
     <switch kind="wemo" name="s-kitchen-sink" x="11ft" y="4ft10in"></switch>
 
@@ -302,25 +303,25 @@
   </room>
 
   <room name="utility" x="20ft6in" y="24ft" w="4ft6in" l="8ft6in">
-    <light kind="hue" name="utility-ceiling"></light>
+    <light kind="hue" name="utility-ceiling" x="2ft" y="4ft"></light>
     <motion kind="wemo" name="m-utility-north" x="4in" y="1ft6in"></motion>
   </room>
 
   <room name="livingroom" x="0ft" y="13ft" w="13ft" l="19ft9in">
-    <light kind="hue" name="livingroom-couch"></light>
-    <light kind="hue" name="livingroom-torch"></light>
-    <light kind="hue" name="livingroom-tower0"></light>
-    <light kind="hue" name="livingroom-tower1"></light>
-    <light kind="hue" name="livingroom-tower2"></light>
-    <light kind="hue-livingcolors" name="livingroom-console0"></light>
+    <light kind="hue" name="livingroom-couch" x="1ft" y="6ft"></light>
+    <light kind="hue" name="livingroom-torch" x="1ft" y="10ft"></light>
+    <light kind="hue" name="livingroom-tower0" x="10ft" y="3ft"></light>
+    <light kind="hue" name="livingroom-tower1" x="10ft" y="2ft"></light>
+    <light kind="hue" name="livingroom-tower2" x="10ft" y="1ft"></light>
+    <light kind="hue-livingcolors" name="livingroom-console0" x="12ft" y="8ft"></light>
 
     <switch kind="wemo" name="s-livingroom-couch" x="1ft6in" y="4ft" context="home" attribute="scene" value="movie"></switch>
     <!-- <motion kind="wemo" name="north"></motion> -->
   </room>
 
   <room name="diningroom" x="13ft" y="24ft" w="7ft6in" l="8ft6in">
-    <light kind="hue" name="diningroom-shelves"></light>
-    <light kind="hue" name="diningroom-ceiling"></light>
+    <light kind="hue" name="diningroom-shelves" x="6ft" y="7ft"></light>
+    <light kind="hue" name="diningroom-ceiling" x="3ft" y="4ft"></light>
   </room>
 
   <alarm name="daytime" hour="6" minute="45" scene="daytime"></alarm>
