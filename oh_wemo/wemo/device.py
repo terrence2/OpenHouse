@@ -36,8 +36,8 @@ class WemoDevice:
         max_backoff = 4 * 60 * 60  # 4 hours
         while True:
             headers = {'NT': 'upnp:event', 'CALLBACK': self.callback_address}
-            response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
             try:
+                response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
                 sid, timeout, delay = self.parse_response_headers(response.headers)
                 response.close()
             except (aiohttp.errors.ClientOSError, KeyError) as ex:
@@ -55,8 +55,8 @@ class WemoDevice:
     @asyncio.coroutine
     def _resubscribe(self, sid: str, device_map: {str: 'WemoDevice'}) -> (str, int, int):
         headers = {'SID': sid}
-        response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
         try:
+            response = yield from aiohttp.request('SUBSCRIBE', self.event_url, headers=headers)
             next_sid, timeout, delay = self.parse_response_headers(response.headers)
             response.close()
         except (aiohttp.errors.ClientOSError, KeyError) as ex:
