@@ -195,6 +195,10 @@
     <activity name="no" design="nighttime-off"></activity>
   </scene>
 
+  <!-- Wake up slowly. -->
+  <scene name="sunrise" default-design="nighttime-off">
+  </scene>
+
   <!-- When using the screen, try to minimize all ambient lighting. -->
   <scene name="movie" default-design="moonlight">
     <activity name="yes" design="normal-low"></activity>
@@ -324,7 +328,8 @@
     <light kind="hue" name="diningroom-ceiling" x="3ft" y="4ft"></light>
   </room>
 
-  <alarm name="daytime" hour="6" minute="45" scene="daytime"></alarm>
+  <alarm name="sunrise" hour="6" minute="45" scene="sunrise"></alarm>
+  <alarm name="daytime" hour="7" minute="45" scene="daytime"></alarm>
   <alarm name="evening" hour="17" minute="0" scene="evening"></alarm>
   <alarm name="sleep" hour="22" minute="0" scene="sleep"></alarm>
 
