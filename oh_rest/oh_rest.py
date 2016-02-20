@@ -5,7 +5,6 @@
 from aiohttp import web
 import asyncio
 import logging
-import json
 from oh_shared.args import parse_default_args
 from oh_shared.log import enable_logging
 from oh_shared.home import Home, NodeData
@@ -13,7 +12,7 @@ from oh_shared.home import Home, NodeData
 log = logging.getLogger('oh_sun')
 
 
-def handler_wrapper(home: Home):
+def make_device_handler(home: Home):
     """Keep an open connection to home while we process transactions."""
     def _get_path_and_query(request):
         dwelling = request.match_info['dwelling']
@@ -59,7 +58,7 @@ def main():
 if __name__ == '__main__':
     home = asyncio.get_event_loop().run_until_complete(main())
     app = web.Application()
-    get_handler, post_handler = handler_wrapper(home)
-    app.router.add_route('GET', '/api/{dwelling}/{room}/{device}/{attr}', get_handler)
-    app.router.add_route('POST', '/api/{dwelling}/{room}/{device}/{attr}', post_handler)
+    get_handler, post_handler = make_device_handler(home)
+    app.router.add_route('GET', '/device/{dwelling}/{room}/{device}/{attr}', get_handler)
+    app.router.add_route('POST', '/device/{dwelling}/{room}/{device}/{attr}', post_handler)
     web.run_app(app, host='0.0.0.0', port=8888)
