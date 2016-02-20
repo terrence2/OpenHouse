@@ -29,6 +29,9 @@ pid_hue=$!
 ./oh_apply_scene/oh_apply_scene.py -L $LOGDIR/oh_apply_scene.log -P $PORT &
 pid_apply_scene=$!
 
+./oh_apply_sensor/oh_apply_sensor.py -L $LOGDIR/oh_apply_sensor.log -P $PORT &
+pid_apply_sensor=$!
+
 ./oh_wemo/oh_wemo.py -L $LOGDIR/oh_wemo.log -P $PORT &
 pid_wemo=$!
 
@@ -53,6 +56,7 @@ echo "pid wemo:           "$pid_wemo
 echo "pid motion filter:  "$pid_motion_filter
 echo "pid infer activity: "$pid_infer_activity
 echo "pid apply scene:    "$pid_apply_scene
+echo "pid apply sensor:   "$pid_apply_sensor
 echo "pid hue:            "$pid_hue
 echo "pid alarm:          "$pid_alarm
 echo "pid rest:           "$pid_rest
@@ -61,6 +65,7 @@ wait $pid_web
 wait $pid_rest
 wait $pid_alarm
 wait $pid_hue
+wait $pid_apply_sensor
 wait $pid_apply_scene
 wait $pid_infer_activity
 wait $pid_motion_filter
