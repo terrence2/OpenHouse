@@ -41,6 +41,9 @@ pid_infer_activity=$!
 ./oh_alarm/oh_alarm.py -l INFO -L $LOGDIR/oh_alarm.log -P $PORT &
 pid_alarm=$!
 
+./oh_rest/oh_rest.py -l INFO -L $LOGDIR/oh_rest.log -P $PORT &
+pid_rest=$!
+
 { pushd oh_web && ./oh_web_sabot.py -L ../$LOGDIR/oh_web.log -p 8080 -P $PORT; popd; } &
 pid_web=$!
 
@@ -52,8 +55,10 @@ echo "pid infer activity: "$pid_infer_activity
 echo "pid apply scene:    "$pid_apply_scene
 echo "pid hue:            "$pid_hue
 echo "pid alarm:          "$pid_alarm
+echo "pid rest:           "$pid_rest
 echo "pid web:            "$pid_web
 wait $pid_web
+wait $pid_rest
 wait $pid_alarm
 wait $pid_hue
 wait $pid_apply_scene

@@ -220,6 +220,13 @@
     <!-- Closets are rooms that are dependent on another room for lighting. -->
     <closet name="bedroom-closet" x="-2ft" y="0ft" w="2ft" l="5ft"></closet>
 
+    <switch kind="nodemcu" name="bedroom-lightswitch1" design="normal-on" x="1ft" y="10ft6in"></switch>
+    <switch kind="nodemcu" name="bedroom-lightswitch2" design="moonlight" x="1ft6in" y="10ft6in"></switch>
+    <switch kind="nodemcu" name="bedroom-lightswitch3" design="__activity__" x="2ft" y="10ft6in"></switch>
+
+    <button kind="nodemcu" name="bedroom-lightbutton1" scene="evening" x="2ft6in" y="10ft6in"></button>
+    <button kind="nodemcu" name="bedroom-lightbutton2" scene="sleep" x="2ft6in" y="10ft6in"></button>
+
     <!--
       -- Each IoT device should have its own node. The node's tag-name controls
       -- how the device is controlled (e.g. light vs switch vs motion[detector]).

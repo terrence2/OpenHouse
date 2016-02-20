@@ -172,7 +172,7 @@ def main():
     log.info("Found {} contexts".format(len(contexts)))
 
     # Iterate all switches and associate them with a context.
-    switches = yield from home.query('switch, motion').run()
+    switches = yield from home.query('motion').run()
     log.info("Found {} switches".format(len(switches)))
     for path, node in switches.items():
         # Create a cache of each switch state, so that one switch's changes don't result in queries for other switches.
