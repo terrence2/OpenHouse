@@ -26,12 +26,6 @@ pub enum ParseError {
     UnknownType(String)
 }
 
-#[derive(Debug)]
-pub enum Message {
-    Ping(PingPayload),
-    Subscribe(SubscribeMessage),
-}
-
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -55,6 +49,13 @@ impl Error for ParseError {
 // The result of parsing is a Message or an error.
 pub type ParseResult = Result<Message, ParseError>;
 
+#[derive(Debug)]
+pub enum Message {
+    Ping(PingPayload),
+    Subscribe(SubscribeMessage),
+}
+
+
 // Implement ping.
 #[derive(Debug)]
 pub struct PingPayload {
@@ -67,6 +68,12 @@ impl PingPayload {
         Ok(Message::Ping(PingPayload{data: ping_field.into()}))
     }
 }
+
+#[derive(RustcEncodable)]
+pub struct PingResponse {
+    pub pong: String
+}
+
 
 // Implement subscribe.
 #[derive(Debug)]
