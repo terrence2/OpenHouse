@@ -16,7 +16,7 @@ macro_rules! make_error {
                 match *self {
                     $(
                     $error_name :: $error (ref err) => {
-                        write!(f, concat!(stringify!($error), " {}"), err)
+                        write!(f, concat!(stringify!($error), ": {}"), err)
                     }
                     ),*
                 }

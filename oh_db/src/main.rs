@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use std::error::Error;
 use rustc_serialize::json;
 use tree::Tree;
+use message::*;
 
 
 fn main() {
@@ -64,13 +65,13 @@ macro_rules! try_fatal {
 // Try and send an error to the client on failure. This should be used for
 // any recoverable error.
 macro_rules! try_error {
-    ( $expr:expr, $conn:expr ) => {
+    ( $expr:expr, $id:expr, $conn:expr ) => {
         match $expr {
             Ok(a) => a,
             Err(e) => {
                 return $conn.sender.borrow_mut().send(
-                    format!(r#"{{ "status": "{}", "context": "{}" }}"#,
-                            e.description(), e));
+                    format!(r#"{{ "id": "{}", "status": "{}", "context": "{}" }}"#,
+                            $id, e.description(), e));
             }
         };
     };
@@ -110,28 +111,42 @@ fn run_server(address: &str, port: u16)
     }
 
     impl Connection {
-        fn return_ok(&mut self) -> ws::Result<()> {
-            self.sender.borrow_mut().send(r#"{ "status": "Ok" }"#)
+        fn return_ok(&mut self, id: u64) -> ws::Result<()> {
+            self.sender.borrow_mut().send(format!(r#"{{ "id": "{}", "status": "Ok" }}"#, id))
         }
 
-        fn handle_ping(&mut self, msg: &message::PingPayload) -> ws::Result<()> {
+        fn handle_ping(&mut self, id: u64, msg: &PingPayload) -> ws::Result<()> {
             info!("handling Ping -> {}", msg.data);
-            let out = message::PingResponse { pong: msg.data.to_string() };
+            let out = PingResponse { id: id, pong: msg.data.to_string() };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_create_child(&mut self, msg: &message::CreateChildPayload) -> ws::Result<()> {
+        fn handle_create_child(&mut self, id: u64, msg: &CreateChildPayload) -> ws::Result<()> {
             info!("handling CreateChild -> parent: {},  name: {}", msg.parent_path, msg.name);
             {
                 let db = &mut self.env.borrow_mut().db;
-                let parent = try_error!(db.lookup(msg.parent_path.as_str()), self);
-                try_error!(parent.add_child(msg.name.clone()), self);
+                let parent = try_error!(db.lookup(msg.parent_path.as_str()), id, self);
+                try_error!(parent.add_child(msg.name.clone()), id, self);
             }
-            self.return_ok()
+            self.return_ok(id)
         }
 
-        fn handle_subscribe_key(&mut self, msg: &message::SubscribeKeyPayload) -> ws::Result<()> {
+        fn handle_list_children(&mut self, id: u64, msg: &ListChildrenPayload) -> ws::Result<()> {
+            info!("handling ListChildren -> path: {}", msg.path);
+            let db = &mut self.env.borrow_mut().db;
+            let node = try_error!(db.lookup(msg.path.as_str()), id, self);
+            let children = node.list_children();
+            let out = ListChildrenResponse {
+                id: id,
+                status: String::from("Ok"),
+                children: children
+            };
+            let encoded = try_fatal!(json::encode(&out), self);
+            return self.sender.borrow_mut().send(encoded.to_string());
+        }
+
+        fn handle_subscribe_key(&mut self, id: u64, msg: &SubscribeKeyPayload) -> ws::Result<()> {
             info!("handling SubscribeKey -> {}[{}]", msg.path, msg.key);
             return Ok(());
         }
@@ -140,17 +155,20 @@ fn run_server(address: &str, port: u16)
     impl ws::Handler for Connection {
         fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
             let message_text = try!(msg.into_text());
-            let data = try_fatal!(json::Json::from_str(&message_text), self);
-            let message = try_fatal!(message::parse(data), self);
+            let data = try_error!(json::Json::from_str(&message_text), 0, self);
+            let message = try_error!(parse_message(data), 0, self);
             match message {
-                message::Message::Ping(ref payload) => {
-                    self.handle_ping(payload)
+                Message::Ping(id, ref payload) => {
+                    self.handle_ping(id, payload)
                 },
-                message::Message::CreateChild(ref payload) => {
-                    self.handle_create_child(payload)
+                Message::CreateChild(id, ref payload) => {
+                    self.handle_create_child(id, payload)
                 },
-                message::Message::SubscribeKey(ref payload) => {
-                    self.handle_subscribe_key(payload)
+                Message::ListChildren(id, ref payload) => {
+                    self.handle_list_children(id, payload)
+                },
+                Message::SubscribeKey(id, ref payload) => {
+                    self.handle_subscribe_key(id, payload)
                 },
                 //_ => { self.sender.borrow_mut().shutdown() }
             }
@@ -199,7 +217,7 @@ mod tests {
         while !connected {
             match ws::connect("ws://127.0.0.1:3013", |ws| {
                     connected = true;
-                    ws.send(r#"{"type": "Ping", "data": "hello"}"#).unwrap();
+                    ws.send(r#"{"id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
                     return move |_| {
                         return ws.close(ws::CloseCode::Normal);
                     };
@@ -220,7 +238,7 @@ mod tests {
         for _ in 0..10 {
             let client = std::thread::spawn(move || {
                 if let Err(_) = ws::connect("ws://127.0.0.1:3013", move |ws| {
-                    ws.send(r#"{"type": "Ping", "data": "hello"}"#).unwrap();
+                    ws.send(r#"{"id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
                     return move |msg: ws::Message| {
                         assert!(msg.is_text());
                         let data = json::Json::from_str(&msg.into_text().unwrap()).unwrap();
@@ -288,15 +306,18 @@ mod tests {
             assert!(!result.is_err());
         }
 
+        let mut id: u64 = 1;
         clients = Vec::new();
         for parent in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
             let client = std::thread::spawn(move || {
                 if let Err(_) = ws::connect("ws://127.0.0.1:3013", move |ws| {
                     for name in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
-                        let msg = format!(r#"{{"type": "CreateChild",
+                        let msg = format!(r#"{{"id": {},
+                                               "type": "CreateChild",
                                                "parent_path": "{}",
                                                "name": "{}"}}"#,
-                                          format!("/{}", parent), name);
+                                          id, format!("/{}", parent), name);
+                        id += 1;
                         ws.send(msg).unwrap();
                     }
                     return Client { sender: ws };

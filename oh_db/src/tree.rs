@@ -57,6 +57,16 @@ impl Node {
         }
     }
 
+    fn show(&self, context: &str) {
+        info!("{}/", context);
+        for (key, value) in &self.data {
+            info!("  {}: {}", key, value);
+        }
+        for (name, node) in &self.children {
+            node.show(format!("{}/{}", context, name).as_str());
+        }
+    }
+
     /// Insert a new node under the given name. The child must not exist.
     pub fn add_child(&mut self, name: String) -> TreeResult<()> {
         if name.find('/').is_some() {
@@ -68,6 +78,15 @@ impl Node {
         let result = self.children.insert(name.clone(), Node::new());
         assert!(result.is_none());
         return Ok(());
+    }
+
+    /// Return an iteration of the children under this node.
+    pub fn list_children(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for name in self.children.keys() {
+            out.push(name.clone());
+        }
+        return out;
     }
 }
 
@@ -92,5 +111,41 @@ impl Tree {
             return malformed_path("relative");
         }
         return self.root.lookup_recursive(&mut parts);
+    }
+
+    pub fn show(&self) {
+        info!("Tree contents:");
+        self.root.show("");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate env_logger;
+    use super::*;
+
+    static NAMES: [&'static str; 4] = ["a", "b", "c", "d"];
+
+    fn add_children_to_node(node: &mut Node) {
+        for name in &NAMES {
+            info!("adding {} to node", name);
+            node.add_child(String::from(*name)).unwrap();
+        }
+    }
+
+    #[test]
+    fn it_works() {
+        let _ = env_logger::init();
+        let mut tree = Tree::new();
+        {
+            let root = tree.lookup("/").unwrap();
+            add_children_to_node(root);
+        }
+        {
+            for name in &NAMES {
+                let node = tree.lookup(format!("/{}", *name).as_str()).unwrap();
+                add_children_to_node(node);
+            }
+        }
     }
 }

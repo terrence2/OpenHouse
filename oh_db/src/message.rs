@@ -20,6 +20,7 @@ macro_rules! get_field {
 }
 
 make_error!(ParseError; {
+    IdOutOfRange => u64,
     MissingField => String,
     WrongFieldType => String,
     UnknownType => String
@@ -28,16 +29,28 @@ make_error!(ParseError; {
 // The result of parsing is a Message or an error.
 pub type ParseResult = Result<Message, ParseError>;
 
+/// The largest integer which is uniquely representable by
+/// an f64/double/Number. This is important since we want to
+/// safely round-trip identifiers through JSON.
+const MAX_SAFE_ID: u64 = 9007199254740991;
+
 #[derive(Debug)]
 pub enum Message {
-    Ping(PingPayload), // ping => pong, version
-    CreateChild(CreateChildPayload), // parent_path, name => status
-    SubscribeKey(SubscribeKeyPayload), // path, key => status
-    //CreateKey(CreateKeyPayload), // path, key => status
-    //SetKey(SetKeyPayload), // path, key, value => status
-    //GetKey(GetKeyPayload), // path, key => status, value
-    //ListKeys(ListKeysPayload), // path => status, [key names]
-    //ListChildren(ListChildrenPayload), // path => status, [children names]
+    // Establish that the channel works.
+    Ping(u64, PingPayload), // ping => pong, version
+
+    // Manage Tree Shape.
+    CreateChild(u64, CreateChildPayload), // parent_path, name => status
+    //RemoveChild(u64, RemoveChildPayload), // path => status
+    ListChildren(u64, ListChildrenPayload), // path => status, [children names]
+    //SubscribeNode(u64, SubscribeNodePayload), // path => status
+
+    // Manage Data Content.
+    //CreateKey(u64, CreateKeyPayload), // path, key => status
+    //SetKey(u64, SetKeyPayload), // path, key, value => status
+    //GetKey(u64, GetKeyPayload), // path, key => status, value
+    //ListKeys(u64, ListKeysPayload), // path => status, [key names]
+    SubscribeKey(u64, SubscribeKeyPayload), // path, key => status
 }
 
 
@@ -50,12 +63,14 @@ pub enum Message {
 //
 //     Request Format:
 //       {
+//         "id": Number,
 //         "type": "Ping",
 //         "data": "<whatevs>"
 //       }
 //
 //     Response Format:
 //       {
+//         "id": Number,
 //         "pong": "<same as data>",
 //         "protocol_version": Number
 //       }
@@ -63,22 +78,23 @@ pub enum Message {
 //     Errors:
 //       <none>
 //
-#[derive(RustcEncodable)]
-pub struct PingResponse {
-    pub pong: String,  // The string that the client sent in the |ping| field.
-    //pub protocol_version: i32,  // The protcol version.
-}
-
 #[derive(Debug)]
 pub struct PingPayload {
     pub data: String
 }
 
 impl PingPayload {
-    fn parse(message: &json::Object) -> ParseResult {
+    fn parse(id: u64, message: &json::Object) -> ParseResult {
         let data_field = get_field!(message, "data", as_string);
-        Ok(Message::Ping(PingPayload{data: data_field.into()}))
+        Ok(Message::Ping(id, PingPayload{data: data_field.into()}))
     }
+}
+
+#[derive(RustcEncodable)]
+pub struct PingResponse {
+    pub id: u64,
+    pub pong: String,  // The string that the client sent in the |ping| field.
+    //pub protocol_version: i32,  // The protcol version.
 }
 
 
@@ -90,6 +106,7 @@ impl PingPayload {
 //
 //     Request Format:
 //       {
+//         "id": Number,
 //         "type": "CreateChild",
 //         "parent_path": "/path/to/parent",
 //         "name": "child_name"
@@ -97,12 +114,16 @@ impl PingPayload {
 //
 //     Response Format:
 //       {
+//         "id": Number,
 //         "status": "Ok | <error>"
+//         ["context": "information about error"]
 //       }
 //
 //     Errors:
-//       NodeAlreadyExists
 //       InvalidPathComponent
+//       MalformedPath
+//       NoSuchNode
+//       NodeAlreadyExists
 //
 #[derive(Debug)]
 pub struct CreateChildPayload {
@@ -111,16 +132,65 @@ pub struct CreateChildPayload {
 }
 
 impl CreateChildPayload {
-    fn parse(message: &json::Object) -> ParseResult {
+    fn parse(id: u64, message: &json::Object) -> ParseResult {
         let parent_path_field = get_field!(message, "parent_path", as_string);
         let name_field = get_field!(message, "name", as_string);
         let payload = CreateChildPayload {
             parent_path: parent_path_field.into(),
             name: name_field.into()
         };
-        Ok(Message::CreateChild(payload))
+        Ok(Message::CreateChild(id, payload))
     }
 }
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// ListChildren
+//
+//     Return a list of direct children of the given path.
+//     The given path must exist.
+//
+//     Request Format:
+//       {
+//         "id": Number,
+//         "type": "ListChildren",
+//         "path": "/path/to/list",
+//       }
+//
+//     Response Format:
+//       {
+//         "id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error" ||
+//          "children": ["foo", "bar", ... "etc"]]
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
+//
+#[derive(Debug)]
+pub struct ListChildrenPayload {
+    pub path: String,
+}
+
+impl ListChildrenPayload {
+    fn parse(id: u64, message: &json::Object) -> ParseResult {
+        let path_field = get_field!(message, "path", as_string);
+        let payload = ListChildrenPayload {
+            path: path_field.into(),
+        };
+        Ok(Message::ListChildren(id, payload))
+    }
+}
+
+#[derive(RustcEncodable)]
+pub struct ListChildrenResponse {
+    pub id: u64,
+    pub status: String,
+    pub children: Vec<String>
+}
+
 
 // ////////////////////////////////////////////////////////////////////////////
 // SubscribeKey
@@ -134,31 +204,37 @@ pub struct SubscribeKeyPayload {
 }
 
 impl SubscribeKeyPayload {
-    fn parse(message: &json::Object) -> ParseResult {
+    fn parse(id: u64, message: &json::Object) -> ParseResult {
         let path_field = get_field!(message, "path", as_string);
         let key_field = get_field!(message, "key", as_string);
         let payload = SubscribeKeyPayload {
             path: path_field.into(),
             key: key_field.into()
         };
-        Ok(Message::SubscribeKey(payload))
+        Ok(Message::SubscribeKey(id, payload))
     }
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
 // Parse the given message and return the payload.
-pub fn parse(data: json::Json) -> ParseResult {
+pub fn parse_message(data: json::Json) -> ParseResult {
     let message = match data.as_object() {
         Some(a) => a,
         None => return Err(ParseError::WrongFieldType("<root>".into()))
     };
 
+    let id = get_field!(message, "id", as_u64);
+    if id == 0 || id >= MAX_SAFE_ID {
+        return Err(ParseError::IdOutOfRange(id));
+    }
+
     let type_field = get_field!(message, "type", as_string);
     return match type_field {
-        "Ping" => PingPayload::parse(message),
-        "CreateChild" => CreateChildPayload::parse(message),
-        "SubscribeKey" => SubscribeKeyPayload::parse(message),
+        "Ping" => PingPayload::parse(id, message),
+        "CreateChild" => CreateChildPayload::parse(id, message),
+        "ListChildren" => ListChildrenPayload::parse(id, message),
+        "SubscribeKey" => SubscribeKeyPayload::parse(id, message),
         _ => Err(ParseError::UnknownType(type_field.into()))
     };
 }
