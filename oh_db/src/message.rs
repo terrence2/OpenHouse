@@ -41,7 +41,7 @@ pub enum Message {
 
     // Manage Tree Shape.
     CreateChild(u64, CreateChildPayload), // parent_path, name => status
-    //RemoveChild(u64, RemoveChildPayload), // path => status
+    RemoveChild(u64, RemoveChildPayload), // path => status
     ListChildren(u64, ListChildrenPayload), // path => status, [children names]
     //SubscribeNode(u64, SubscribeNodePayload), // path => status
 
@@ -145,6 +145,53 @@ impl CreateChildPayload {
 
 
 // ////////////////////////////////////////////////////////////////////////////
+// RemoveChild
+//
+//     Remove the node at the given path with |name| from the tree.
+//     The provided parent path must exist.
+//
+//     Request Format:
+//       {
+//         "id": Number,
+//         "type": "RemoveChild",
+//         "parent_path": "/path/to/parent",
+//         "name": "child_name"
+//       }
+//
+//     Response Format:
+//       {
+//         "id": Number,
+//         "status": "Ok | <error>"
+//         ["context": "information about error"]
+//       }
+//
+//     Errors:
+//       InvalidPathComponent
+//       MalformedPath
+//       NoSuchNode
+//       NodeContainsChildren
+//       NodeContainsKeys
+//
+#[derive(Debug)]
+pub struct RemoveChildPayload {
+    pub parent_path: String,
+    pub name: String
+}
+
+impl RemoveChildPayload {
+    fn parse(id: u64, message: &json::Object) -> ParseResult {
+        let parent_path_field = get_field!(message, "parent_path", as_string);
+        let name_field = get_field!(message, "name", as_string);
+        let payload = RemoveChildPayload {
+            parent_path: parent_path_field.into(),
+            name: name_field.into()
+        };
+        Ok(Message::RemoveChild(id, payload))
+    }
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
 // ListChildren
 //
 //     Return a list of direct children of the given path.
@@ -233,6 +280,7 @@ pub fn parse_message(data: json::Json) -> ParseResult {
     return match type_field {
         "Ping" => PingPayload::parse(id, message),
         "CreateChild" => CreateChildPayload::parse(id, message),
+        "RemoveChild" => RemoveChildPayload::parse(id, message),
         "ListChildren" => ListChildrenPayload::parse(id, message),
         "SubscribeKey" => SubscribeKeyPayload::parse(id, message),
         _ => Err(ParseError::UnknownType(type_field.into()))

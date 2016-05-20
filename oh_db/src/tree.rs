@@ -10,7 +10,9 @@ make_error!(TreeError; {
     InvalidPathComponent => String,
     MalformedPath => String,
     NoSuchNode => String,
-    NodeAlreadyExists => String
+    NodeAlreadyExists => String,
+    NodeContainsChildren => String,
+    NodeContainsKeys => String
 });
 pub type TreeResult<T> = Result<T, TreeError>;
 
@@ -57,6 +59,7 @@ impl Node {
         }
     }
 
+    /*
     fn show(&self, context: &str) {
         info!("{}/", context);
         for (key, value) in &self.data {
@@ -66,6 +69,7 @@ impl Node {
             node.show(format!("{}/{}", context, name).as_str());
         }
     }
+    */
 
     /// Insert a new node under the given name. The child must not exist.
     pub fn add_child(&mut self, name: String) -> TreeResult<()> {
@@ -75,8 +79,34 @@ impl Node {
         if self.children.contains_key(&name) {
             return Err(TreeError::NodeAlreadyExists(name));
         }
-        let result = self.children.insert(name.clone(), Node::new());
+        let result = self.children.insert(name, Node::new());
         assert!(result.is_none());
+        return Ok(());
+    }
+
+    /// Remove the node under the given name. The child must not have
+    /// children.
+    pub fn remove_child(&mut self, name: String) -> TreeResult<()> {
+        if name.find('/').is_some() {
+            return Err(TreeError::InvalidPathComponent(name));
+        }
+        {
+            let child = match self.children.get(&name) {
+                Some(c) => c,
+                None => return Err(TreeError::NoSuchNode(name))
+            };
+            if !child.children.is_empty() {
+                return Err(TreeError::NodeContainsChildren(name));
+            }
+            if !child.data.is_empty() {
+                return Err(TreeError::NodeContainsKeys(name));
+            }
+        }
+        //FIXME FIXME FIXME:
+        //  We need to remove any active subscriptions for activity on this node.
+        //FIXME FIXME FIXME:
+        let result = self.children.remove(&name);
+        assert!(result.is_some());
         return Ok(());
     }
 
@@ -113,10 +143,12 @@ impl Tree {
         return self.root.lookup_recursive(&mut parts);
     }
 
+    /*
     pub fn show(&self) {
         info!("Tree contents:");
         self.root.show("");
     }
+    */
 }
 
 #[cfg(test)]
@@ -128,13 +160,12 @@ mod tests {
 
     fn add_children_to_node(node: &mut Node) {
         for name in &NAMES {
-            info!("adding {} to node", name);
             node.add_child(String::from(*name)).unwrap();
         }
     }
 
     #[test]
-    fn it_works() {
+    fn test_recursive_tree() {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
@@ -146,6 +177,17 @@ mod tests {
                 let node = tree.lookup(format!("/{}", *name).as_str()).unwrap();
                 add_children_to_node(node);
             }
+        }
+    }
+
+    #[test]
+    fn test_remove_node() {
+        let _ = env_logger::init();
+        let mut tree = Tree::new();
+        {
+            let root = tree.lookup("/").unwrap();
+            root.add_child(String::from("hello")).unwrap();
+            root.remove_child(String::from("hello")).unwrap();
         }
     }
 }

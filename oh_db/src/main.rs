@@ -112,7 +112,8 @@ fn run_server(address: &str, port: u16)
 
     impl Connection {
         fn return_ok(&mut self, id: u64) -> ws::Result<()> {
-            self.sender.borrow_mut().send(format!(r#"{{ "id": "{}", "status": "Ok" }}"#, id))
+            self.sender.borrow_mut().send(
+                format!(r#"{{ "id": "{}", "status": "Ok" }}"#, id))
         }
 
         fn handle_ping(&mut self, id: u64, msg: &PingPayload) -> ws::Result<()> {
@@ -122,8 +123,11 @@ fn run_server(address: &str, port: u16)
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_create_child(&mut self, id: u64, msg: &CreateChildPayload) -> ws::Result<()> {
-            info!("handling CreateChild -> parent: {},  name: {}", msg.parent_path, msg.name);
+        fn handle_create_child(&mut self, id: u64, msg: &CreateChildPayload)
+            -> ws::Result<()>
+        {
+            info!("handling CreateChild -> parent: {},  name: {}",
+                  msg.parent_path, msg.name);
             {
                 let db = &mut self.env.borrow_mut().db;
                 let parent = try_error!(db.lookup(msg.parent_path.as_str()), id, self);
@@ -132,7 +136,22 @@ fn run_server(address: &str, port: u16)
             self.return_ok(id)
         }
 
-        fn handle_list_children(&mut self, id: u64, msg: &ListChildrenPayload) -> ws::Result<()> {
+        fn handle_remove_child(&mut self, id: u64, msg: &RemoveChildPayload)
+            -> ws::Result<()>
+        {
+            info!("handling RemoveChild -> parent: {},  name: {}",
+                  msg.parent_path, msg.name);
+            {
+                let db = &mut self.env.borrow_mut().db;
+                let parent = try_error!(db.lookup(msg.parent_path.as_str()), id, self);
+                try_error!(parent.remove_child(msg.name.clone()), id, self);
+            }
+            self.return_ok(id)
+        }
+
+        fn handle_list_children(&mut self, id: u64, msg: &ListChildrenPayload)
+            -> ws::Result<()>
+        {
             info!("handling ListChildren -> path: {}", msg.path);
             let db = &mut self.env.borrow_mut().db;
             let node = try_error!(db.lookup(msg.path.as_str()), id, self);
@@ -163,6 +182,9 @@ fn run_server(address: &str, port: u16)
                 },
                 Message::CreateChild(id, ref payload) => {
                     self.handle_create_child(id, payload)
+                },
+                Message::RemoveChild(id, ref payload) => {
+                    self.handle_remove_child(id, payload)
                 },
                 Message::ListChildren(id, ref payload) => {
                     self.handle_list_children(id, payload)
