@@ -7,5 +7,13 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 argparse = "0.2"
 env_logger = "0.3"
 log = "0.3"
+rand = "0.3"
 rustc-serialize = "0.3"
-ws = "0.4"
+
+[dependencies.ws]
+version = "0.4"
+features = ["ssl"]
+
+[dependencies.openssl]
+version = "*"
+features = ["tlsv1_2", "ecdh_auto"]

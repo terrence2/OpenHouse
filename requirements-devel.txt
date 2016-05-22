@@ -1,0 +1,6 @@
+apscheduler==3.0.1
+aiohttp==0.21.6
+bottle==0.12.8
+rainbow_logging_handler==2.2.2
+waitress==0.8.10
+websockets==3.1

@@ -2,27 +2,40 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+from collections import namedtuple
 from contextlib import contextmanager
 import asyncio
 import db
-import json
 import os
 import pytest
 import subprocess
-import websockets
 
-import time
 
-#@pytest.yield_fixture(autouse=True)
+ServerConfig = namedtuple('ServerConfig', ['target', 'address', 'port', 'ca_chain', 'certificate', 'private_key'])
+ClientConfig = namedtuple('ClientConfig', ['ca_chain', 'certificate', 'private_key'])
+
+
+server_config = ServerConfig("./target/debug/oh_db", "localhost", "8899",
+                             "../CA/intermediate/certs/chain.cert.pem",
+                             "../CA/intermediate/certs/oh_db.cert.pem",
+                             "../CA/intermediate/private/oh_db.key.pem")
+
+
+client_config = ClientConfig("../CA/intermediate/certs/chain.cert.pem",
+                             "../CA/intermediate/certs/oh_db_test.cert.pem",
+                             "../CA/intermediate/private/oh_db_test.key.pem")
 
 
 @contextmanager
 def run_server():
-    target = './target/debug/oh_db'
     env = os.environ.copy()
     env['RUST_BACKTRACE'] = str(1)
-    port = str(8899)
-    proc = subprocess.Popen([target, '--address', 'localhost', '--port', port], env=env)
+    proc = subprocess.Popen([server_config.target,
+                             '--address', server_config.address,
+                             '--port', server_config.port,
+                             '--ca-chain', server_config.ca_chain,
+                             '--certificate', server_config.certificate,
+                             '--private-key', server_config.private_key], env=env)
     try:
         yield
     finally:
@@ -30,10 +43,17 @@ def run_server():
         proc.wait()
 
 
+def make_connection():
+    return db.Connection((server_config.address, server_config.port),
+                         client_config.ca_chain,
+                         client_config.certificate,
+                         client_config.private_key)
+
+
 @pytest.mark.asyncio
 async def test_tree_sync():
     with run_server():
-        async with db.Connection(("localhost", 8899)) as tree:
+        async with make_connection() as tree:
             for a in "abcd":
                 await tree.create_child("/", a)
                 for b in "efgh":
@@ -72,7 +92,7 @@ async def test_tree_sync():
 @pytest.mark.asyncio
 async def test_tree_async():
     with run_server():
-        async with db.Connection(("localhost", 8899)) as tree:
+        async with make_connection() as tree:
             futures = []
             children = "abcdefghijklmnopqrstuvwxyz"
             for a in children:
@@ -98,7 +118,7 @@ async def test_tree_async():
 @pytest.mark.asyncio
 async def test_create_errors():
     with run_server():
-        async with db.Connection(("localhost", 8899)) as tree:
+        async with make_connection() as tree:
             await tree.create_child("/", "a")
             with pytest.raises(db.NodeAlreadyExists):
                 await tree.create_child("/", "a")
@@ -113,7 +133,7 @@ async def test_create_errors():
 @pytest.mark.asyncio
 async def test_remove_errors():
     with run_server():
-        async with db.Connection(("localhost", 8899)) as tree:
+        async with make_connection() as tree:
             with pytest.raises(db.NoSuchNode):
                 await tree.remove_child("/", "a")
             with pytest.raises(db.InvalidPathComponent):

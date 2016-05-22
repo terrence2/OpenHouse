@@ -4,6 +4,8 @@
 extern crate argparse;
 #[macro_use] extern crate log;
 extern crate env_logger;
+extern crate openssl;
+extern crate rand;
 extern crate rustc_serialize;
 extern crate ws;
 
@@ -14,6 +16,10 @@ mod tree;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::error::Error;
+use std::path::Path;
+use openssl::x509::X509FileType;
+use openssl::ssl::{Ssl, SslContext, SslMethod,
+                   SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
 use rustc_serialize::json;
 use tree::Tree;
 use message::*;
@@ -23,6 +29,9 @@ fn main() {
     let mut log_level = "DEBUG".to_string();
     let mut log_target = "events.log".to_string();
     let mut address = "0.0.0.0".to_string();
+    let mut ca_chain = "".to_string();
+    let mut certificate = "".to_string();
+    let mut private_key = "".to_string();
     let mut port = 8182;
     {
         let mut ap = argparse::ArgumentParser::new();
@@ -39,12 +48,42 @@ fn main() {
         ap.refer(&mut port)
           .add_option(&["-p", "--port"], argparse::Store,
                       "The port to listen on. (default 8887)");
+        ap.refer(&mut ca_chain)
+          .add_option(&["-C", "--ca-chain"], argparse::Store,
+                      "The authority chain to use. (required)");
+        ap.refer(&mut certificate)
+          .add_option(&["-c", "--certificate"], argparse::Store,
+                      "The public key for connections. (required)");
+        ap.refer(&mut private_key)
+          .add_option(&["-k", "--private-key"], argparse::Store,
+                      "The private key for connections. (required)");
         ap.parse_args_or_exit();
+    }
+
+    if ca_chain == "" {
+        panic!(concat!("A certificate authority trust chain must be specified to verify ",
+                       "client connections. Please pass -C or --ca-chain with the trust ",
+                       "chain used to sign clients we expect to accept."));
+    }
+    if certificate == "" {
+        panic!(concat!("A certificate (public key) must be specified for use with SSL. ",
+                       "Please use -c or --certificiate to provide a PEM encoded file to ",
+                       "use as the certificate to present to client connections."));
+    }
+    if private_key == "" {
+        panic!(concat!("A private key matching the given certificate must be provided ",
+                       "with -k or --private-key so that we can communicate with clients."));
     }
 
     env_logger::init().unwrap();
 
-    run_server(&address, port);
+    info!("oh_db Version {}", env!("CARGO_PKG_VERSION"));
+    info!("Using {}", openssl::version::version());
+
+    run_server(&address, port,
+               Path::new(&ca_chain),
+               Path::new(&certificate),
+               Path::new(&private_key)).unwrap();
 }
 
 // Try and close the connection on failure. This should be reserved for client
@@ -77,31 +116,39 @@ macro_rules! try_error {
     };
 }
 
-fn run_server(address: &str, port: u16)
+fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, private_key: &Path)
+    -> ws::Result<()>
 {
-    struct Environment {
+    struct Environment<'e> {
         // The database.
         db: Tree,
         // List of current connections.
-        connections: Vec<Connection>
+        connections: Vec<Connection<'e>>,
+        // The SSL configuration to use when establishing new connections.
+        ca_chain: &'e Path,
+        certificate: &'e Path,
+        private_key: &'e Path
     }
-    impl Environment {
-        fn new() -> Self {
+    impl<'e> Environment<'e> {
+        fn new(ca_chain: &'e Path, certificate: &'e Path, private_key: &'e Path) -> Self {
             Environment {
                 db: Tree::new(),
-                connections: Vec::new()
+                connections: Vec::new(),
+                ca_chain: ca_chain,
+                certificate: certificate,
+                private_key: private_key
             }
         }
     }
 
-    struct Connection {
+    struct Connection<'e> {
         sender: Rc<RefCell<ws::Sender>>,
-        env: Rc<RefCell<Environment>>
+        env: Rc<RefCell<Environment<'e>>>
     }
 
     // Note that this clones the references: we obviously cannot clone
     // the connection itself or the global data structures we're sharing.
-    impl Clone for Connection {
+    impl<'e> Clone for Connection<'e> {
         fn clone(&self) -> Self {
             Connection {
                 sender: self.sender.clone(),
@@ -110,7 +157,7 @@ fn run_server(address: &str, port: u16)
         }
     }
 
-    impl Connection {
+    impl<'e> Connection<'e> {
         fn return_ok(&mut self, id: u64) -> ws::Result<()> {
             self.sender.borrow_mut().send(
                 format!(r#"{{ "id": "{}", "status": "Ok" }}"#, id))
@@ -171,7 +218,7 @@ fn run_server(address: &str, port: u16)
         }
     }
 
-    impl ws::Handler for Connection {
+    impl<'e> ws::Handler for Connection<'e> {
         fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
             let message_text = try!(msg.into_text());
             let data = try_error!(json::Json::from_str(&message_text), 0, self);
@@ -199,24 +246,65 @@ fn run_server(address: &str, port: u16)
         fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
             info!("socket closing for ({:?}) {}", code, reason);
         }
+
+        fn build_ssl(&mut self) -> ws::Result<Ssl> {
+            info!("Creating OpenSSL session");
+            let mut context = SslContext::new(SslMethod::Tlsv1_2).unwrap();
+
+            // Verify peer certificates.
+            context.set_verify(SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, None);
+            context.set_verify_depth(std::u32::MAX);
+
+            // Enable our way to more security.
+            context.set_options(openssl::ssl::SSL_OP_SINGLE_DH_USE |
+                                openssl::ssl::SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
+                                openssl::ssl::SSL_OP_NO_TICKET);
+
+            // Set a session id because that's required.
+            let mut session_ctx: [u8;32] = [0;32];
+            for i in 0..32 { session_ctx[i] = rand::random::<u8>(); }
+            context.set_session_id_context(&session_ctx).unwrap();  // must be set for client certs.
+
+            // Set our certificate paths.
+            context.set_CA_file(self.env.borrow().ca_chain).unwrap();  // set trust authority to our CA
+            context.set_certificate_file(self.env.borrow().certificate, X509FileType::PEM).unwrap();
+            context.set_private_key_file(self.env.borrow().private_key, X509FileType::PEM).unwrap();
+            context.check_private_key().unwrap();  // check consistency of cert and key
+
+            // Use EC if possible.
+            context.set_ecdh_auto(true).unwrap();  // needed for forward security.
+
+            // Only support the one cipher we want to use.
+            context.set_cipher_list("ECDHE-RSA-AES256-GCM-SHA384").unwrap();
+
+            // Build and return the ssl object for the new connection.
+            let ssl = Ssl::new(&context).unwrap();
+            return Ok(ssl);
+        }
     }
 
-    let env: Rc<RefCell<Environment>> = Rc::new(RefCell::new(Environment::new()));
+    let env: Rc<RefCell<Environment>> = Rc::new(RefCell::new(
+            Environment::new(ca_chain, certificate, private_key)));
 
     // Start the server.
-    if let Err(error) = ws::listen((address, port), move |sock| {
+    let mut settings = ws::Settings::default();
+    settings.method_strict = true;
+    settings.masking_strict = true;
+    settings.key_strict = true;
+    settings.encrypt_server = true;
+
+    let template = try!(ws::Builder::new().with_settings(settings).build(move |sock| {
         let conn = Connection {
             sender: Rc::new(RefCell::new(sock)),
             env: env.clone()
         };
         env.borrow_mut().connections.push(conn.clone());
         return conn;
-    }) {
-        // Inform the user of failure
-        error!("Failed to create WebSocket due to {:?}", error);
-    }
+    }));
 
+    try!(template.listen((address, port)));
     info!("SERVER: listen ended");
+    return Ok(());
 }
 
 
@@ -232,12 +320,12 @@ mod tests {
 
     fn launch_server_thread() {
         std::thread::spawn(move || {
-            run_server("127.0.0.1", 3013);
+            run_server("127.0.0.1", 3013).unwrap();
         });
 
         let mut connected = false;
         while !connected {
-            match ws::connect("ws://127.0.0.1:3013", |ws| {
+            match ws::connect("wss://127.0.0.1:3013", |ws| {
                     connected = true;
                     ws.send(r#"{"id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
                     return move |_| {
@@ -259,7 +347,7 @@ mod tests {
         let mut clients = Vec::new();
         for _ in 0..10 {
             let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("ws://127.0.0.1:3013", move |ws| {
+                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
                     ws.send(r#"{"id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
                     return move |msg: ws::Message| {
                         assert!(msg.is_text());
@@ -281,6 +369,7 @@ mod tests {
         }
     }
 
+    /*
     fn expect_status_ok(msg: ws::Message) {
         assert!(msg.is_text());
         let data = json::Json::from_str(&msg.into_text().unwrap()).unwrap();
@@ -309,7 +398,7 @@ mod tests {
         let mut clients = Vec::new();
         for name in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
             let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("ws://127.0.0.1:3013", move |ws| {
+                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
                     let msg = format!(r#"{{"type": "CreateChild",
                                            "parent_path": "{}",
                                            "name": "{}"}}"#,
@@ -332,7 +421,7 @@ mod tests {
         clients = Vec::new();
         for parent in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
             let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("ws://127.0.0.1:3013", move |ws| {
+                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
                     for name in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
                         let msg = format!(r#"{{"id": {},
                                                "type": "CreateChild",
@@ -355,4 +444,5 @@ mod tests {
             assert!(!result.is_err());
         }
     }
+    */
 }
