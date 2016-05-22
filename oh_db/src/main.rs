@@ -15,6 +15,7 @@ mod tree;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 use openssl::x509::X509FileType;
@@ -123,20 +124,44 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // The database.
         db: Tree,
         // List of current connections.
-        connections: Vec<Connection<'e>>,
+        connections: HashMap<ws::util::Token, Connection<'e>>,
         // The SSL configuration to use when establishing new connections.
-        ca_chain: &'e Path,
-        certificate: &'e Path,
-        private_key: &'e Path
+        ssl_context: SslContext
     }
     impl<'e> Environment<'e> {
         fn new(ca_chain: &'e Path, certificate: &'e Path, private_key: &'e Path) -> Self {
+            let mut context = SslContext::new(SslMethod::Tlsv1_2).unwrap();
+
+            // Verify peer certificates.
+            context.set_verify(SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, None);
+            context.set_verify_depth(std::u32::MAX);
+
+            // Enable our way to more security.
+            context.set_options(openssl::ssl::SSL_OP_SINGLE_DH_USE |
+                                openssl::ssl::SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
+                                openssl::ssl::SSL_OP_NO_TICKET);
+
+            // Set a session id because that's required.
+            let mut session_ctx: [u8;32] = [0;32];
+            for i in 0..32 { session_ctx[i] = rand::random::<u8>(); }
+            context.set_session_id_context(&session_ctx).unwrap();  // must be set for client certs.
+
+            // Set our certificate paths.
+            context.set_CA_file(ca_chain).unwrap();  // set trust authority to our CA
+            context.set_certificate_file(certificate, X509FileType::PEM).unwrap();
+            context.set_private_key_file(private_key, X509FileType::PEM).unwrap();
+            context.check_private_key().unwrap();  // check consistency of cert and key
+
+            // Use EC if possible.
+            context.set_ecdh_auto(true).unwrap();  // needed for forward security.
+
+            // Only support the one cipher we want to use.
+            context.set_cipher_list("ECDHE-RSA-AES256-GCM-SHA384").unwrap();
+
             Environment {
                 db: Tree::new(),
-                connections: Vec::new(),
-                ca_chain: ca_chain,
-                certificate: certificate,
-                private_key: private_key
+                connections: HashMap::new(),
+                ssl_context: context
             }
         }
     }
@@ -245,41 +270,20 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
 
         fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
             info!("socket closing for ({:?}) {}", code, reason);
+            self.env.borrow_mut().connections.remove(&self.sender.borrow().token());
         }
 
         fn build_ssl(&mut self) -> ws::Result<Ssl> {
-            info!("Creating OpenSSL session");
-            let mut context = SslContext::new(SslMethod::Tlsv1_2).unwrap();
-
-            // Verify peer certificates.
-            context.set_verify(SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, None);
-            context.set_verify_depth(std::u32::MAX);
-
-            // Enable our way to more security.
-            context.set_options(openssl::ssl::SSL_OP_SINGLE_DH_USE |
-                                openssl::ssl::SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
-                                openssl::ssl::SSL_OP_NO_TICKET);
-
-            // Set a session id because that's required.
-            let mut session_ctx: [u8;32] = [0;32];
-            for i in 0..32 { session_ctx[i] = rand::random::<u8>(); }
-            context.set_session_id_context(&session_ctx).unwrap();  // must be set for client certs.
-
-            // Set our certificate paths.
-            context.set_CA_file(self.env.borrow().ca_chain).unwrap();  // set trust authority to our CA
-            context.set_certificate_file(self.env.borrow().certificate, X509FileType::PEM).unwrap();
-            context.set_private_key_file(self.env.borrow().private_key, X509FileType::PEM).unwrap();
-            context.check_private_key().unwrap();  // check consistency of cert and key
-
-            // Use EC if possible.
-            context.set_ecdh_auto(true).unwrap();  // needed for forward security.
-
-            // Only support the one cipher we want to use.
-            context.set_cipher_list("ECDHE-RSA-AES256-GCM-SHA384").unwrap();
-
-            // Build and return the ssl object for the new connection.
-            let ssl = Ssl::new(&context).unwrap();
-            return Ok(ssl);
+            info!("building OpenSSL session for new connection");
+            match Ssl::new(&self.env.borrow().ssl_context) {
+                Ok(a) => return Ok(a),
+                Err(e) => {
+                    // Close the connection if SSL session creation fails.
+                    self.sender.borrow_mut().close_with_reason(
+                        ws::CloseCode::Error, format!("{}", e)).ok();
+                    return Err(ws::Error::new(ws::ErrorKind::Ssl(e), "ssl session create failed"));
+                }
+            }
         }
     }
 
@@ -298,7 +302,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             sender: Rc::new(RefCell::new(sock)),
             env: env.clone()
         };
-        env.borrow_mut().connections.push(conn.clone());
+        env.borrow_mut().connections.insert(conn.sender.borrow().token(), conn.clone());
         return conn;
     }));
 
