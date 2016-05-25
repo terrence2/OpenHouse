@@ -148,3 +148,31 @@ async def test_remove_errors():
             # FIXME: check that removal fails if we have subscriptions
             # FIXME: check that removal fails if we have data
 
+
+@pytest.mark.asyncio
+async def test_subscribe_same_client():
+    with run_server():
+        async with make_connection() as tree:
+            count1 = 0
+
+            def on_child_changed1(path: str, event: str, name: str):
+                print("got change notification 1 for {}:{}:{}".format(path, event, name))
+                nonlocal count1
+                count1 += 1
+
+            count2 = 0
+
+            def on_child_changed2(path: str, event: str, name: str):
+                print("got change notification 2 for {}:{}:{}".format(path, event, name))
+                nonlocal count2
+                count2 += 1
+
+            await tree.subscribe_children("/", on_child_changed1)
+            await tree.subscribe_children("/", on_child_changed2)
+
+            await tree.create_child("/", "a")
+            await tree.create_child("/a", "b")
+
+            assert count1 == 1
+            assert count2 == 1
+

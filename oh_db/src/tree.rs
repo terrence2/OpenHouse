@@ -135,8 +135,8 @@ impl Tree {
 
     /// Parse the given string path and traverse the tree.
     /// Returns the node at the given path or an error.
-    pub fn lookup(&mut self, path: &str) -> TreeResult<&mut Node> {
-        let mut parts = Path::new(path).components();
+    pub fn lookup(&mut self, path: &Path) -> TreeResult<&mut Node> {
+        let mut parts = path.components();
         if parts.next() != Some(Component::RootDir) {
             return malformed_path("relative");
         }

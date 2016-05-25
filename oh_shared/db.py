@@ -79,12 +79,12 @@ class Tree:
                 log.warn("Failed to connect, retrying in 0.5s")
                 await asyncio.sleep(0.5)
 
-        await websock.send(json.dumps({'id': 1,
+        await websock.send(json.dumps({'message_id': 1,
                                        'type': 'Ping',
                                        'data': 'flimfniffle'}))
         raw = await websock.recv()
         response = json.loads(raw)
-        assert response['id'] == 1
+        assert response['message_id'] == 1
         assert response['pong'] == 'flimfniffle'
         return Tree(websock)
 
@@ -98,10 +98,11 @@ class Tree:
                     return
                 message = json.loads(raw)
 
-                if 'id' in message:
+                if 'message_id' in message:
                     self._handle_response_message(message)
 
-                else:
+                elif 'subscription_id' in message:
+                    raise NotImplemented()
                     """
                     path = message['path']
                     message = NodeData(message['message'])
@@ -113,16 +114,16 @@ class Tree:
             return
 
     async def _dispatch_message(self, message: dict) -> asyncio.Future:
-        assert 'id' not in message
+        assert 'message_id' not in message
         send_id = next(self.message_id)
-        message['id'] = send_id
+        message['message_id'] = send_id
         response_future = self.awaiting_response[send_id] = asyncio.Future()
         await self.websock.send(json.dumps(message))
         return response_future
 
     def _handle_response_message(self, message: dict):
-        response_id = int(message['id'])
-        del message['id']
+        response_id = int(message['message_id'])
+        del message['message_id']
 
         response_future = self.awaiting_response[response_id]
         del self.awaiting_response[response_id]
@@ -171,6 +172,17 @@ class Tree:
         if result['status'] != "Ok":
             raise self.make_error(result)
         return result['children']
+
+    async def subscribe_children_async(self, path: str) -> asyncio.Future:
+        return await self._dispatch_message({'type': 'SubscribeChildren',
+                                             'path': path})
+
+    async def subscribe_children(self, path: str):
+        future = await self.subscribe_children_async(path)
+        result = await future
+        if result['status'] != "Ok":
+            raise self.make_error(result)
+        # FIXME: register the callback
 
 
 class Connection:

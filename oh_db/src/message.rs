@@ -43,7 +43,7 @@ pub enum Message {
     CreateChild(u64, CreateChildPayload), // parent_path, name => status
     RemoveChild(u64, RemoveChildPayload), // path => status
     ListChildren(u64, ListChildrenPayload), // path => status, [children names]
-    //SubscribeNode(u64, SubscribeNodePayload), // path => status
+    SubscribeLayout(u64, SubscribeLayoutPayload), // path => status
 
     // Manage Data Content.
     //CreateKey(u64, CreateKeyPayload), // path, key => status
@@ -63,14 +63,14 @@ pub enum Message {
 //
 //     Request Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "type": "Ping",
 //         "data": "<whatevs>"
 //       }
 //
 //     Response Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "pong": "<same as data>",
 //         "protocol_version": Number
 //       }
@@ -84,15 +84,15 @@ pub struct PingPayload {
 }
 
 impl PingPayload {
-    fn parse(id: u64, message: &json::Object) -> ParseResult {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
         let data_field = get_field!(message, "data", as_string);
-        Ok(Message::Ping(id, PingPayload{data: data_field.into()}))
+        Ok(Message::Ping(message_id, PingPayload{data: data_field.into()}))
     }
 }
 
 #[derive(RustcEncodable)]
 pub struct PingResponse {
-    pub id: u64,
+    pub message_id: u64,
     pub pong: String,  // The string that the client sent in the |ping| field.
     //pub protocol_version: i32,  // The protcol version.
 }
@@ -106,7 +106,7 @@ pub struct PingResponse {
 //
 //     Request Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "type": "CreateChild",
 //         "parent_path": "/path/to/parent",
 //         "name": "child_name"
@@ -114,7 +114,7 @@ pub struct PingResponse {
 //
 //     Response Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "status": "Ok | <error>"
 //         ["context": "information about error"]
 //       }
@@ -132,14 +132,14 @@ pub struct CreateChildPayload {
 }
 
 impl CreateChildPayload {
-    fn parse(id: u64, message: &json::Object) -> ParseResult {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
         let parent_path_field = get_field!(message, "parent_path", as_string);
         let name_field = get_field!(message, "name", as_string);
         let payload = CreateChildPayload {
             parent_path: parent_path_field.into(),
             name: name_field.into()
         };
-        Ok(Message::CreateChild(id, payload))
+        Ok(Message::CreateChild(message_id, payload))
     }
 }
 
@@ -152,7 +152,7 @@ impl CreateChildPayload {
 //
 //     Request Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "type": "RemoveChild",
 //         "parent_path": "/path/to/parent",
 //         "name": "child_name"
@@ -160,7 +160,7 @@ impl CreateChildPayload {
 //
 //     Response Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "status": "Ok | <error>"
 //         ["context": "information about error"]
 //       }
@@ -179,14 +179,14 @@ pub struct RemoveChildPayload {
 }
 
 impl RemoveChildPayload {
-    fn parse(id: u64, message: &json::Object) -> ParseResult {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
         let parent_path_field = get_field!(message, "parent_path", as_string);
         let name_field = get_field!(message, "name", as_string);
         let payload = RemoveChildPayload {
             parent_path: parent_path_field.into(),
             name: name_field.into()
         };
-        Ok(Message::RemoveChild(id, payload))
+        Ok(Message::RemoveChild(message_id, payload))
     }
 }
 
@@ -199,17 +199,17 @@ impl RemoveChildPayload {
 //
 //     Request Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "type": "ListChildren",
 //         "path": "/path/to/list",
 //       }
 //
 //     Response Format:
 //       {
-//         "id": Number,
+//         "message_id": Number,
 //         "status": "Ok | <error>",
 //         ["context": "information about error" ||
-//          "children": ["foo", "bar", ... "etc"]]
+//          "children": ["list", "of", ... "children"]]
 //       }
 //
 //     Errors:
@@ -222,20 +222,76 @@ pub struct ListChildrenPayload {
 }
 
 impl ListChildrenPayload {
-    fn parse(id: u64, message: &json::Object) -> ParseResult {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
         let path_field = get_field!(message, "path", as_string);
         let payload = ListChildrenPayload {
             path: path_field.into(),
         };
-        Ok(Message::ListChildren(id, payload))
+        Ok(Message::ListChildren(message_id, payload))
     }
 }
 
 #[derive(RustcEncodable)]
 pub struct ListChildrenResponse {
-    pub id: u64,
+    pub message_id: u64,
     pub status: String,
     pub children: Vec<String>
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// SubscribeLayout
+//
+//     Register to receive messages whenever the children of the given path
+//     change. The provided path must exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "type": "SubscribeLayout",
+//         "path": "/path/to/node"
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error" ||
+//          "subscription_id": Number]
+//       }
+//
+//     Subscription Message Format:
+//       {
+//         "subscription_id": Number,
+//         "path": "/path/to/node",
+//         "event": "Create" || "Remove",
+//         "name": "NodeName"
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
+//
+#[derive(Debug)]
+pub struct SubscribeLayoutPayload {
+    pub path: String,
+}
+
+impl SubscribeLayoutPayload {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
+        let path_field = get_field!(message, "path", as_string);
+        let payload = SubscribeLayoutPayload {
+            path: path_field.into()
+        };
+        Ok(Message::SubscribeLayout(message_id, payload))
+    }
+}
+
+#[derive(RustcEncodable)]
+pub struct SubscribeLayoutResponse {
+    pub message_id: u64,
+    pub status: String,
+    pub subscription_id: u64
 }
 
 
@@ -251,14 +307,14 @@ pub struct SubscribeKeyPayload {
 }
 
 impl SubscribeKeyPayload {
-    fn parse(id: u64, message: &json::Object) -> ParseResult {
+    fn parse(message_id: u64, message: &json::Object) -> ParseResult {
         let path_field = get_field!(message, "path", as_string);
         let key_field = get_field!(message, "key", as_string);
         let payload = SubscribeKeyPayload {
             path: path_field.into(),
             key: key_field.into()
         };
-        Ok(Message::SubscribeKey(id, payload))
+        Ok(Message::SubscribeKey(message_id, payload))
     }
 }
 
@@ -271,18 +327,19 @@ pub fn parse_message(data: json::Json) -> ParseResult {
         None => return Err(ParseError::WrongFieldType("<root>".into()))
     };
 
-    let id = get_field!(message, "id", as_u64);
-    if id == 0 || id >= MAX_SAFE_ID {
-        return Err(ParseError::IdOutOfRange(id));
+    let message_id = get_field!(message, "message_id", as_u64);
+    if message_id == 0 || message_id >= MAX_SAFE_ID {
+        return Err(ParseError::IdOutOfRange(message_id));
     }
 
     let type_field = get_field!(message, "type", as_string);
     return match type_field {
-        "Ping" => PingPayload::parse(id, message),
-        "CreateChild" => CreateChildPayload::parse(id, message),
-        "RemoveChild" => RemoveChildPayload::parse(id, message),
-        "ListChildren" => ListChildrenPayload::parse(id, message),
-        "SubscribeKey" => SubscribeKeyPayload::parse(id, message),
+        "Ping" => PingPayload::parse(message_id, message),
+        "CreateChild" => CreateChildPayload::parse(message_id, message),
+        "RemoveChild" => RemoveChildPayload::parse(message_id, message),
+        "ListChildren" => ListChildrenPayload::parse(message_id, message),
+        "SubscribeLayout" => SubscribeLayoutPayload::parse(message_id, message),
+        "SubscribeKey" => SubscribeKeyPayload::parse(message_id, message),
         _ => Err(ParseError::UnknownType(type_field.into()))
     };
 }
