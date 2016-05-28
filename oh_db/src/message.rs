@@ -78,6 +78,7 @@ pub enum Message {
     RemoveChild(RemoveChildPayload), // path => status
     ListChildren(ListChildrenPayload), // path => status, [children names]
     SubscribeLayout(SubscribeLayoutPayload), // path => status
+    UnsubscribeLayout(UnsubscribeLayoutPayload), // uid => status
 
     // Manage Data Content.
     //CreateKey(CreateKeyPayload), // path, key => status
@@ -338,6 +339,44 @@ pub struct SubscribeLayoutMessage {
     pub name: String
 }
 
+// ////////////////////////////////////////////////////////////////////////////
+// UnsubscribeLayout
+//
+//     Remove an existing layout subscription.
+//     change. The provided subscription must exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "type": "UnsubscribeLayout",
+//         "layout_subscription_id": Number
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error"]
+//       }
+//
+//     Errors:
+//       NoSuchSubscription
+//
+#[derive(Debug)]
+pub struct UnsubscribeLayoutPayload {
+    pub layout_subscription_id: LayoutSubscriptionId,
+}
+
+impl UnsubscribeLayoutPayload {
+    fn parse(message: &json::Object) -> ParseResult {
+        let layout_sid_field = get_field!(message, "layout_subscription_id", as_u64);
+        let payload = UnsubscribeLayoutPayload {
+            layout_subscription_id: LayoutSubscriptionId::from_u64(layout_sid_field.into()),
+        };
+        Ok(Message::UnsubscribeLayout(payload))
+    }
+}
+
 
 // ////////////////////////////////////////////////////////////////////////////
 // CreateKey
@@ -423,6 +462,7 @@ pub fn parse_message(data: &json::Json) -> ParseResult {
         "RemoveChild" => RemoveChildPayload::parse(message),
         "ListChildren" => ListChildrenPayload::parse(message),
         "SubscribeLayout" => SubscribeLayoutPayload::parse(message),
+        "UnsubscribeLayout" => UnsubscribeLayoutPayload::parse(message),
         //"SubscribeKey" => SubscribeKeyPayload::parse(message),
         _ => Err(ParseError::UnknownType(type_field.into()))
     };

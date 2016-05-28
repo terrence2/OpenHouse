@@ -5,11 +5,13 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::path::{Component, Components, Path};
+use message::LayoutSubscriptionId;
 
 make_error!(TreeError; {
     InvalidPathComponent => String,
     MalformedPath => String,
     NoSuchNode => String,
+    NoSuchSubscription => LayoutSubscriptionId,
     NodeAlreadyExists => String,
     NodeContainsChildren => String,
     NodeContainsKeys => String

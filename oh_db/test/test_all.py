@@ -164,7 +164,21 @@ async def test_remove_errors():
 async def test_subscribe_errors():
     with run_server():
         async with make_connection() as tree:
-            await tree.create_child("/", "a")
+            async def target(**_):
+                pass
+
+            with pytest.raises(db.MalformedPath):
+                await tree.subscribe_children("/../../usr/lib/libGL.so", target)
+            with pytest.raises(db.NoSuchNode):
+                await tree.subscribe_children("/a", target)
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_errors():
+    with run_server():
+        async with make_connection() as tree:
+            with pytest.raises(db.NoSuchSubscription):
+                await tree.unsubscribe_children(10)
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,7 @@ class TreeError(DatabaseError): pass
 class InvalidPathComponent(TreeError): pass
 class MalformedPath(TreeError): pass
 class NoSuchNode(TreeError): pass
+class NoSuchSubscription(TreeError): pass
 class NodeAlreadyExists(TreeError): pass
 class NodeContainsChildren(TreeError): pass
 class NodeContainsSubscriptions(TreeError): pass
@@ -103,7 +104,7 @@ class Tree:
                 if 'message_id' in message:
                     self._handle_response_message(message)
 
-                elif 'subscription_id' in message:
+                elif 'layout_subscription_id' in message:
                     await self._handle_subscription_message(message)
 
         except asyncio.CancelledError:
@@ -128,24 +129,16 @@ class Tree:
             response_future.set_result(message)
 
     async def _handle_subscription_message(self, message: dict):
-        subscription_id = message['subscription_id']
-        if subscription_id not in self.subscriptions:
-            log.critical("received unknown subscription: {}", subscription_id)
+        layout_sid = message['layout_subscription_id']
+        if layout_sid not in self.subscriptions:
+            log.critical("received unknown subscription: {}", layout_sid)
             return
         try:
-            cb = self.subscriptions[subscription_id]
+            cb = self.subscriptions[layout_sid]
             await cb(message['path'], message['event'], message['name'])
         except Exception as e:
-            log.critical("Handler for subscription id {} failed with exception:", subscription_id)
+            log.critical("Handler for subscription id {} failed with exception:", layout_sid)
             log.exception(e)
-
-        """
-        path = message['path']
-        message = NodeData(message['message'])
-        assert path in self.subscriptions, "unsubscribed path: {}".format(path)
-        for coroutine in self.subscriptions[path]:
-            asyncio.ensure_future(coroutine(path, message))
-        """
 
     @staticmethod
     def make_error(message: dict):
@@ -192,12 +185,15 @@ class Tree:
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
-        self.subscriptions[result['subscription_id']] = cb
-        return result['subscription_id']
+        self.subscriptions[result['layout_subscription_id']] = cb
+        return result['layout_subscription_id']
 
-    async def unsubscribe_children(self, subscription_id: int):
+    async def unsubscribe_children(self, layout_sid: int):
         future = await self._dispatch_message({'type': 'UnsubscribeLayout',
-                                               'subscription_id': subscription_id})
+                                               'layout_subscription_id': layout_sid})
+        result = await future
+        if result['status'] != "Ok":
+            raise self.make_error(result)
 
 
 class Connection:

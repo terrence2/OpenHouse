@@ -120,6 +120,7 @@ macro_rules! try_error {
 fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, private_key: &Path)
     -> ws::Result<()>
 {
+
     type Subscriptions = HashMap<ws::util::Token, HashSet<LayoutSubscriptionId>>;
 
     struct Environment<'e> {
@@ -127,7 +128,10 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         db: Tree,
 
         // A collection of connections to notify when the given path is touched.
-        layout_subscriptions: HashMap<PathBuf, Subscriptions>,
+        layout_subscriptions:
+            HashMap<PathBuf,                        // For each path that has subscriptions.
+                    HashMap<ws::util::Token,        // For each connection listening for subscriptions.
+                            HashSet<LayoutSubscriptionId>>>,
 
         // A collection of connections to notify when the given key at path is changed.
         data_subscriptions: HashMap<(PathBuf, String), Subscriptions>,
@@ -182,7 +186,6 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             }
         }
 
-        // This should only free memory, so we abort on failures.
         fn remove_connection(&mut self, token: &ws::util::Token) {
             for (_, subscriptions) in &mut self.layout_subscriptions {
                 subscriptions.remove(token);
@@ -192,6 +195,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             }
             self.connections.remove(token);
         }
+
+        /*
+        fn check_no_subscriptions_to_path(&mut self, path: &PathBuf) -> tree::TreeResult<()> {
+            return Ok(());
+        }
+        */
 
         // The connection triggering the event does not care about failures to send to
         // subscriptions, so this method terminates any failure. We log and potentially
@@ -210,6 +219,18 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                     }
                 }
             }
+        }
+
+        fn remove_layout_subscription(&mut self, layout_sid: &LayoutSubscriptionId)
+            -> tree::TreeResult<()>
+        {
+            for (_, subscriptions) in self.layout_subscriptions.iter_mut() {
+                for (_, id_set) in subscriptions.iter_mut() {
+                    id_set.remove(layout_sid);
+                    return Ok(());
+                }
+            }
+            return Err(tree::TreeError::NoSuchSubscription(layout_sid.clone()));
         }
     }
 
@@ -306,10 +327,14 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             -> ws::Result<()>
         {
             info!("handling SubscribeLayout -> path: {}", msg.path);
+            let path = Path::new(msg.path.as_str());
             let mut env = self.env.borrow_mut();
+            {
+                // Look up the node to ensure that it exists.
+                let _ = try_error!(env.db.lookup(path), message_id, self);
+            }
             env.last_subscription_id += 1;
             let sid = LayoutSubscriptionId::from_u64(env.last_subscription_id);
-            let path = Path::new(msg.path.as_str());
             if !env.layout_subscriptions.contains_key(path) {
                 env.layout_subscriptions.insert(path.to_owned(), Subscriptions::new());
             }
@@ -329,6 +354,18 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
+        }
+
+        fn handle_unsubscribe_layout(&mut self, message_id: MessageId,
+                                     msg: &UnsubscribeLayoutPayload)
+            -> ws::Result<()>
+        {
+            {
+                let mut env = self.env.borrow_mut();
+                let sid = &msg.layout_subscription_id;
+                try_error!(env.remove_layout_subscription(sid), message_id, self);
+            }
+            self.return_ok(message_id)
         }
 
         /*
@@ -373,6 +410,9 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 },
                 Message::SubscribeLayout(ref payload) => {
                     self.handle_subscribe_layout(message_id, payload)
+                },
+                Message::UnsubscribeLayout(ref payload) => {
+                    self.handle_unsubscribe_layout(message_id, payload)
                 },
                 /*
                 Message::SubscribeKey(ref payload) => {
