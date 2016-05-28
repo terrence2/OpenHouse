@@ -134,45 +134,117 @@ async def test_create_errors():
 async def test_remove_errors():
     with run_server():
         async with make_connection() as tree:
-            with pytest.raises(db.NoSuchNode):
-                await tree.remove_child("/", "a")
             with pytest.raises(db.InvalidPathComponent):
                 await tree.remove_child("/", "a/b")
             with pytest.raises(db.MalformedPath):
                 await tree.remove_child("/../../usr/lib/", "libGL.so")
+            with pytest.raises(db.NoSuchNode):
+                await tree.remove_child("/", "a")
 
             await tree.create_child("/", "a")
             await tree.create_child("/a", "b")
             with pytest.raises(db.NodeContainsChildren):
                 await tree.remove_child("/", "a")
-            # FIXME: check that removal fails if we have subscriptions
+            await tree.remove_child("/a", "b")
+
+            async def on_touch_root(**_):
+                pass
+
+            subscription_id = await tree.subscribe_children("/a", on_touch_root)
+            with pytest.raises(db.NodeContainsSubscriptions):
+                await tree.remove_child("/", "a")
+            await tree.unsubscribe_children("/a", subscription_id)
+
             # FIXME: check that removal fails if we have data
+            with pytest.raises(db.NodeContainsData):
+                await tree.remove_child("/", "a")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_errors():
+    with run_server():
+        async with make_connection() as tree:
+            await tree.create_child("/", "a")
 
 
 @pytest.mark.asyncio
 async def test_subscribe_same_client():
+    """
+    Ensure that subscriptions work and that we can:
+      * make multiple subscriptions to the same path on a single client.
+      * touch a subpath without being notified in the parent
+      * remove one subscription of multiple
+    """
     with run_server():
         async with make_connection() as tree:
             count1 = 0
+            notify1 = asyncio.Future()
 
-            def on_child_changed1(path: str, event: str, name: str):
-                print("got change notification 1 for {}:{}:{}".format(path, event, name))
-                nonlocal count1
+            async def on_child_changed1(path: str, event: str, name: str):
+                assert path == "/"
+                assert name == "a"
+                assert event == "Create"
+                nonlocal count1, notify1
                 count1 += 1
+                notify1.set_result(...)
 
             count2 = 0
+            notify2 = asyncio.Future()
 
-            def on_child_changed2(path: str, event: str, name: str):
-                print("got change notification 2 for {}:{}:{}".format(path, event, name))
-                nonlocal count2
+            async def on_child_changed2(path: str, event: str, name: str):
+                assert path == "/"
+                assert name == "a"
+                assert event == "Create" or event == "Remove"
+                nonlocal count2, notify2
                 count2 += 1
+                notify2.set_result(...)
 
-            await tree.subscribe_children("/", on_child_changed1)
-            await tree.subscribe_children("/", on_child_changed2)
+            subid1 = await tree.subscribe_children("/", on_child_changed1)
+            subid2 = await tree.subscribe_children("/", on_child_changed2)
 
+            # Check that we get messages when we create the first child, but not the grandchild.
             await tree.create_child("/", "a")
             await tree.create_child("/a", "b")
-
+            await tree.remove_child("/a", "b")
+            await asyncio.gather(notify1, notify2)
             assert count1 == 1
             assert count2 == 1
 
+            # Reset notificiations; unsubscribe #1, then check that we only get the notice on 2.
+            notify1 = asyncio.Future()
+            notify2 = asyncio.Future()
+            await tree.unsubscribe_children(subid1)
+            await tree.remove_child("/", "a")
+            await asyncio.sleep(0.1)  # we don't expect a response from 1, but give it some time to be more sure.
+            await notify2
+            assert count1 == 1
+            assert count2 == 2
+
+
+@pytest.mark.asyncio
+async def test_subscribe_multiple_clients():
+    """
+    Ensure that causing an event on one client reports that event on a different client.
+    """
+    with run_server():
+        async with make_connection() as treeA:
+            async with make_connection() as treeB:
+                count = 0
+                notify = asyncio.Future()
+
+                async def on_child_changed1(path: str, event: str, name: str):
+                    assert path == "/"
+                    assert name == "a"
+                    nonlocal count, notify
+                    count += 1
+                    if event == "Remove":
+                        notify.set_result(...)
+
+                await treeA.subscribe_children("/", on_child_changed1)
+
+                await treeB.create_child("/", "a")
+                await treeB.remove_child("/", "a")
+
+                await notify
+
+                assert count == 2

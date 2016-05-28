@@ -120,7 +120,7 @@ macro_rules! try_error {
 fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, private_key: &Path)
     -> ws::Result<()>
 {
-    type Subscriptions = HashMap<ws::util::Token, HashSet<u64>>;
+    type Subscriptions = HashMap<ws::util::Token, HashSet<LayoutSubscriptionId>>;
 
     struct Environment<'e> {
         // The database.
@@ -204,8 +204,8 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                         // If this connection does not exist, then something is way off the rails
                         // and we need to shutdown anyway.
                         let mut conn = self.connections.get_mut(token).unwrap();
-                        for subscription_id in id_set {
-                            conn.on_layout_changed(subscription_id, path, event, name).ok();
+                        for layout_sid in id_set {
+                            conn.on_layout_changed(layout_sid, path, event, name).ok();
                         }
                     }
                 }
@@ -237,19 +237,19 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
     }
 
     impl<'e> Connection<'e> {
-        fn return_ok(&mut self, message_id: u64) -> ws::Result<()> {
+        fn return_ok(&mut self, message_id: MessageId) -> ws::Result<()> {
             self.sender.borrow_mut().send(
                 format!(r#"{{ "message_id": "{}", "status": "Ok" }}"#, message_id))
         }
 
-        fn handle_ping(&mut self, message_id: u64, msg: &PingPayload) -> ws::Result<()> {
+        fn handle_ping(&mut self, message_id: MessageId, msg: &PingPayload) -> ws::Result<()> {
             info!("handling Ping -> {}", msg.data);
             let out = PingResponse { message_id: message_id, pong: msg.data.to_string() };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_create_child(&mut self, message_id: u64, msg: &CreateChildPayload)
+        fn handle_create_child(&mut self, message_id: MessageId, msg: &CreateChildPayload)
             -> ws::Result<()>
         {
             info!("handling CreateChild -> parent: {},  name: {}",
@@ -262,12 +262,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                     let parent = try_error!(db.lookup(parent_path), message_id, self);
                     try_error!(parent.add_child(msg.name.clone()), message_id, self);
                 }
-                env.notify_layout_subscriptions(parent_path, "Create", msg.parent_path.as_str());
+                env.notify_layout_subscriptions(parent_path, "Create", msg.name.as_str());
             }
             self.return_ok(message_id)
         }
 
-        fn handle_remove_child(&mut self, message_id: u64, msg: &RemoveChildPayload)
+        fn handle_remove_child(&mut self, message_id: MessageId, msg: &RemoveChildPayload)
             -> ws::Result<()>
         {
             info!("handling RemoveChild -> parent: {},  name: {}",
@@ -280,12 +280,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                     let parent = try_error!(db.lookup(parent_path), message_id, self);
                     try_error!(parent.remove_child(msg.name.clone()), message_id, self);
                 }
-                env.notify_layout_subscriptions(parent_path, "Remove", msg.parent_path.as_str());
+                env.notify_layout_subscriptions(parent_path, "Remove", msg.name.as_str());
             }
             self.return_ok(message_id)
         }
 
-        fn handle_list_children(&mut self, message_id: u64, msg: &ListChildrenPayload)
+        fn handle_list_children(&mut self, message_id: MessageId, msg: &ListChildrenPayload)
             -> ws::Result<()>
         {
             info!("handling ListChildren -> path: {}", msg.path);
@@ -302,10 +302,13 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_subscribe_layout(&mut self, message_id: u64, msg: &SubscribeLayoutPayload)
+        fn handle_subscribe_layout(&mut self, message_id: MessageId, msg: &SubscribeLayoutPayload)
             -> ws::Result<()>
         {
+            info!("handling SubscribeLayout -> path: {}", msg.path);
             let mut env = self.env.borrow_mut();
+            env.last_subscription_id += 1;
+            let sid = LayoutSubscriptionId::from_u64(env.last_subscription_id);
             let path = Path::new(msg.path.as_str());
             if !env.layout_subscriptions.contains_key(path) {
                 env.layout_subscriptions.insert(path.to_owned(), Subscriptions::new());
@@ -316,66 +319,66 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 if !subscriptions.contains_key(&token) {
                     subscriptions.insert(token, HashSet::new());
                 }
+                let subscription_set = subscriptions.get_mut(&token).unwrap();
+                subscription_set.insert(sid.clone());
             }
-
-            /*
-            let path_subscriptions = match env.layout_subscriptions.get_mut(path) {
-                None => {
-                    env.layout_subscriptions.insert(path, LayoutSubscription::new());
-                },
-                Some => 
-            };
-            */
-            env.last_subscription_id += 1;
             let out = SubscribeLayoutResponse {
                 message_id: message_id,
                 status: String::from("Ok"),
-                subscription_id: env.last_subscription_id
+                layout_subscription_id: sid
             };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_subscribe_key(&mut self, message_id: u64, msg: &SubscribeKeyPayload) -> ws::Result<()> {
+        /*
+        fn handle_subscribe_key(&mut self, message_id: MessageId, msg: &SubscribeKeyPayload) -> ws::Result<()> {
             info!("handling SubscribeKey -> {}[{}]", msg.path, msg.key);
             self.return_ok(message_id)
         }
+        */
 
-        fn on_layout_changed(&mut self, subscription_id: &u64, path: &Path,
+        fn on_layout_changed(&mut self, subscription_id: &LayoutSubscriptionId, path: &Path,
                              event: &str, name: &str) -> ws::Result<()>
         {
-            /*
-            let encoded = try_fatal!(json::encode(jk
-            self.sender.borrow_mut().send(
-            */
-            Ok(())
+            let message = SubscribeLayoutMessage {
+                layout_subscription_id: subscription_id.clone(),
+                path: path.to_string_lossy().into_owned(),
+                event: event.to_owned(),
+                name: name.to_owned()
+            };
+            let encoded = try_fatal!(json::encode(&message), self);
+            return self.sender.borrow_mut().send(encoded);
         }
     }
 
     impl<'e> ws::Handler for Connection<'e> {
         fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
             let message_text = try!(msg.into_text());
-            let data = try_error!(json::Json::from_str(&message_text), 0, self);
-            let message = try_error!(parse_message(data), 0, self);
+            let data = try_fatal!(json::Json::from_str(&message_text), self);
+            let message_id = try_fatal!(parse_message_id(&data), self);
+            let message = try_error!(parse_message(&data), message_id, self);
             match message {
-                Message::Ping(message_id, ref payload) => {
+                Message::Ping(ref payload) => {
                     self.handle_ping(message_id, payload)
                 },
-                Message::CreateChild(message_id, ref payload) => {
+                Message::CreateChild(ref payload) => {
                     self.handle_create_child(message_id, payload)
                 },
-                Message::RemoveChild(message_id, ref payload) => {
+                Message::RemoveChild(ref payload) => {
                     self.handle_remove_child(message_id, payload)
                 },
-                Message::ListChildren(message_id, ref payload) => {
+                Message::ListChildren(ref payload) => {
                     self.handle_list_children(message_id, payload)
                 },
-                Message::SubscribeLayout(message_id, ref payload) => {
+                Message::SubscribeLayout(ref payload) => {
                     self.handle_subscribe_layout(message_id, payload)
                 },
-                Message::SubscribeKey(message_id, ref payload) => {
+                /*
+                Message::SubscribeKey(ref payload) => {
                     self.handle_subscribe_key(message_id, payload)
                 },
+                */
                 //_ => { self.sender.borrow_mut().shutdown() }
             }
         }
@@ -421,144 +424,4 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
     try!(template.listen((address, port)));
     info!("SERVER: listen ended");
     return Ok(());
-}
-
-
-#[cfg(test)]
-mod tests {
-    extern crate env_logger;
-    extern crate rustc_serialize;
-    extern crate std;
-    extern crate ws;
-
-    use super::run_server;
-    use rustc_serialize::json;
-
-    fn launch_server_thread() {
-        std::thread::spawn(move || {
-            run_server("127.0.0.1", 3013).unwrap();
-        });
-
-        let mut connected = false;
-        while !connected {
-            match ws::connect("wss://127.0.0.1:3013", |ws| {
-                    connected = true;
-                    ws.send(r#"{"message_id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
-                    return move |_| {
-                        return ws.close(ws::CloseCode::Normal);
-                    };
-                }) {
-                Ok(_) => {}
-                Err(_) => {}
-            }
-        }
-    }
-
-    #[test]
-    fn it_pings() {
-        let _ = env_logger::init();
-
-        launch_server_thread();
-
-        let mut clients = Vec::new();
-        for _ in 0..10 {
-            let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
-                    ws.send(r#"{"message_id": 1, "type": "Ping", "data": "hello"}"#).unwrap();
-                    return move |msg: ws::Message| {
-                        assert!(msg.is_text());
-                        let data = json::Json::from_str(&msg.into_text().unwrap()).unwrap();
-                        let pong = data.find("pong").unwrap();
-                        assert!(pong == &json::Json::String("hello".to_string()));
-                        return ws.close(ws::CloseCode::Normal);
-                    };
-                }) {
-                    assert!(false);
-                }
-            });
-            clients.push(client);
-        }
-
-        for client in clients {
-            let result = client.join();
-            assert!(!result.is_err());
-        }
-    }
-
-    /*
-    fn expect_status_ok(msg: ws::Message) {
-        assert!(msg.is_text());
-        let data = json::Json::from_str(&msg.into_text().unwrap()).unwrap();
-        let status = data.find("status").unwrap();
-        assert!(status == &json::Json::String("Ok".to_string()));
-    }
-
-    #[test]
-    fn it_creates_nodes() {
-        let _ = env_logger::init();
-
-        launch_server_thread();
-
-        struct Client {
-            sender: ws::Sender
-        }
-        impl ws::Handler for Client {
-            fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
-                expect_status_ok(msg);
-                return self.sender.close(ws::CloseCode::Normal);
-            }
-            fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
-                assert!(code == ws::CloseCode::Normal, String::from(reason));
-            }
-        }
-        let mut clients = Vec::new();
-        for name in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
-            let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
-                    let msg = format!(r#"{{"type": "CreateChild",
-                                           "parent_path": "{}",
-                                           "name": "{}"}}"#,
-                                      "/", name);
-                    ws.send(msg).unwrap();
-                    return Client { sender: ws };
-                }) {
-                    assert!(false);
-                }
-            });
-            clients.push(client);
-        }
-
-        for client in clients {
-            let result = client.join();
-            assert!(!result.is_err());
-        }
-
-        let mut id: u64 = 1;
-        clients = Vec::new();
-        for parent in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
-            let client = std::thread::spawn(move || {
-                if let Err(_) = ws::connect("wss://127.0.0.1:3013", move |ws| {
-                    for name in vec!["a", "b", "c", "d", "e", "f", "g", "h"] {
-                        let msg = format!(r#"{{"id": {},
-                                               "type": "CreateChild",
-                                               "parent_path": "{}",
-                                               "name": "{}"}}"#,
-                                          id, format!("/{}", parent), name);
-                        id += 1;
-                        ws.send(msg).unwrap();
-                    }
-                    return Client { sender: ws };
-                }) {
-                    assert!(false);
-                }
-            });
-            clients.push(client);
-        }
-
-        for client in clients {
-            let result = client.join();
-            assert!(!result.is_err());
-        }
-    }
-    */
 }

@@ -34,6 +34,7 @@ class MalformedPath(TreeError): pass
 class NoSuchNode(TreeError): pass
 class NodeAlreadyExists(TreeError): pass
 class NodeContainsChildren(TreeError): pass
+class NodeContainsSubscriptions(TreeError): pass
 class NodeContainsData(TreeError): pass
 
 # This will get thrown if we receive a string we do not expect
@@ -83,6 +84,7 @@ class Tree:
                                        'type': 'Ping',
                                        'data': 'flimfniffle'}))
         raw = await websock.recv()
+        print("raw: {}".format(raw))
         response = json.loads(raw)
         assert response['message_id'] == 1
         assert response['pong'] == 'flimfniffle'
@@ -102,14 +104,8 @@ class Tree:
                     self._handle_response_message(message)
 
                 elif 'subscription_id' in message:
-                    raise NotImplemented()
-                    """
-                    path = message['path']
-                    message = NodeData(message['message'])
-                    assert path in self.subscriptions, "unsubscribed path: {}".format(path)
-                    for coroutine in self.subscriptions[path]:
-                        asyncio.ensure_future(coroutine(path, message))
-                    """
+                    await self._handle_subscription_message(message)
+
         except asyncio.CancelledError:
             return
 
@@ -131,8 +127,25 @@ class Tree:
         if not response_future.cancelled():
             response_future.set_result(message)
 
-    def _handle_event_message(self, message: dict):
-        pass
+    async def _handle_subscription_message(self, message: dict):
+        subscription_id = message['subscription_id']
+        if subscription_id not in self.subscriptions:
+            log.critical("received unknown subscription: {}", subscription_id)
+            return
+        try:
+            cb = self.subscriptions[subscription_id]
+            await cb(message['path'], message['event'], message['name'])
+        except Exception as e:
+            log.critical("Handler for subscription id {} failed with exception:", subscription_id)
+            log.exception(e)
+
+        """
+        path = message['path']
+        message = NodeData(message['message'])
+        assert path in self.subscriptions, "unsubscribed path: {}".format(path)
+        for coroutine in self.subscriptions[path]:
+            asyncio.ensure_future(coroutine(path, message))
+        """
 
     @staticmethod
     def make_error(message: dict):
@@ -173,16 +186,18 @@ class Tree:
             raise self.make_error(result)
         return result['children']
 
-    async def subscribe_children_async(self, path: str) -> asyncio.Future:
-        return await self._dispatch_message({'type': 'SubscribeChildren',
-                                             'path': path})
-
-    async def subscribe_children(self, path: str):
-        future = await self.subscribe_children_async(path)
+    async def subscribe_children(self, path: str, cb: callable) -> int:
+        future = await self._dispatch_message({'type': 'SubscribeLayout',
+                                               'path': path})
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
-        # FIXME: register the callback
+        self.subscriptions[result['subscription_id']] = cb
+        return result['subscription_id']
+
+    async def unsubscribe_children(self, subscription_id: int):
+        future = await self._dispatch_message({'type': 'UnsubscribeLayout',
+                                               'subscription_id': subscription_id})
 
 
 class Connection:

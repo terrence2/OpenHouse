@@ -155,6 +155,7 @@ impl Tree {
 mod tests {
     extern crate env_logger;
     use super::*;
+    use std::path::{Component, Components, Path};
 
     static NAMES: [&'static str; 4] = ["a", "b", "c", "d"];
 
@@ -169,12 +170,12 @@ mod tests {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
-            let root = tree.lookup("/").unwrap();
+            let root = tree.lookup(Path::new("/")).unwrap();
             add_children_to_node(root);
         }
         {
             for name in &NAMES {
-                let node = tree.lookup(format!("/{}", *name).as_str()).unwrap();
+                let node = tree.lookup(Path::new(format!("/{}", *name).as_str())).unwrap();
                 add_children_to_node(node);
             }
         }
@@ -185,7 +186,7 @@ mod tests {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
-            let root = tree.lookup("/").unwrap();
+            let root = tree.lookup(Path::new("/")).unwrap();
             root.add_child(String::from("hello")).unwrap();
             root.remove_child(String::from("hello")).unwrap();
         }
