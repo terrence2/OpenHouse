@@ -25,7 +25,7 @@ pub struct Node {
 }
 
 fn malformed_path(context: &str) -> TreeResult<&mut Node> {
-    Err(TreeError::MalformedPath(String::from(context)))
+    Err(TreeError::MalformedPath(context.to_owned()))
 }
 
 /// Raise an error if the path component is not safe.
@@ -57,17 +57,19 @@ impl Node {
             Component::CurDir => return malformed_path("current_dir"),
             Component::ParentDir => return malformed_path("parent_dir"),
             Component::Normal(os_part) => {
-                let part = os_part.to_string_lossy().into_owned();
-                let child = match self.children.get_mut(&part) {
+                let part = match os_part.to_str() {
+                    Some(s) => s,
+                    None => return Err(TreeError::InvalidPathComponent(os_part.to_string_lossy().into_owned()))
+                };
+                let child = match self.children.get_mut(part) {
                     Some(c) => c,
-                    None => return Err(TreeError::NoSuchNode(String::from(part)))
+                    None => return Err(TreeError::NoSuchNode(part.to_owned()))
                 };
                 return child.lookup_recursive(parts);
             }
         }
     }
 
-    /*
     fn show(&self, context: &str) {
         info!("{}/", context);
         for (key, value) in &self.data {
@@ -77,46 +79,42 @@ impl Node {
             node.show(format!("{}/{}", context, name).as_str());
         }
     }
-    */
 
     /// Insert a new node under the given name. The child must not exist.
-    pub fn add_child(&mut self, name: String) -> TreeResult<()> {
-        try!(check_path_component(&name));
-        if self.children.contains_key(&name) {
-            return Err(TreeError::NodeAlreadyExists(name));
+    pub fn add_child(&mut self, name: &str) -> TreeResult<()> {
+        try!(check_path_component(name));
+        if self.children.contains_key(name) {
+            return Err(TreeError::NodeAlreadyExists(name.to_owned()));
         }
-        let result = self.children.insert(name, Node::new());
+        let result = self.children.insert(name.to_owned(), Node::new());
         assert!(result.is_none());
         return Ok(());
     }
 
     /// Remove the node under the given name. The child must not have
     /// children.
-    pub fn remove_child(&mut self, name: String) -> TreeResult<()> {
-        try!(check_path_component(&name));
+    pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
+        try!(check_path_component(name));
         {
-            let child = match self.children.get(&name) {
+            let child = match self.children.get(name) {
                 Some(c) => c,
-                None => return Err(TreeError::NoSuchNode(name))
+                None => return Err(TreeError::NoSuchNode(name.to_owned()))
             };
             if !child.children.is_empty() {
-                return Err(TreeError::NodeContainsChildren(name));
+                return Err(TreeError::NodeContainsChildren(name.to_owned()));
             }
             if !child.data.is_empty() {
-                return Err(TreeError::NodeContainsKeys(name));
+                return Err(TreeError::NodeContainsKeys(name.to_owned()));
             }
         }
-        //FIXME FIXME FIXME:
-        //  We need to remove any active subscriptions for activity on this node.
-        //FIXME FIXME FIXME:
-        let result = self.children.remove(&name);
+        let result = self.children.remove(name);
         assert!(result.is_some());
         return Ok(());
     }
 
     /// Return an iteration of the children under this node.
     pub fn list_children(&self) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
+        let mut out = Vec::new();
         for name in self.children.keys() {
             out.push(name.clone());
         }
@@ -147,25 +145,24 @@ impl Tree {
         return self.root.lookup_recursive(&mut parts);
     }
 
-    /*
+    #[allow(dead_code)]
     pub fn show(&self) {
         info!("Tree contents:");
         self.root.show("");
     }
-    */
 }
 
 #[cfg(test)]
 mod tests {
     extern crate env_logger;
     use super::*;
-    use std::path::{Component, Components, Path};
+    use std::path::Path;
 
     static NAMES: [&'static str; 4] = ["a", "b", "c", "d"];
 
     fn add_children_to_node(node: &mut Node) {
         for name in &NAMES {
-            node.add_child(String::from(*name)).unwrap();
+            node.add_child(name).unwrap();
         }
     }
 
@@ -191,8 +188,19 @@ mod tests {
         let mut tree = Tree::new();
         {
             let root = tree.lookup(Path::new("/")).unwrap();
-            root.add_child(String::from("hello")).unwrap();
-            root.remove_child(String::from("hello")).unwrap();
+            root.add_child("hello").unwrap();
+            root.remove_child("hello").unwrap();
         }
+    }
+
+    #[test]
+    fn test_show() {
+        let _ = env_logger::init();
+        let mut tree = Tree::new();
+        {
+            let root = tree.lookup(Path::new("/")).unwrap();
+            root.add_child("hello").unwrap();
+        }
+        tree.show();
     }
 }

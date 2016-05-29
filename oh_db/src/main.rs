@@ -244,7 +244,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 {
                     let db = &mut env.db;
                     let parent = try_error!(db.lookup(parent_path), message_id, self);
-                    try_error!(parent.add_child(msg.name.clone()), message_id, self);
+                    try_error!(parent.add_child(&msg.name), message_id, self);
                 }
                 env.notify_layout_subscriptions(parent_path, "Create", msg.name.as_str());
             }
@@ -269,7 +269,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 {
                     let db = &mut env.db;
                     let parent = try_error!(db.lookup(parent_path), message_id, self);
-                    try_error!(parent.remove_child(msg.name.clone()), message_id, self);
+                    try_error!(parent.remove_child(&msg.name), message_id, self);
                 }
                 env.notify_layout_subscriptions(parent_path, "Remove", msg.name.as_str());
             }
