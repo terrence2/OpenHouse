@@ -11,19 +11,21 @@ extern crate ws;
 
 #[macro_use] mod utility;
 mod message;
+mod subscriptions;
 mod tree;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
 use rustc_serialize::json;
 use tree::Tree;
 use message::*;
+use subscriptions::Subscriptions;
 
 
 fn main() {
@@ -120,21 +122,12 @@ macro_rules! try_error {
 fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, private_key: &Path)
     -> ws::Result<()>
 {
-
-    type Subscriptions = HashMap<ws::util::Token, HashSet<LayoutSubscriptionId>>;
-
     struct Environment<'e> {
         // The database.
         db: Tree,
 
-        // A collection of connections to notify when the given path is touched.
-        layout_subscriptions:
-            HashMap<PathBuf,                        // For each path that has subscriptions.
-                    HashMap<ws::util::Token,        // For each connection listening for subscriptions.
-                            HashSet<LayoutSubscriptionId>>>,
-
-        // A collection of connections to notify when the given key at path is changed.
-        data_subscriptions: HashMap<(PathBuf, String), Subscriptions>,
+        // Maps paths and keys to connections and subscription ids.
+        subscriptions: Subscriptions,
 
         // Used to hand out unique subscription identifiers.
         last_subscription_id: u64,
@@ -178,22 +171,11 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
 
             Environment {
                 db: Tree::new(),
-                layout_subscriptions: HashMap::new(),
-                data_subscriptions: HashMap::new(),
+                subscriptions: Subscriptions::new(),
                 last_subscription_id: 0,
                 connections: HashMap::new(),
                 ssl_context: context
             }
-        }
-
-        fn remove_connection(&mut self, token: &ws::util::Token) {
-            for (_, subscriptions) in &mut self.layout_subscriptions {
-                subscriptions.remove(token);
-            }
-            for (_, subscriptions) in &mut self.data_subscriptions {
-                subscriptions.remove(token);
-            }
-            self.connections.remove(token);
         }
 
         /*
@@ -206,31 +188,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // subscriptions, so this method terminates any failure. We log and potentially
         // close the child connections, but do not report failures to the caller.
         fn notify_layout_subscriptions(&mut self, path: &Path, event: &str, name: &str) {
-            match self.layout_subscriptions.get(path) {
-                None => return,  // Node is not subscribed.
-                Some(subscriptions) => {
-                    for (token, id_set) in subscriptions {
-                        // If this connection does not exist, then something is way off the rails
-                        // and we need to shutdown anyway.
-                        let mut conn = self.connections.get_mut(token).unwrap();
-                        for layout_sid in id_set {
-                            conn.on_layout_changed(layout_sid, path, event, name).ok();
-                        }
-                    }
-                }
+            for (token, layout_sid) in self.subscriptions.get_layout_subscriptions_for(path) {
+                // If this connection does not exist, then something is way off the rails
+                // and we need to shutdown anyway.
+                let mut conn = self.connections.get_mut(&token).unwrap();
+                conn.on_layout_changed(&layout_sid, path, event, name).ok();
             }
-        }
-
-        fn remove_layout_subscription(&mut self, layout_sid: &LayoutSubscriptionId)
-            -> tree::TreeResult<()>
-        {
-            for (_, subscriptions) in self.layout_subscriptions.iter_mut() {
-                for (_, id_set) in subscriptions.iter_mut() {
-                    id_set.remove(layout_sid);
-                    return Ok(());
-                }
-            }
-            return Err(tree::TreeError::NoSuchSubscription(layout_sid.clone()));
         }
     }
 
@@ -297,6 +260,13 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 let mut env = self.env.borrow_mut();
                 let parent_path = Path::new(msg.parent_path.as_str());
                 {
+                    // Before removing, check that we won't be orphaning subscriptions.
+                    try_error!(tree::check_path_component(&msg.name), message_id, self);
+                    let mut path = parent_path.to_owned();
+                    path.push(&msg.name);
+                    try_error!(env.subscriptions.verify_no_subscriptions_at_path(&path), message_id, self);
+                }
+                {
                     let db = &mut env.db;
                     let parent = try_error!(db.lookup(parent_path), message_id, self);
                     try_error!(parent.remove_child(msg.name.clone()), message_id, self);
@@ -335,18 +305,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             }
             env.last_subscription_id += 1;
             let sid = LayoutSubscriptionId::from_u64(env.last_subscription_id);
-            if !env.layout_subscriptions.contains_key(path) {
-                env.layout_subscriptions.insert(path.to_owned(), Subscriptions::new());
-            }
-            {
-                let token = self.sender.borrow().token();
-                let subscriptions = env.layout_subscriptions.get_mut(path).unwrap();
-                if !subscriptions.contains_key(&token) {
-                    subscriptions.insert(token, HashSet::new());
-                }
-                let subscription_set = subscriptions.get_mut(&token).unwrap();
-                subscription_set.insert(sid.clone());
-            }
+            env.subscriptions.add_layout_subscription(&sid, &self.sender.borrow().token(), &path);
             let out = SubscribeLayoutResponse {
                 message_id: message_id,
                 status: String::from("Ok"),
@@ -363,7 +322,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             {
                 let mut env = self.env.borrow_mut();
                 let sid = &msg.layout_subscription_id;
-                try_error!(env.remove_layout_subscription(sid), message_id, self);
+                try_error!(env.subscriptions.remove_layout_subscription(sid), message_id, self);
             }
             self.return_ok(message_id)
         }
@@ -379,7 +338,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                              event: &str, name: &str) -> ws::Result<()>
         {
             let message = SubscribeLayoutMessage {
-                layout_subscription_id: subscription_id.clone(),
+                layout_subscription_id: *subscription_id,
                 path: path.to_string_lossy().into_owned(),
                 event: event.to_owned(),
                 name: name.to_owned()
@@ -425,7 +384,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
 
         fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
             info!("socket closing for ({:?}) {}", code, reason);
-            self.env.borrow_mut().remove_connection(&self.sender.borrow().token());
+            self.env.borrow_mut().subscriptions.remove_connection(&self.sender.borrow().token());
         }
 
         fn build_ssl(&mut self) -> ws::Result<Ssl> {

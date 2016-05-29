@@ -5,13 +5,11 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::path::{Component, Components, Path};
-use message::LayoutSubscriptionId;
 
 make_error!(TreeError; {
     InvalidPathComponent => String,
     MalformedPath => String,
     NoSuchNode => String,
-    NoSuchSubscription => LayoutSubscriptionId,
     NodeAlreadyExists => String,
     NodeContainsChildren => String,
     NodeContainsKeys => String
@@ -28,6 +26,14 @@ pub struct Node {
 
 fn malformed_path(context: &str) -> TreeResult<&mut Node> {
     Err(TreeError::MalformedPath(String::from(context)))
+}
+
+/// Raise an error if the path component is not safe.
+pub fn check_path_component(name: &str) -> TreeResult<()> {
+    if name.find('/').is_some() {
+        return Err(TreeError::InvalidPathComponent(name.to_owned()));
+    }
+    return Ok(());
 }
 
 impl Node {
@@ -75,9 +81,7 @@ impl Node {
 
     /// Insert a new node under the given name. The child must not exist.
     pub fn add_child(&mut self, name: String) -> TreeResult<()> {
-        if name.find('/').is_some() {
-            return Err(TreeError::InvalidPathComponent(name));
-        }
+        try!(check_path_component(&name));
         if self.children.contains_key(&name) {
             return Err(TreeError::NodeAlreadyExists(name));
         }
@@ -89,9 +93,7 @@ impl Node {
     /// Remove the node under the given name. The child must not have
     /// children.
     pub fn remove_child(&mut self, name: String) -> TreeResult<()> {
-        if name.find('/').is_some() {
-            return Err(TreeError::InvalidPathComponent(name));
-        }
+        try!(check_path_component(&name));
         {
             let child = match self.children.get(&name) {
                 Some(c) => c,

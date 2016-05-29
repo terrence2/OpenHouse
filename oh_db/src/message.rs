@@ -45,6 +45,7 @@ macro_rules! make_identifier {
                 return $name(ident);
             }
         }
+        impl Copy for $name {}
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 let $name(ident) = *self;
