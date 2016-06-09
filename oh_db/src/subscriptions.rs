@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use message::LayoutSubscriptionId;
+use message::{KeysSubscriptionId, LayoutSubscriptionId};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 use ws::util::Token;
 
 make_error!(SubscriptionError; {
-    NoSuchSubscription => LayoutSubscriptionId,
+    NoSuchLayoutSubscription => LayoutSubscriptionId,
+    NoSuchKeysSubscription => KeysSubscriptionId,
     NodeContainsSubscriptions => String
 });
 pub type SubscriptionResult<T> = Result<T, SubscriptionError>;
@@ -23,7 +24,8 @@ struct PathSubscriptions {
 }
 
 struct SubscriptionSet {
-    layout: HashSet<LayoutSubscriptionId>
+    layout: HashSet<LayoutSubscriptionId>,
+    keys: HashSet<KeysSubscriptionId>
 }
 
 impl Subscriptions {
@@ -37,10 +39,24 @@ impl Subscriptions {
         assert!(is_new);
     }
 
+    pub fn add_keys_subscription(&mut self, sid: &KeysSubscriptionId,
+                                 conn: &Token, path: &Path)
+    {
+        let subs = self.get_subscription_set(conn, path);
+        let is_new = subs.keys.insert(*sid);
+        assert!(is_new);
+    }
+
     pub fn get_layout_subscriptions_for(&self, path: &Path) -> Vec<(Token, LayoutSubscriptionId)> {
-        //let out: Vec<(Token, LayoutSubscriptionId)> = Vec::new();
         return match self.paths.get(path) {
             Some(path_subs) => path_subs.get_layout_subscriptions_for(),
+            None => Vec::new()
+        };
+    }
+
+    pub fn get_keys_subscriptions_for(&self, path: &Path) -> Vec<(Token, KeysSubscriptionId)> {
+        return match self.paths.get(path) {
+            Some(path_subs) => path_subs.get_keys_subscriptions_for(),
             None => Vec::new()
         };
     }
@@ -59,13 +75,25 @@ impl Subscriptions {
         for (_, path_subs) in self.paths.iter_mut() {
             for (_, subs) in path_subs.connections.iter_mut() {
                 if subs.layout.remove(sid) {
-                    //if subs.layout.isEmpty() {
-                    //}
                     return Ok(());
                 }
             }
         }
-        return Err(SubscriptionError::NoSuchSubscription(*sid));
+        return Err(SubscriptionError::NoSuchLayoutSubscription(*sid));
+    }
+
+    /// Returns true if the layout sid was present and removed successfully.
+    pub fn remove_keys_subscription(&mut self, sid: &KeysSubscriptionId)
+        -> SubscriptionResult<()>
+    {
+        for (_, path_subs) in self.paths.iter_mut() {
+            for (_, subs) in path_subs.connections.iter_mut() {
+                if subs.keys.remove(sid) {
+                    return Ok(());
+                }
+            }
+        }
+        return Err(SubscriptionError::NoSuchKeysSubscription(*sid));
     }
 
     /// Remove all uses of the given connection and all subscriptions therein.
@@ -98,6 +126,16 @@ impl PathSubscriptions {
         return out;
     }
 
+    fn get_keys_subscriptions_for(&self) -> Vec<(Token, KeysSubscriptionId)> {
+        let mut out = Vec::new();
+        for (conn, subs) in &self.connections {
+            for sid in &subs.keys {
+                out.push((*conn, *sid));
+            }
+        }
+        return out;
+    }
+
     fn get_subscription_set(&mut self, conn: &Token) -> &mut SubscriptionSet {
         if !self.connections.contains_key(conn) {
             self.connections.insert(*conn, SubscriptionSet::new());
@@ -107,5 +145,10 @@ impl PathSubscriptions {
 }
 
 impl SubscriptionSet {
-    fn new() -> SubscriptionSet { SubscriptionSet { layout: HashSet::new() } }
+    fn new() -> SubscriptionSet {
+        SubscriptionSet {
+            layout: HashSet::new(),
+            keys: HashSet::new()
+        }
+    }
 }

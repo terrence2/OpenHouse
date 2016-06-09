@@ -61,8 +61,9 @@ macro_rules! make_identifier {
     };
 }
 
-make_identifier!(MessageId);
+make_identifier!(KeysSubscriptionId);
 make_identifier!(LayoutSubscriptionId);
+make_identifier!(MessageId);
 
 /// The largest integer which is uniquely representable by
 /// an f64/double/Number. This is important since we want to
@@ -87,16 +88,17 @@ pub enum Message {
     //SetKey(SetKeyPayload), // path, key, value => status
     //GetKey(GetKeyPayload), // path, key => status, value
     //ListKeys(ListKeysPayload), // path => status, [key names]
-    //SubscribeKey(SubscribeKeyPayload), // path, key => status
+    SubscribeKeys(SubscribeKeysPayload), // path, key => status
+    UnsubscribeKeys(UnsubscribeKeysPayload), // uid => status
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
 // Ping
 //
-//     A service level ping-pong that carries extra metadata about the
-//     service. This lets clients verify that they are connecting to the
-//     the right server, supporting the right protocol, etc.
+//     A service level ping-pong that carries extra metadata about the service.
+//     This lets clients verify that they are connecting to the the right
+//     server, supporting the right protocol, etc.
 //
 //     Request Format:
 //       {
@@ -138,8 +140,8 @@ pub struct PingResponse {
 // ////////////////////////////////////////////////////////////////////////////
 // CreateChild
 //
-//     Add a node to the tree with an empty dictionary.
-//     The provided parent path must already exist.
+//     Add a node to the tree with an empty dictionary. The provided parent
+//     path must already exist.
 //
 //     Request Format:
 //       {
@@ -184,8 +186,8 @@ impl CreateChildPayload {
 // ////////////////////////////////////////////////////////////////////////////
 // RemoveChild
 //
-//     Remove the node at the given path with |name| from the tree.
-//     The provided parent path must exist.
+//     Remove the node at the given path with |name| from the tree. The
+//     provided parent path must exist.
 //
 //     Request Format:
 //       {
@@ -232,8 +234,8 @@ impl RemoveChildPayload {
 // ////////////////////////////////////////////////////////////////////////////
 // ListChildren
 //
-//     Return a list of direct children of the given path.
-//     The given path must exist.
+//     Return a list of direct children of the given path. The given path must
+//     exist.
 //
 //     Request Format:
 //       {
@@ -295,12 +297,12 @@ pub struct ListChildrenResponse {
 //         "message_id": Number,
 //         "status": "Ok | <error>",
 //         ["context": "information about error" ||
-//          "subscription_id": Number]
+//          "layout_subscription_id": Number]
 //       }
 //
 //     Subscription Message Format:
 //       {
-//         "subscription_id": Number,
+//         "layout_subscription_id": Number,
 //         "path": "/path/to/node",
 //         "event": "Create" || "Remove",
 //         "name": "NodeName"
@@ -343,8 +345,8 @@ pub struct SubscribeLayoutMessage {
 // ////////////////////////////////////////////////////////////////////////////
 // UnsubscribeLayout
 //
-//     Remove an existing layout subscription.
-//     change. The provided subscription must exist.
+//     Remove an existing layout subscription. The provided subscription must
+//     exist.
 //
 //     Request Format:
 //       {
@@ -361,7 +363,7 @@ pub struct SubscribeLayoutMessage {
 //       }
 //
 //     Errors:
-//       NoSuchSubscription
+//       NoSuchLayoutSubscription
 //
 #[derive(Debug)]
 pub struct UnsubscribeLayoutPayload {
@@ -382,8 +384,7 @@ impl UnsubscribeLayoutPayload {
 // ////////////////////////////////////////////////////////////////////////////
 // CreateKey
 //
-//     Add a key to the given path.
-//     The provided path must already exist.
+//     Add a key to the given path. The provided path must already exist.
 //
 //     Request Format:
 //       {
@@ -408,29 +409,108 @@ impl UnsubscribeLayoutPayload {
 //
 
 // ////////////////////////////////////////////////////////////////////////////
-// SubscribeKey
+// SubscribeKeys
 //
-//     Request to be notified if any of the values at path change.
-//     The provided path must already exist.
-/*
+//     Request to be notified if the set of keys at path change. The data
+//     provided is the key that was added or removed. To listen for changes to
+//     the data stored in a key, use SubscribeData. The provided path must
+//     already exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "type": "SubscribeKeys",
+//         "path": "/path/to/node"
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error" ||
+//          "keys_subscription_id": Number]
+//       }
+//
+//     Subscription Message Format:
+//       {
+//         "keys_subscription_id": Number,
+//         "path": "/path/to/node",
+//         "event": "Create" || "Remove",
+//         "name": "NodeName"
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
 #[derive(Debug)]
-pub struct SubscribeKeyPayload {
-    pub path: String,
-    pub key: String
+pub struct SubscribeKeysPayload {
+    pub path: String
 }
 
-impl SubscribeKeyPayload {
+impl SubscribeKeysPayload {
     fn parse(message: &json::Object) -> ParseResult {
         let path_field = get_field!(message, "path", as_string);
-        let key_field = get_field!(message, "key", as_string);
-        let payload = SubscribeKeyPayload {
-            path: path_field.into(),
-            key: key_field.into()
+        let payload = SubscribeKeysPayload {
+            path: path_field.into()
         };
-        Ok(Message::SubscribeKey(payload))
+        Ok(Message::SubscribeKeys(payload))
     }
 }
-*/
+
+#[derive(RustcEncodable)]
+pub struct SubscribeKeysResponse {
+    pub message_id: MessageId,
+    pub status: String,
+    pub keys_subscription_id: KeysSubscriptionId
+}
+
+#[derive(RustcEncodable)]
+pub struct SubscribeKeysMessage {
+    pub keys_subscription_id: KeysSubscriptionId,
+    pub path: String,
+    pub event: String,
+    pub name: String
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// UnsubscribeKeys
+//
+//     Remove an existing keys subscription. The provided subscription must
+//     exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "type": "UnsubscribeKeys",
+//         "keys_subscription_id": Number
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error"]
+//       }
+//
+//     Errors:
+//       NoSuchKeysSubscription
+//
+#[derive(Debug)]
+pub struct UnsubscribeKeysPayload {
+    pub keys_subscription_id: KeysSubscriptionId,
+}
+
+impl UnsubscribeKeysPayload {
+    fn parse(message: &json::Object) -> ParseResult {
+        let keys_sid_field = get_field!(message, "keys_subscription_id", as_u64);
+        let payload = UnsubscribeKeysPayload {
+            keys_subscription_id: KeysSubscriptionId::from_u64(keys_sid_field.into()),
+        };
+        Ok(Message::UnsubscribeKeys(payload))
+    }
+}
+
 
 // ////////////////////////////////////////////////////////////////////////////
 // Parse the id out of the given message and return it to the caller.
@@ -448,6 +528,7 @@ pub fn parse_message_id(data: &json::Json) -> Result<MessageId, ParseError> {
     return Ok(MessageId::from_u64(message_id));
 }
 
+
 // ////////////////////////////////////////////////////////////////////////////
 // Parse the given message and return the payload.
 pub fn parse_message(data: &json::Json) -> ParseResult {
@@ -464,7 +545,8 @@ pub fn parse_message(data: &json::Json) -> ParseResult {
         "ListChildren" => ListChildrenPayload::parse(message),
         "SubscribeLayout" => SubscribeLayoutPayload::parse(message),
         "UnsubscribeLayout" => UnsubscribeLayoutPayload::parse(message),
-        //"SubscribeKey" => SubscribeKeyPayload::parse(message),
+        "SubscribeKeys" => SubscribeKeysPayload::parse(message),
+        "UnsubscribeKeys" => UnsubscribeKeysPayload::parse(message),
         _ => Err(ParseError::UnknownType(type_field.into()))
     };
 }

@@ -24,19 +24,23 @@ class DatabaseError(Exception):
 class ParseError(DatabaseError): pass
 class IdOutOfRange(ParseError): pass
 class MissingField(ParseError): pass
-class WrongFieldType(ParseError): pass
 class UnknownType(ParseError): pass
+class WrongFieldType(ParseError): pass
 
 # The following must match up with tree.rs' TreeError enum.
 class TreeError(DatabaseError): pass
 class InvalidPathComponent(TreeError): pass
 class MalformedPath(TreeError): pass
+class NoSuchKey(TreeError): pass
 class NoSuchNode(TreeError): pass
-class NoSuchSubscription(TreeError): pass
 class NodeAlreadyExists(TreeError): pass
 class NodeContainsChildren(TreeError): pass
-class NodeContainsSubscriptions(TreeError): pass
 class NodeContainsData(TreeError): pass
+class NodeContainsSubscriptions(TreeError): pass
+
+# The following must match up with subscriptions.rs' SubscriptionError enum.
+class SubscriptionError(DatabaseError): pass
+class NoSuchSubscription(SubscriptionError): pass
 
 # This will get thrown if we receive a string we do not expect
 # as the status.
@@ -146,6 +150,7 @@ class Tree:
         exc_class = globals().get(message['status'], UnknownErrorType)
         raise exc_class(message['status'], message.get('context', "unknown"))
 
+    # ########## Layout ##########
     async def create_child_async(self, parent_path: str, name: str) -> asyncio.Future:
         return await self._dispatch_message({'type': 'CreateChild',
                                              'parent_path': parent_path,
@@ -194,6 +199,41 @@ class Tree:
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
+
+    # ########## Data ##########
+    async def create_key_async(self, path: str, key: str, value: str):
+        return await self._dispatch_message({'type': 'CreateKey',
+                                             'path': path,
+                                             'key': key,
+                                             'value': value})
+
+    async def create_key(self, path: str, key: str, value: str):
+        future = await self.create_key_async(path, key, value)
+        result = await future
+        if result['status'] != "Ok":
+            raise self.make_error(result)
+
+    async def remove_key_async(self, path: str, key: str):
+        return await self._dispatch_message({'type': 'RemoveKey',
+                                             'path': path,
+                                             'key': key})
+
+    async def remove_key(self, path: str, key: str):
+        future = await self.remove_key_async(path, key)
+        result = await future
+        if result['status'] != "Ok":
+            raise self.make_error(result)
+
+    async def list_keys_async(self, path: str):
+        return await self._dispatch_message({'type': 'ListKeys',
+                                             'path': path})
+
+    async def list_keys(self, path: str):
+        future = await self.list_keys_async(path)
+        result = await future
+        if result['status'] != "Ok":
+            raise self.make_error(result)
+        return result['keys']
 
 
 class Connection:
