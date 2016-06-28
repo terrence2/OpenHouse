@@ -22,8 +22,9 @@ macro_rules! get_field {
 make_error!(ParseError; {
     IdOutOfRange => u64,
     MissingField => String,
-    WrongFieldType => String,
-    UnknownType => String
+    UnknownMessageType => String,
+    UnknownNodeType => String,
+    WrongFieldType => String
 });
 
 // The result of parsing is a Message or an error.
@@ -61,8 +62,7 @@ macro_rules! make_identifier {
     };
 }
 
-make_identifier!(KeysSubscriptionId);
-make_identifier!(LayoutSubscriptionId);
+make_identifier!(SubscriptionId);
 make_identifier!(MessageId);
 
 /// The largest integer which is uniquely representable by
@@ -75,21 +75,16 @@ pub enum Message {
     // Establish that the channel works.
     Ping(PingPayload), // ping => pong, version
 
-    // Manage Tree Shape.
-    CreateChild(CreateChildPayload), // parent_path, name => status
-    RemoveChild(RemoveChildPayload), // path => status
-    ListChildren(ListChildrenPayload), // path => status, [children names]
-    SubscribeLayout(SubscribeLayoutPayload), // path => status
-    UnsubscribeLayout(UnsubscribeLayoutPayload), // uid => status
+    // File/Directory management.
+    CreateNode(CreateNodePayload), // parent_path, name => status
+    ListDirectory(ListDirectoryPayload), // path => status, [children names]
+    SetFileContent(SetFileContentPayload), // path, data => status
+    GetFileContent(GetFileContentPayload), // path => status, [data]
+    RemoveNode(RemoveNodePayload), // path => status
 
-    // Manage Data Content.
-    //CreateKey(CreateKeyPayload), // path, key => status
-    //RemoveKey(RemoveKeyPayload), // path, key => status
-    //SetKey(SetKeyPayload), // path, key, value => status
-    //GetKey(GetKeyPayload), // path, key => status, value
-    //ListKeys(ListKeysPayload), // path => status, [key names]
-    SubscribeKeys(SubscribeKeysPayload), // path, key => status
-    UnsubscribeKeys(UnsubscribeKeysPayload), // uid => status
+    // Subscription management.
+    Subscribe(SubscribePayload), // path => status
+    Unsubscribe(UnsubscribePayload), // uid => status
 }
 
 
@@ -103,8 +98,10 @@ pub enum Message {
 //     Request Format:
 //       {
 //         "message_id": Number,
-//         "type": "Ping",
-//         "data": "<whatevs>"
+//         "message_type": "Ping",
+//         "message_payload" {
+//           "data": "<whatevs>"
+//         }
 //       }
 //
 //     Response Format:
@@ -123,8 +120,8 @@ pub struct PingPayload {
 }
 
 impl PingPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let data_field = get_field!(message, "data", as_string);
+    fn parse(payload: &json::Object) -> ParseResult {
+        let data_field = get_field!(payload, "data", as_string);
         Ok(Message::Ping(PingPayload{data: data_field.into()}))
     }
 }
@@ -138,7 +135,7 @@ pub struct PingResponse {
 
 
 // ////////////////////////////////////////////////////////////////////////////
-// CreateChild
+// CreateNode
 //
 //     Add a node to the tree with an empty dictionary. The provided parent
 //     path must already exist.
@@ -146,9 +143,12 @@ pub struct PingResponse {
 //     Request Format:
 //       {
 //         "message_id": Number,
-//         "type": "CreateChild",
-//         "parent_path": "/path/to/parent",
-//         "name": "child_name"
+//         "message_type": "CreateNode",
+//         "message_payload": {
+//           "parent_path": "/path/to/parent",
+//           "node_type": "File|Directory",
+//           "name": "child_name"
+//         }
 //       }
 //
 //     Response Format:
@@ -163,28 +163,199 @@ pub struct PingResponse {
 //       MalformedPath
 //       NoSuchNode
 //       NodeAlreadyExists
+//       NotDirectory
 //
 #[derive(Debug)]
-pub struct CreateChildPayload {
+pub enum NodeType { File, Directory }
+impl fmt::Display for NodeType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            NodeType::File => write!(f, "NodeType::File"),
+            NodeType::Directory => write!(f, "NodeType::Directory")
+        }
+    }
+}
+impl NodeType {
+    fn parse(type_str: &str) -> Result<NodeType, ParseError> {
+        match type_str {
+            "File" => Ok(NodeType::File),
+            "Directory" => Ok(NodeType::Directory),
+            _ => Err(ParseError::UnknownNodeType(type_str.into()))
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CreateNodePayload {
+    pub node_type: NodeType,
     pub parent_path: String,
     pub name: String
 }
 
-impl CreateChildPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let parent_path_field = get_field!(message, "parent_path", as_string);
-        let name_field = get_field!(message, "name", as_string);
-        let payload = CreateChildPayload {
+impl CreateNodePayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let parent_path_field = get_field!(payload, "parent_path", as_string);
+        let type_field = get_field!(payload, "type", as_string);
+        let name_field = get_field!(payload, "name", as_string);
+        let payload = CreateNodePayload {
             parent_path: parent_path_field.into(),
+            node_type: try!(NodeType::parse(type_field)),
             name: name_field.into()
         };
-        Ok(Message::CreateChild(payload))
+        Ok(Message::CreateNode(payload))
     }
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
-// RemoveChild
+// ListDirectory
+//
+//     Return a list of direct children of the given path. The given path must
+//     exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "message_type": "ListDirectory",
+//         "message_payload": {
+//           "path": "/path/to/list",
+//         }
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error" ||
+//          "children": ["list", "of", ... "children"]]
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
+//       NotDirectory
+//
+#[derive(Debug)]
+pub struct ListDirectoryPayload {
+    pub path: String,
+}
+
+impl ListDirectoryPayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let path_field = get_field!(payload, "path", as_string);
+        let payload = ListDirectoryPayload {
+            path: path_field.into(),
+        };
+        Ok(Message::ListDirectory(payload))
+    }
+}
+
+#[derive(RustcEncodable)]
+pub struct ListDirectoryResponse {
+    pub message_id: MessageId,
+    pub status: String,
+    pub children: Vec<String>
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// GetFileContent
+//
+//     Return a the given files contents. The given file must exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "message_type": "GetFileContent",
+//         "message_payload": {
+//           "path": "/path/to/get",
+//         }
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error" ||
+//          "data": "base64 encoded string"]
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
+//       NotFile
+//
+#[derive(Debug)]
+pub struct GetFileContentPayload {
+    pub path: String,
+}
+
+impl GetFileContentPayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let path_field = get_field!(payload, "path", as_string);
+        let payload = GetFileContentPayload {
+            path: path_field.into(),
+        };
+        Ok(Message::GetFileContent(payload))
+    }
+}
+
+#[derive(RustcEncodable)]
+pub struct GetFileContentResponse {
+    pub message_id: MessageId,
+    pub status: String,
+    pub data: String
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// SetFileContent
+//
+//     Return a the given files contents. The given file must exist.
+//
+//     Request Format:
+//       {
+//         "message_id": Number,
+//         "message_type": "SetFileContent",
+//         "message_payload": {
+//           "path": "/path/to/get",
+//           "data": "utf-8 encoded string"
+//         }
+//       }
+//
+//     Response Format:
+//       {
+//         "message_id": Number,
+//         "status": "Ok | <error>",
+//         ["context": "information about error"]
+//       }
+//
+//     Errors:
+//       MalformedPath
+//       NoSuchNode
+//       NotFile
+//
+#[derive(Debug)]
+pub struct SetFileContentPayload {
+    pub path: String,
+    pub data: String
+}
+
+impl SetFileContentPayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let path_field = get_field!(payload, "path", as_string);
+        let data_field = get_field!(payload, "data", as_string);
+        let payload = SetFileContentPayload {
+            path: path_field.into(),
+            data: data_field.into(),
+        };
+        Ok(Message::SetFileContent(payload))
+    }
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
+// RemoveNode
 //
 //     Remove the node at the given path with |name| from the tree. The
 //     provided parent path must exist.
@@ -192,9 +363,11 @@ impl CreateChildPayload {
 //     Request Format:
 //       {
 //         "message_id": Number,
-//         "type": "RemoveChild",
-//         "parent_path": "/path/to/parent",
-//         "name": "child_name"
+//         "message_type": "RemoveNode",
+//         "message_payload": {
+//           "parent_path": "/path/to/parent",
+//           "name": "name"
+//         }
 //       }
 //
 //     Response Format:
@@ -213,74 +386,26 @@ impl CreateChildPayload {
 //       NodeContainsData
 //
 #[derive(Debug)]
-pub struct RemoveChildPayload {
+pub struct RemoveNodePayload {
     pub parent_path: String,
     pub name: String
 }
 
-impl RemoveChildPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let parent_path_field = get_field!(message, "parent_path", as_string);
-        let name_field = get_field!(message, "name", as_string);
-        let payload = RemoveChildPayload {
+impl RemoveNodePayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let parent_path_field = get_field!(payload, "parent_path", as_string);
+        let name_field = get_field!(payload, "name", as_string);
+        let payload = RemoveNodePayload {
             parent_path: parent_path_field.into(),
-            name: name_field.into()
+            name: name_field.into(),
         };
-        Ok(Message::RemoveChild(payload))
+        Ok(Message::RemoveNode(payload))
     }
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
-// ListChildren
-//
-//     Return a list of direct children of the given path. The given path must
-//     exist.
-//
-//     Request Format:
-//       {
-//         "message_id": Number,
-//         "type": "ListChildren",
-//         "path": "/path/to/list",
-//       }
-//
-//     Response Format:
-//       {
-//         "message_id": Number,
-//         "status": "Ok | <error>",
-//         ["context": "information about error" ||
-//          "children": ["list", "of", ... "children"]]
-//       }
-//
-//     Errors:
-//       MalformedPath
-//       NoSuchNode
-//
-#[derive(Debug)]
-pub struct ListChildrenPayload {
-    pub path: String,
-}
-
-impl ListChildrenPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let path_field = get_field!(message, "path", as_string);
-        let payload = ListChildrenPayload {
-            path: path_field.into(),
-        };
-        Ok(Message::ListChildren(payload))
-    }
-}
-
-#[derive(RustcEncodable)]
-pub struct ListChildrenResponse {
-    pub message_id: MessageId,
-    pub status: String,
-    pub children: Vec<String>
-}
-
-
-// ////////////////////////////////////////////////////////////////////////////
-// SubscribeLayout
+// Subscribe
 //
 //     Register to receive messages whenever the children of the given path
 //     change. The provided path must exist.
@@ -288,8 +413,10 @@ pub struct ListChildrenResponse {
 //     Request Format:
 //       {
 //         "message_id": Number,
-//         "type": "SubscribeLayout",
-//         "path": "/path/to/node"
+//         "message_type": "Subscribe",
+//         "message_payload": {
+//           "path": "/path/to/node"
+//         }
 //       }
 //
 //     Response Format:
@@ -297,15 +424,15 @@ pub struct ListChildrenResponse {
 //         "message_id": Number,
 //         "status": "Ok | <error>",
 //         ["context": "information about error" ||
-//          "layout_subscription_id": Number]
+//          "subscription_id": Number]
 //       }
 //
 //     Subscription Message Format:
 //       {
 //         "layout_subscription_id": Number,
 //         "path": "/path/to/node",
-//         "event": "Create" || "Remove",
-//         "name": "NodeName"
+//         "event": "Create" || "Remove" || "Changed",
+//         "context": "description of what changed"
 //       }
 //
 //     Errors:
@@ -313,46 +440,49 @@ pub struct ListChildrenResponse {
 //       NoSuchNode
 //
 #[derive(Debug)]
-pub struct SubscribeLayoutPayload {
+pub struct SubscribePayload {
     pub path: String,
 }
 
-impl SubscribeLayoutPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let path_field = get_field!(message, "path", as_string);
-        let payload = SubscribeLayoutPayload {
+impl SubscribePayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let path_field = get_field!(payload, "path", as_string);
+        let payload = SubscribePayload {
             path: path_field.into()
         };
-        Ok(Message::SubscribeLayout(payload))
+        Ok(Message::Subscribe(payload))
     }
 }
 
 #[derive(RustcEncodable)]
-pub struct SubscribeLayoutResponse {
+pub struct SubscribeResponse {
     pub message_id: MessageId,
     pub status: String,
-    pub layout_subscription_id: LayoutSubscriptionId
+    pub subscription_id: SubscriptionId
 }
 
 #[derive(RustcEncodable)]
-pub struct SubscribeLayoutMessage {
-    pub layout_subscription_id: LayoutSubscriptionId,
+pub struct SubscriptionMessage {
+    pub subscription_id: SubscriptionId,
     pub path: String,
     pub event: String,
-    pub name: String
+    pub context: String
 }
 
+
 // ////////////////////////////////////////////////////////////////////////////
-// UnsubscribeLayout
+// Unsubscribe
 //
-//     Remove an existing layout subscription. The provided subscription must
+//     Remove an existing subscription. The provided subscription must
 //     exist.
 //
 //     Request Format:
 //       {
 //         "message_id": Number,
-//         "type": "UnsubscribeLayout",
-//         "layout_subscription_id": Number
+//         "message_type": "Unsubscribe",
+//         "message_payload": {
+//           "subscription_id": Number
+//         }
 //       }
 //
 //     Response Format:
@@ -363,151 +493,20 @@ pub struct SubscribeLayoutMessage {
 //       }
 //
 //     Errors:
-//       NoSuchLayoutSubscription
+//       NoSuchSubscription
 //
 #[derive(Debug)]
-pub struct UnsubscribeLayoutPayload {
-    pub layout_subscription_id: LayoutSubscriptionId,
+pub struct UnsubscribePayload {
+    pub subscription_id: SubscriptionId,
 }
 
-impl UnsubscribeLayoutPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let layout_sid_field = get_field!(message, "layout_subscription_id", as_u64);
-        let payload = UnsubscribeLayoutPayload {
-            layout_subscription_id: LayoutSubscriptionId::from_u64(layout_sid_field.into()),
+impl UnsubscribePayload {
+    fn parse(payload: &json::Object) -> ParseResult {
+        let sid_field = get_field!(payload, "subscription_id", as_u64);
+        let payload = UnsubscribePayload {
+            subscription_id: SubscriptionId::from_u64(sid_field.into()),
         };
-        Ok(Message::UnsubscribeLayout(payload))
-    }
-}
-
-
-// ////////////////////////////////////////////////////////////////////////////
-// CreateKey
-//
-//     Add a key to the given path. The provided path must already exist.
-//
-//     Request Format:
-//       {
-//         "message_id": Number,
-//         "type": "CreateKey",
-//         "path": "/path/to/node",
-//         "name": "key_name"
-//       }
-//
-//     Response Format:
-//       {
-//         "message_id": Number,
-//         "status": "Ok | <error>"
-//         ["context": "information about error"]
-//       }
-//
-//     Errors:
-//       InvalidPathComponent
-//       MalformedPath
-//       NoSuchNode
-//       NodeAlreadyExists
-//
-
-// ////////////////////////////////////////////////////////////////////////////
-// SubscribeKeys
-//
-//     Request to be notified if the set of keys at path change. The data
-//     provided is the key that was added or removed. To listen for changes to
-//     the data stored in a key, use SubscribeData. The provided path must
-//     already exist.
-//
-//     Request Format:
-//       {
-//         "message_id": Number,
-//         "type": "SubscribeKeys",
-//         "path": "/path/to/node"
-//       }
-//
-//     Response Format:
-//       {
-//         "message_id": Number,
-//         "status": "Ok | <error>",
-//         ["context": "information about error" ||
-//          "keys_subscription_id": Number]
-//       }
-//
-//     Subscription Message Format:
-//       {
-//         "keys_subscription_id": Number,
-//         "path": "/path/to/node",
-//         "event": "Create" || "Remove",
-//         "name": "NodeName"
-//       }
-//
-//     Errors:
-//       MalformedPath
-//       NoSuchNode
-#[derive(Debug)]
-pub struct SubscribeKeysPayload {
-    pub path: String
-}
-
-impl SubscribeKeysPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let path_field = get_field!(message, "path", as_string);
-        let payload = SubscribeKeysPayload {
-            path: path_field.into()
-        };
-        Ok(Message::SubscribeKeys(payload))
-    }
-}
-
-#[derive(RustcEncodable)]
-pub struct SubscribeKeysResponse {
-    pub message_id: MessageId,
-    pub status: String,
-    pub keys_subscription_id: KeysSubscriptionId
-}
-
-#[derive(RustcEncodable)]
-pub struct SubscribeKeysMessage {
-    pub keys_subscription_id: KeysSubscriptionId,
-    pub path: String,
-    pub event: String,
-    pub name: String
-}
-
-
-// ////////////////////////////////////////////////////////////////////////////
-// UnsubscribeKeys
-//
-//     Remove an existing keys subscription. The provided subscription must
-//     exist.
-//
-//     Request Format:
-//       {
-//         "message_id": Number,
-//         "type": "UnsubscribeKeys",
-//         "keys_subscription_id": Number
-//       }
-//
-//     Response Format:
-//       {
-//         "message_id": Number,
-//         "status": "Ok | <error>",
-//         ["context": "information about error"]
-//       }
-//
-//     Errors:
-//       NoSuchKeysSubscription
-//
-#[derive(Debug)]
-pub struct UnsubscribeKeysPayload {
-    pub keys_subscription_id: KeysSubscriptionId,
-}
-
-impl UnsubscribeKeysPayload {
-    fn parse(message: &json::Object) -> ParseResult {
-        let keys_sid_field = get_field!(message, "keys_subscription_id", as_u64);
-        let payload = UnsubscribeKeysPayload {
-            keys_subscription_id: KeysSubscriptionId::from_u64(keys_sid_field.into()),
-        };
-        Ok(Message::UnsubscribeKeys(payload))
+        Ok(Message::Unsubscribe(payload))
     }
 }
 
@@ -537,17 +536,19 @@ pub fn parse_message(data: &json::Json) -> ParseResult {
         None => return Err(ParseError::WrongFieldType("<root>".into()))
     };
 
-    let type_field = get_field!(message, "type", as_string);
+    let payload_field = get_field!(message, "message_payload", as_object);
+
+    let type_field = get_field!(message, "message_type", as_string);
     return match type_field {
-        "Ping" => PingPayload::parse(message),
-        "CreateChild" => CreateChildPayload::parse(message),
-        "RemoveChild" => RemoveChildPayload::parse(message),
-        "ListChildren" => ListChildrenPayload::parse(message),
-        "SubscribeLayout" => SubscribeLayoutPayload::parse(message),
-        "UnsubscribeLayout" => UnsubscribeLayoutPayload::parse(message),
-        "SubscribeKeys" => SubscribeKeysPayload::parse(message),
-        "UnsubscribeKeys" => UnsubscribeKeysPayload::parse(message),
-        _ => Err(ParseError::UnknownType(type_field.into()))
+        "Ping" => PingPayload::parse(payload_field.into()),
+        "CreateNode" => CreateNodePayload::parse(payload_field.into()),
+        "ListDirectory" => ListDirectoryPayload::parse(payload_field.into()),
+        "GetFileContent" => GetFileContentPayload::parse(payload_field.into()),
+        "SetFileContent" => SetFileContentPayload::parse(payload_field.into()),
+        "RemoveNode" => RemoveNodePayload::parse(payload_field.into()),
+        "Subscribe" => SubscribePayload::parse(payload_field.into()),
+        "Unsubscribe" => UnsubscribePayload::parse(payload_field.into()),
+        _ => Err(ParseError::UnknownMessageType(type_field.into()))
     };
 }
 

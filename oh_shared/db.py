@@ -24,7 +24,8 @@ class DatabaseError(Exception):
 class ParseError(DatabaseError): pass
 class IdOutOfRange(ParseError): pass
 class MissingField(ParseError): pass
-class UnknownType(ParseError): pass
+class UnknownMessageType(ParseError): pass
+class UnknownNodeType(ParseError): pass
 class WrongFieldType(ParseError): pass
 
 # The following must match up with tree.rs' TreeError enum.
@@ -34,9 +35,10 @@ class MalformedPath(TreeError): pass
 class NoSuchKey(TreeError): pass
 class NoSuchNode(TreeError): pass
 class NodeAlreadyExists(TreeError): pass
-class NodeContainsChildren(TreeError): pass
-class NodeContainsData(TreeError): pass
+class DirectoryNotEmpty(TreeError): pass
 class NodeContainsSubscriptions(TreeError): pass
+class NotDirectory(TreeError): pass
+class NotFile(TreeError): pass
 
 # The following must match up with subscriptions.rs' SubscriptionError enum.
 class SubscriptionError(DatabaseError): pass
@@ -72,7 +74,9 @@ class Tree:
         assert os.path.exists(ca_cert_chain)
         assert os.path.exists(cert_chain)
         assert os.path.exists(key_file)
-        while True:
+
+        websock = None
+        while not websock:
             try:
                 ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
                 ctx.load_cert_chain(cert_chain, keyfile=key_file)
@@ -80,16 +84,15 @@ class Tree:
                 ctx.verify_mode = ssl.CERT_REQUIRED
                 ctx.check_hostname = False
                 websock = await websockets.connect('wss://{}:{}'.format(*address), ssl=ctx)
-                break
             except ConnectionRefusedError:
                 log.warn("Failed to connect, retrying in 0.5s")
                 await asyncio.sleep(0.5)
 
         await websock.send(json.dumps({'message_id': 1,
-                                       'type': 'Ping',
-                                       'data': 'flimfniffle'}))
+                                       'message_type': 'Ping',
+                                       'message_payload': {
+                                           'data': 'flimfniffle'}}))
         raw = await websock.recv()
-        print("raw: {}".format(raw))
         response = json.loads(raw)
         assert response['message_id'] == 1
         assert response['pong'] == 'flimfniffle'
@@ -108,21 +111,31 @@ class Tree:
                 if 'message_id' in message:
                     self._handle_response_message(message)
 
-                elif 'layout_subscription_id' in message:
+                elif 'subscription_id' in message:
                     await self._handle_subscription_message(message)
+
+                else:
+                    assert False, "unknown message type received"
 
         except asyncio.CancelledError:
             return
 
-    async def _dispatch_message(self, message: dict) -> asyncio.Future:
-        assert 'message_id' not in message
-        send_id = next(self.message_id)
-        message['message_id'] = send_id
-        response_future = self.awaiting_response[send_id] = asyncio.Future()
+    async def _dispatch_message(self, message_type: str, payload: dict) -> asyncio.Future:
+        assert 'message_id' not in payload
+        assert message_type in ("CreateNode", "ListDirectory", "SetFileContent",
+                                "GetFileContent", "RemoveNode", "Subscribe", "Unsubscribe")
+        message = {
+            'message_id': next(self.message_id),
+            'message_type': message_type,
+            'message_payload': payload,
+        }
+        log.debug("sending message: {}".format(message['message_id']))
+        response_future = self.awaiting_response[message['message_id']] = asyncio.Future()
         await self.websock.send(json.dumps(message))
         return response_future
 
     def _handle_response_message(self, message: dict):
+        log.debug("got response: {}".format(message['message_id']))
         response_id = int(message['message_id'])
         del message['message_id']
 
@@ -133,13 +146,13 @@ class Tree:
             response_future.set_result(message)
 
     async def _handle_subscription_message(self, message: dict):
-        layout_sid = message['layout_subscription_id']
-        if layout_sid not in self.subscriptions:
-            log.critical("received unknown subscription: {}", layout_sid)
+        sid = message['subscription_id']
+        if sid not in self.subscriptions:
+            log.critical("received unknown subscription: {}", sid)
             return
         try:
-            cb = self.subscriptions[layout_sid]
-            await cb(message['path'], message['event'], message['name'])
+            cb = self.subscriptions[sid]
+            await cb(message['path'], message['event'], message['context'])
         except Exception as e:
             log.critical("Handler for subscription id {} failed with exception:", layout_sid)
             log.exception(e)
@@ -150,90 +163,84 @@ class Tree:
         exc_class = globals().get(message['status'], UnknownErrorType)
         raise exc_class(message['status'], message.get('context', "unknown"))
 
-    # ########## Layout ##########
-    async def create_child_async(self, parent_path: str, name: str) -> asyncio.Future:
-        return await self._dispatch_message({'type': 'CreateChild',
-                                             'parent_path': parent_path,
-                                             'name': name})
+    # ########## LowLevel Async ##########
+    async def create_node_async(self, node_type: str, parent_path: str, name: str):
+        return await self._dispatch_message('CreateNode', {'type': node_type,
+                                                           'parent_path': parent_path,
+                                                           'name': name})
 
-    async def create_child(self, parent_path: str, name: str):
-        future = await self.create_child_async(parent_path, name)
+    async def remove_node_async(self, parent_path: str, name: str) -> asyncio.Future:
+        return await self._dispatch_message('RemoveNode', {'parent_path': parent_path,
+                                                           'name': name})
+
+    async def list_directory_async(self, path: str) -> asyncio.Future:
+        return await self._dispatch_message('ListDirectory', {'path': path})
+
+    async def set_file_content_async(self, path: str, content: str) -> asyncio.Future:
+        return await self._dispatch_message('SetFileContent', {'path': path, 'data': content})
+
+    async def get_file_content_async(self, path: str) -> asyncio.Future:
+        return await self._dispatch_message('GetFileContent', {'path': path})
+
+    # Note that subscribe and unsubscribe do not have async varieties.
+    # We do not guarantee message delivery order, so it is possible to
+    # receive a subscription message before the subscription is
+    # registered on this side of the channel.
+
+    # ########## LowLevel Sync ##########
+    async def create_node(self, node_type: str, parent_path: str, name: str):
+        future = await self.create_node_async(node_type, parent_path, name)
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
 
-    async def remove_child_async(self, parent_path: str, name: str) -> asyncio.Future:
-        return await self._dispatch_message({'type': 'RemoveChild',
-                                             'parent_path': parent_path,
-                                             'name': name})
-
-    async def remove_child(self, parent_path: str, name: str):
-        future = await self.remove_child_async(parent_path, name)
+    async def remove_node(self, parent_path: str, name: str):
+        future = await self.remove_node_async(parent_path, name)
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
 
-    async def list_children_async(self, path: str) -> asyncio.Future:
-        return await self._dispatch_message({'type': 'ListChildren',
-                                             'path': path})
-
-    async def list_children(self, path: str) -> [str]:
-        future = await self.list_children_async(path)
+    async def list_directory(self, path: str) -> [str]:
+        future = await self.list_directory_async(path)
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
         return result['children']
 
-    async def subscribe_children(self, path: str, cb: callable) -> int:
-        future = await self._dispatch_message({'type': 'SubscribeLayout',
-                                               'path': path})
-        result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
-        self.subscriptions[result['layout_subscription_id']] = cb
-        return result['layout_subscription_id']
-
-    async def unsubscribe_children(self, layout_sid: int):
-        future = await self._dispatch_message({'type': 'UnsubscribeLayout',
-                                               'layout_subscription_id': layout_sid})
+    async def set_file_content(self, path: str, content: str):
+        future = await self.set_file_content_async(path, content)
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
 
-    # ########## Data ##########
-    async def create_key_async(self, path: str, key: str, value: str):
-        return await self._dispatch_message({'type': 'CreateKey',
-                                             'path': path,
-                                             'key': key,
-                                             'value': value})
-
-    async def create_key(self, path: str, key: str, value: str):
-        future = await self.create_key_async(path, key, value)
+    async def get_file_content(self, path: str) -> str:
+        future = await self.get_file_content_async(path)
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
+        return result['data']
 
-    async def remove_key_async(self, path: str, key: str):
-        return await self._dispatch_message({'type': 'RemoveKey',
-                                             'path': path,
-                                             'key': key})
-
-    async def remove_key(self, path: str, key: str):
-        future = await self.remove_key_async(path, key)
+    async def subscribe(self, path: str, cb: callable) -> asyncio.Future:
+        future = await self._dispatch_message('Subscribe', {'path': path})
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
+        self.subscriptions[result['subscription_id']] = cb
+        return result['subscription_id']
 
-    async def list_keys_async(self, path: str):
-        return await self._dispatch_message({'type': 'ListKeys',
-                                             'path': path})
-
-    async def list_keys(self, path: str):
-        future = await self.list_keys_async(path)
+    async def unsubscribe(self, sid: int) -> asyncio.Future:
+        future = await self._dispatch_message('Unsubscribe', {'subscription_id': sid})
         result = await future
         if result['status'] != "Ok":
             raise self.make_error(result)
-        return result['keys']
+        del self.subscriptions[sid]
+
+    # ########## High Level Interface ##########
+    async def create_directory(self, parent_path: str, name: str):
+        self.create_node("Directory", parent_path, name)
+
+    async def create_file(self, parent_path: str, name: str):
+        self.create_node("File", parent_path, name)
 
 
 class Connection:

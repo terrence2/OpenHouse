@@ -181,21 +181,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // The connection triggering the event does not care about failures to send to
         // subscriptions, so this method terminates any failure. We log and potentially
         // close the child connections, but do not report failures to the caller.
-        fn notify_layout_subscriptions(&mut self, path: &Path, event: &str, name: &str) {
-            for (token, layout_sid) in self.subscriptions.get_layout_subscriptions_for(path) {
+        fn notify_subscriptions(&mut self, path: &Path, event: &str, context: &str) {
+            for (token, sid) in self.subscriptions.get_subscriptions_for(path) {
                 // If this connection does not exist, then something is way off the rails
                 // and we need to shutdown anyway.
                 let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_layout_changed(&layout_sid, path, event, name).ok();
-            }
-        }
-
-        fn notify_keys_subscriptions(&mut self, path: &Path, event: &str, name: &str) {
-            for (token, keys_sid) in self.subscriptions.get_keys_subscriptions_for(path) {
-                // If this connection does not exist, then something is way off the rails
-                // and we need to shutdown anyway.
-                let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_keys_changed(&keys_sid, path, event, name).ok();
+                conn.on_change(&sid, path, event, context).ok();
             }
         }
     }
@@ -236,28 +227,31 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_create_child(&mut self, message_id: MessageId, msg: &CreateChildPayload)
+        fn handle_create_node(&mut self, message_id: MessageId, msg: &CreateNodePayload)
             -> ws::Result<()>
         {
-            info!("handling CreateChild -> parent: {},  name: {}",
-                  msg.parent_path, msg.name);
+            info!("handling CreateNode -> parent: {},  name: {}, type: {}",
+                  msg.parent_path, msg.name, msg.node_type);
             {
                 let mut env = self.env.borrow_mut();
                 let parent_path = Path::new(msg.parent_path.as_str());
                 {
                     let db = &mut env.db;
-                    let parent = try_error!(db.lookup(parent_path), message_id, self);
-                    try_error!(parent.add_child(&msg.name), message_id, self);
+                    let parent = try_error!(db.lookup_directory(parent_path), message_id, self);
+                    try_error!(match msg.node_type {
+                        NodeType::Directory => parent.add_directory(&msg.name),
+                        NodeType::File => parent.add_file(&msg.name)
+                    }, message_id, self);
                 }
-                env.notify_layout_subscriptions(parent_path, "Create", msg.name.as_str());
+                env.notify_subscriptions(parent_path, "Create", msg.name.as_str());
             }
             self.return_ok(message_id)
         }
 
-        fn handle_remove_child(&mut self, message_id: MessageId, msg: &RemoveChildPayload)
+        fn handle_remove_node(&mut self, message_id: MessageId, msg: &RemoveNodePayload)
             -> ws::Result<()>
         {
-            info!("handling RemoveChild -> parent: {},  name: {}",
+            info!("handling RemoveNode-> parent: {}, name: {}",
                   msg.parent_path, msg.name);
             {
                 let mut env = self.env.borrow_mut();
@@ -271,23 +265,23 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 }
                 {
                     let db = &mut env.db;
-                    let parent = try_error!(db.lookup(parent_path), message_id, self);
+                    let parent = try_error!(db.lookup_directory(parent_path), message_id, self);
                     try_error!(parent.remove_child(&msg.name), message_id, self);
                 }
-                env.notify_layout_subscriptions(parent_path, "Remove", msg.name.as_str());
+                env.notify_subscriptions(parent_path, "Remove", msg.name.as_str());
             }
             self.return_ok(message_id)
         }
 
-        fn handle_list_children(&mut self, message_id: MessageId, msg: &ListChildrenPayload)
+        fn handle_list_directory(&mut self, message_id: MessageId, msg: &ListDirectoryPayload)
             -> ws::Result<()>
         {
-            info!("handling ListChildren -> path: {}", msg.path);
+            info!("handling ListDirectory -> path: {}", msg.path);
             let db = &mut self.env.borrow_mut().db;
             let path = Path::new(msg.path.as_str());
-            let node = try_error!(db.lookup(path), message_id, self);
-            let children = node.list_children();
-            let out = ListChildrenResponse {
+            let directory = try_error!(db.lookup_directory(path), message_id, self);
+            let children = directory.list_directory();
+            let out = ListDirectoryResponse {
                 message_id: message_id,
                 status: String::from("Ok"),
                 children: children
@@ -296,140 +290,82 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_subscribe_layout(&mut self, message_id: MessageId, msg: &SubscribeLayoutPayload)
+        fn handle_get_file_content(&mut self, message_id: MessageId, msg: &GetFileContentPayload)
             -> ws::Result<()>
         {
-            info!("handling SubscribeLayout -> path: {}", msg.path);
+            info!("handling GetFileContent -> path: {}", msg.path);
             let path = Path::new(msg.path.as_str());
-            let mut env = self.env.borrow_mut();
+            let data;
             {
-                // Look up the node to ensure that it exists.
-                let _ = try_error!(env.db.lookup(path), message_id, self);
+                let db = &mut self.env.borrow_mut().db;
+                let file = try_error!(db.lookup_file(path), message_id, self);
+                data = file.get_data();
             }
-            env.last_subscription_id += 1;
-            let sid = LayoutSubscriptionId::from_u64(env.last_subscription_id);
-            env.subscriptions.add_layout_subscription(&sid, &self.sender.borrow().token(), &path);
-            let out = SubscribeLayoutResponse {
+            let out = GetFileContentResponse {
                 message_id: message_id,
                 status: String::from("Ok"),
-                layout_subscription_id: sid
+                data: data
             };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_unsubscribe_layout(&mut self, message_id: MessageId,
-                                     msg: &UnsubscribeLayoutPayload)
+        fn handle_set_file_content(&mut self, message_id: MessageId, msg: &SetFileContentPayload)
             -> ws::Result<()>
         {
+            info!("handling SetFileContent -> path: {}", msg.path);
+            let path = Path::new(msg.path.as_str());
             {
-                let mut env = self.env.borrow_mut();
-                let sid = &msg.layout_subscription_id;
-                try_error!(env.subscriptions.remove_layout_subscription(sid), message_id, self);
+                let db = &mut self.env.borrow_mut().db;
+                let file = try_error!(db.lookup_file(path), message_id, self);
+                file.set_data(&msg.data);
             }
+            self.env.borrow_mut().notify_subscriptions(path, "Changed", &msg.data);
             self.return_ok(message_id)
         }
 
-        fn on_layout_changed(&mut self, layout_sid: &LayoutSubscriptionId, path: &Path,
-                             event: &str, name: &str) -> ws::Result<()>
-        {
-            let message = SubscribeLayoutMessage {
-                layout_subscription_id: *layout_sid,
-                path: path.to_string_lossy().into_owned(),
-                event: event.to_owned(),
-                name: name.to_owned()
-            };
-            let encoded = try_fatal!(json::encode(&message), self);
-            return self.sender.borrow_mut().send(encoded);
-        }
-
-        fn handle_create_key(&mut self, message_id: MessageId, msg: &CreateChildPayload)
+        fn handle_subscribe(&mut self, message_id: MessageId, msg: &SubscribePayload)
             -> ws::Result<()>
         {
-            info!("handling CreateKey -> path: {}, key: {}, value: {}",
-                  msg.parent_path, msg.key, msg.value);
-            {
-                let mut env = self.env.borrow_mut();
-                let parent_path = Path::new(msg.parent_path.as_str());
-                {
-                    let db = &mut env.db;
-                    let parent = try_error!(db.lookup(parent_path), message_id, self);
-                    try_error!(parent.create_key(&msg.name), message_id, self);
-                }
-                env.notify_layout_subscriptions(parent_path, "Create", msg.name.as_str());
-            }
-            self.return_ok(message_id)
-        }
-
-        /*
-        fn handle_remove_key(&mut self, message_id: MessageId, msg: &RemoveChildPayload)
-            -> ws::Result<()>
-        {
-            info!("handling RemoveChild -> parent: {},  name: {}",
-                  msg.parent_path, msg.name);
-            {
-                let mut env = self.env.borrow_mut();
-                let parent_path = Path::new(msg.parent_path.as_str());
-                {
-                    // Before removing, check that we won't be orphaning subscriptions.
-                    try_error!(tree::check_path_component(&msg.name), message_id, self);
-                    let mut path = parent_path.to_owned();
-                    path.push(&msg.name);
-                    try_error!(env.subscriptions.verify_no_subscriptions_at_path(&path), message_id, self);
-                }
-                {
-                    let db = &mut env.db;
-                    let parent = try_error!(db.lookup(parent_path), message_id, self);
-                    try_error!(parent.remove_key(&msg.name), message_id, self);
-                }
-                env.notify_layout_subscriptions(parent_path, "Remove", msg.name.as_str());
-            }
-            self.return_ok(message_id)
-        }
-        */
-
-        fn handle_subscribe_keys(&mut self, message_id: MessageId, msg: &SubscribeKeysPayload)
-            -> ws::Result<()>
-        {
-            info!("handling SubscribeKeys -> path: {}", msg.path);
+            info!("handling Subscribe -> path: {}", msg.path);
             let path = Path::new(msg.path.as_str());
             let mut env = self.env.borrow_mut();
             {
                 // Look up the node to ensure that it exists.
-                let _ = try_error!(env.db.lookup(path), message_id, self);
+                let _ = try_error!(env.db.contains_path(path), message_id, self);
             }
             env.last_subscription_id += 1;
-            let sid = KeysSubscriptionId::from_u64(env.last_subscription_id);
-            env.subscriptions.add_keys_subscription(&sid, &self.sender.borrow().token(), &path);
-            let out = SubscribeKeysResponse {
+            let sid = SubscriptionId::from_u64(env.last_subscription_id);
+            env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &path);
+            let out = SubscribeResponse {
                 message_id: message_id,
                 status: String::from("Ok"),
-                keys_subscription_id: sid
+                subscription_id: sid
             };
             let encoded = try_fatal!(json::encode(&out), self);
             return self.sender.borrow_mut().send(encoded.to_string());
         }
 
-        fn handle_unsubscribe_keys(&mut self, message_id: MessageId,
-                                   msg: &UnsubscribeKeysPayload)
+        fn handle_unsubscribe(&mut self, message_id: MessageId,
+                              msg: &UnsubscribePayload)
             -> ws::Result<()>
         {
             {
                 let mut env = self.env.borrow_mut();
-                let sid = &msg.keys_subscription_id;
-                try_error!(env.subscriptions.remove_keys_subscription(sid), message_id, self);
+                let sid = &msg.subscription_id;
+                try_error!(env.subscriptions.remove_subscription(sid), message_id, self);
             }
             self.return_ok(message_id)
         }
 
-        fn on_keys_changed(&mut self, keys_sid: &KeysSubscriptionId, path: &Path,
-                           event: &str, name: &str) -> ws::Result<()>
+        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, event: &str, context: &str)
+            -> ws::Result<()>
         {
-            let message = SubscribeKeysMessage {
-                keys_subscription_id: *keys_sid,
+            let message = SubscriptionMessage {
+                subscription_id: *sid,
                 path: path.to_string_lossy().into_owned(),
                 event: event.to_owned(),
-                name: name.to_owned()
+                context: context.to_owned()
             };
             let encoded = try_fatal!(json::encode(&message), self);
             return self.sender.borrow_mut().send(encoded);
@@ -446,26 +382,26 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 Message::Ping(ref payload) => {
                     self.handle_ping(message_id, payload)
                 },
-                Message::CreateChild(ref payload) => {
-                    self.handle_create_child(message_id, payload)
+                Message::CreateNode(ref payload) => {
+                    self.handle_create_node(message_id, payload)
                 },
-                Message::RemoveChild(ref payload) => {
-                    self.handle_remove_child(message_id, payload)
+                Message::RemoveNode(ref payload) => {
+                    self.handle_remove_node(message_id, payload)
                 },
-                Message::ListChildren(ref payload) => {
-                    self.handle_list_children(message_id, payload)
+                Message::GetFileContent(ref payload) => {
+                    self.handle_get_file_content(message_id, payload)
                 },
-                Message::SubscribeLayout(ref payload) => {
-                    self.handle_subscribe_layout(message_id, payload)
+                Message::SetFileContent(ref payload) => {
+                    self.handle_set_file_content(message_id, payload)
                 },
-                Message::UnsubscribeLayout(ref payload) => {
-                    self.handle_unsubscribe_layout(message_id, payload)
+                Message::ListDirectory(ref payload) => {
+                    self.handle_list_directory(message_id, payload)
                 },
-                Message::SubscribeKeys(ref payload) => {
-                    self.handle_subscribe_keys(message_id, payload)
+                Message::Subscribe(ref payload) => {
+                    self.handle_subscribe(message_id, payload)
                 },
-                Message::UnsubscribeKeys(ref payload) => {
-                    self.handle_unsubscribe_keys(message_id, payload)
+                Message::Unsubscribe(ref payload) => {
+                    self.handle_unsubscribe(message_id, payload)
                 },
                 //_ => { self.sender.borrow_mut().shutdown() }
             }

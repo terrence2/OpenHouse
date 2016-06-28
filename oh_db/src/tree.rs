@@ -7,24 +7,18 @@ use std::fmt;
 use std::path::{Component, Components, Path};
 
 make_error!(TreeError; {
+    DirectoryNotEmpty => String,
     InvalidPathComponent => String,
     MalformedPath => String,
     NoSuchNode => String,
     NodeAlreadyExists => String,
-    NodeContainsChildren => String,
-    NodeContainsKeys => String
+    NotDirectory => String,
+    NotFile => String
 });
 pub type TreeResult<T> = Result<T, TreeError>;
 
-// The tree nodes contain children and data.
-type ChildMap = HashMap<String, Node>;
-type DataMap = HashMap<String, String>;
-pub struct Node {
-    children: ChildMap,
-    data: DataMap
-}
-
-fn malformed_path(context: &str) -> TreeResult<&mut Node> {
+/// Produce a malformed path error.
+fn malformed_path(context: &str) -> TreeResult<&mut DirectoryData> {
     Err(TreeError::MalformedPath(context.to_owned()))
 }
 
@@ -36,17 +30,21 @@ pub fn check_path_component(name: &str) -> TreeResult<()> {
     return Ok(());
 }
 
-impl Node {
-    // Nodes are created via the Tree.
+/// A directory contains a list of children.
+type ChildMap = HashMap<String, Node>;
+pub struct DirectoryData {
+    children: ChildMap
+}
+impl DirectoryData {
     fn new() -> Self {
-        Node {
-            children: ChildMap::new(),
-            data: DataMap::new()
-        }
+        DirectoryData { children: HashMap::new() }
     }
 
-    // Iterative lookup is hard because of the borrow checker.
-    fn lookup_recursive(&mut self, parts: &mut Components) -> TreeResult<&mut Node> {
+    /// Find the directory at the bottom of path. If the path crosses
+    /// a file, return Err(NotDirectory).
+    fn lookup_directory_recursive(&mut self, parts: &mut Components)
+        -> TreeResult<&mut DirectoryData>
+    {
         let child_name = match parts.next() {
             Some(name) => name,
             None => return Ok(self)
@@ -59,40 +57,50 @@ impl Node {
             Component::Normal(os_part) => {
                 let part = match os_part.to_str() {
                     Some(s) => s,
-                    None => return Err(TreeError::InvalidPathComponent(os_part.to_string_lossy().into_owned()))
+                    None => return Err(TreeError::InvalidPathComponent(
+                                           os_part.to_string_lossy().into_owned()))
                 };
                 let child = match self.children.get_mut(part) {
                     Some(c) => c,
                     None => return Err(TreeError::NoSuchNode(part.to_owned()))
                 };
-                return child.lookup_recursive(parts);
+                return match child {
+                    &mut Node::File(_) => Err(TreeError::NotDirectory(part.to_owned())),
+                    &mut Node::Directory(ref mut d) => d.lookup_directory_recursive(parts)
+                };
             }
         }
     }
 
-    fn show(&self, context: &str) {
-        info!("{}/", context);
-        for (key, value) in &self.data {
-            info!("  {}: {}", key, value);
-        }
-        for (name, node) in &self.children {
-            node.show(format!("{}/{}", context, name).as_str());
-        }
+    fn lookup_file(&mut self, name: &str) -> TreeResult<&mut FileData> {
+        let child = match self.children.get_mut(name) {
+            Some(c) => c,
+            None => return Err(TreeError::NoSuchNode(name.to_owned()))
+        };
+        return match child {
+            &mut Node::Directory(_) => Err(TreeError::NotFile(name.to_owned())),
+            &mut Node::File(ref mut f) => Ok(f)
+        };
     }
 
-    /// Insert a new node under the given name. The child must not exist.
-    pub fn add_child(&mut self, name: &str) -> TreeResult<()> {
+    pub fn add_directory(&mut self, name: &str) -> TreeResult<()> {
+        return self.add_child(name, Node::Directory(DirectoryData::new()));
+    }
+
+    pub fn add_file(&mut self, name: &str) -> TreeResult<()> {
+        return self.add_child(name, Node::File(FileData::new()))
+    }
+
+    fn add_child(&mut self, name: &str, node: Node) -> TreeResult<()> {
         try!(check_path_component(name));
         if self.children.contains_key(name) {
             return Err(TreeError::NodeAlreadyExists(name.to_owned()));
         }
-        let result = self.children.insert(name.to_owned(), Node::new());
+        let result = self.children.insert(name.to_owned(), node);
         assert!(result.is_none());
         return Ok(());
     }
 
-    /// Remove the node under the given name. The child must not have
-    /// children.
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         try!(check_path_component(name));
         {
@@ -100,11 +108,13 @@ impl Node {
                 Some(c) => c,
                 None => return Err(TreeError::NoSuchNode(name.to_owned()))
             };
-            if !child.children.is_empty() {
-                return Err(TreeError::NodeContainsChildren(name.to_owned()));
-            }
-            if !child.data.is_empty() {
-                return Err(TreeError::NodeContainsKeys(name.to_owned()));
+            match child {
+                &Node::File(_) => {},
+                &Node::Directory(ref d) => {
+                    if !d.children.is_empty() {
+                        return Err(TreeError::DirectoryNotEmpty(name.to_owned()));
+                    }
+                }
             }
         }
         let result = self.children.remove(name);
@@ -112,8 +122,7 @@ impl Node {
         return Ok(());
     }
 
-    /// Return an iteration of the children under this node.
-    pub fn list_children(&self) -> Vec<String> {
+    pub fn list_directory(&mut self) -> Vec<String> {
         let mut out = Vec::new();
         for name in self.children.keys() {
             out.push(name.clone());
@@ -122,33 +131,76 @@ impl Node {
     }
 }
 
-// The tree is just a node rooted at /.
-pub struct Tree {
-    root: Node
+/// A file contains some data.
+pub struct FileData {
+    data: String
+}
+impl FileData {
+    fn new() -> FileData {
+        FileData { data: "hello".to_owned() }
+    }
+
+    pub fn set_data(&mut self, new_data: &str) {
+        self.data = new_data.to_owned();
+    }
+
+    pub fn get_data(&self) -> String {
+        self.data.clone()
+    }
 }
 
+/// A node is either a file or a directory.
+enum Node {
+    Directory(DirectoryData),
+    File(FileData)
+}
+
+/// A tree of Node.
+pub struct Tree {
+    root: DirectoryData
+}
 impl Tree {
     /// Creates a new, empty Tree.
     pub fn new() -> Tree {
         Tree {
-            root: Node::new()
+            root: DirectoryData::new()
         }
     }
 
     /// Parse the given string path and traverse the tree.
     /// Returns the node at the given path or an error.
-    pub fn lookup(&mut self, path: &Path) -> TreeResult<&mut Node> {
+    pub fn lookup_directory(&mut self, path: &Path) -> TreeResult<&mut DirectoryData> {
         let mut parts = path.components();
         if parts.next() != Some(Component::RootDir) {
             return malformed_path("relative");
         }
-        return self.root.lookup_recursive(&mut parts);
+        return self.root.lookup_directory_recursive(&mut parts);
     }
 
-    #[allow(dead_code)]
-    pub fn show(&self) {
-        info!("Tree contents:");
-        self.root.show("");
+
+    pub fn lookup_file(&mut self, path: &Path) -> TreeResult<&mut FileData> {
+        let parent_path = match path.parent() {
+            Some(p) => p,
+            None => return Err(TreeError::NotFile(path.to_string_lossy().into_owned()))
+        };
+        let file_name = match path.file_name() {
+            Some(n) => n,
+            None => return Err(TreeError::NotFile(path.to_string_lossy().into_owned()))
+        };
+        let parent_directory = try!(self.lookup_directory(parent_path));
+        return parent_directory.lookup_file(file_name.to_string_lossy().to_mut());
+    }
+
+    pub fn contains_path(&mut self, path: &Path) -> TreeResult<()> {
+        match self.lookup_directory(path) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                match self.lookup_file(path) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e)
+                }
+            }
+        }
     }
 }
 
@@ -191,16 +243,5 @@ mod tests {
             root.add_child("hello").unwrap();
             root.remove_child("hello").unwrap();
         }
-    }
-
-    #[test]
-    fn test_show() {
-        let _ = env_logger::init();
-        let mut tree = Tree::new();
-        {
-            let root = tree.lookup(Path::new("/")).unwrap();
-            root.add_child("hello").unwrap();
-        }
-        tree.show();
     }
 }
