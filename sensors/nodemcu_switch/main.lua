@@ -19,7 +19,7 @@ end
 
 -------------------------------------------------------------------------------
 -- LED
-LED_PIN = 3     -- pin 0 for arduino / PCB
+LED_PIN = tonumber(read_file("led.pin"))
 gpio.mode(LED_PIN, gpio.OUTPUT)
 
 function led_on() gpio.write(LED_PIN, gpio.LOW) end
