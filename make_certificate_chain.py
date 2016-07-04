@@ -268,7 +268,8 @@ def make_certificates():
                          key_security='', x509_security='-nodes')
 
     clients = ["oh_alarm", "oh_apply_scene", "oh_apply_sensor", "oh_cli", "hue", "oh_infer_activity",
-               "oh_motion_filter", "oh_rave", "oh_rest", "oh_sun", "oh_web", "oh_wemo", "oh_db_test"]
+               "oh_motion_filter", "oh_rave", "oh_rest", "oh_sun", "oh_web", "oh_wemo", "oh_db_test",
+               "oh_populate"]
     for client in clients:
         make_certificate(client, 'usr_cert', key_size=4096, expire=100*365,
                          key_security='', x509_security='-nodes')
