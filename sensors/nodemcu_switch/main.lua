@@ -12,6 +12,10 @@ function read_file(filename)
     return content
 end
 
+function rtrim(str)
+    return str:match("(.-)%s*$")
+end
+
 function startswith(String,Start)
    return string.sub(String,1,string.len(Start))==Start
 end
@@ -19,7 +23,7 @@ end
 
 -------------------------------------------------------------------------------
 -- LED
-LED_PIN = tonumber(read_file("led.pin"))
+LED_PIN = tonumber(rtrim(read_file("led.pin")))
 gpio.mode(LED_PIN, gpio.OUTPUT)
 
 function led_on() gpio.write(LED_PIN, gpio.LOW) end
@@ -38,8 +42,8 @@ wifi.sta.eventMonReg(wifi.STA_FAIL, function() print("STATION_CONNECT_FAIL"); le
 wifi.sta.eventMonReg(wifi.STA_GOTIP, function() print("STATION_GOT_IP"); led_off() end)
 wifi.sta.eventMonStart(1000)
 
-gSSID = read_file("wifi.ssid")
-gPassword = read_file("wifi.password")
+gSSID = rtrim(read_file("wifi.ssid"))
+gPassword = rtrim(read_file("wifi.password"))
 wifi.sta.config(gSSID, gPassword)
 wifi.sta.connect()
 
@@ -47,7 +51,7 @@ wifi.sta.connect()
 -------------------------------------------------------------------------------
 -- Switches
 function create_switch(pin, handler)
-    gpio.mode(pin, gpio.INT, gpio.FLOAT)
+    gpio.mode(pin, gpio.INT, gpio.PULLUP)
 
     local last_debounce_level = gpio.LOW
     local timer_index = gTimerIndex
@@ -88,6 +92,7 @@ end
 function create_openhouse_switch(pin_number, target_url)
     -- Create a new activation record so that target_url is stable despite the loop.
     create_switch(pin_number, function(level)
+        --print("would send event for pin " .. pin_number .. " value " .. gpio2str(level))
         send_event(target_url, gpio2str(level))
     end)
 end
@@ -98,7 +103,7 @@ function load_devices()
       if startswith(filename, "switch.") then
           local ending = string.sub(filename, string.len("switch.") + 1, -1)
           local pin_number = tonumber(ending)
-          local target_url = read_file(filename)
+          local target_url = rtrim(read_file(filename))
           create_openhouse_switch(pin_number, target_url)
       end
     end
