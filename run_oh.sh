@@ -12,13 +12,28 @@ mkdir -p $LOGDIR
 pushd log; rm -f latest; ln -s $LOG_TIME latest; popd
 
 PORT=8182
+PORT2=8183
 
 # Ensure that any subcommands we need are built.
+pushd oh_db; cargo build --release; popd
 make -C oh_home
 
 # Enter the python virtualenv with our deps.
-. .virtualenv3/bin/activate
+. .venv/bin/activate
 
+# Start the main database server and populate it.
+./oh_db/target/release/oh_db \
+    -l info -L $LOGDIR/oh_db.log \
+    -a 127.0.0.1 -p $PORT2 \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_db.cert.pem \
+    -k CA/intermediate/private/oh_db.key.pem &
+#./oh_populate/oh_populate.py \
+#    -L $LOGDIR/oh_populate.log \
+#    -P $PORT2 \
+#    -C CA/intermediate/certs/chain.cert.pem \
+#    -c CA/intermediate/certs/oh_populate.cert.pem \
+#    -k CA/intermediate/private/oh_populate.key.pem
 
 { node ./oh_home/build/main.js ./examples/eyrie.html -l info -L $LOGDIR/oh_home.log -p $PORT | bunyan; } &
 pid_home=$!

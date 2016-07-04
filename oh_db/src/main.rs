@@ -445,6 +445,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         return conn;
     }));
 
+    info!("Starting server on {}:{}", address, port);
     try!(template.listen((address, port)));
     info!("SERVER: listen ended");
     return Ok(());

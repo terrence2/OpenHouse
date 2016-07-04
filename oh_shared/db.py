@@ -154,7 +154,7 @@ class Tree:
             cb = self.subscriptions[sid]
             await cb(message['path'], message['event'], message['context'])
         except Exception as e:
-            log.critical("Handler for subscription id {} failed with exception:", layout_sid)
+            log.critical("Handler for subscription id {} failed with exception:", sid)
             log.exception(e)
 
     @staticmethod
