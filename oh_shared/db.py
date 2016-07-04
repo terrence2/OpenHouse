@@ -62,9 +62,9 @@ class Tree:
         self.listener_task = asyncio.ensure_future(self._listener())
 
     async def close(self):
+        assert len(self.awaiting_response) == 0
         await self.websock.close()
-        self.listener_task.cancel()
-        asyncio.wait(self.listener_task)
+        await self.listener_task
 
     @staticmethod
     async def connect(address: (str, int),
@@ -99,26 +99,22 @@ class Tree:
         return Tree(websock)
 
     async def _listener(self):
-        try:
-            while True:
-                try:
-                    raw = await self.websock.recv()
-                except websockets.exceptions.ConnectionClosed:
-                    log.critical("other end closed connection!")
-                    return
-                message = json.loads(raw)
+        while True:
+            try:
+                raw = await self.websock.recv()
+            except websockets.exceptions.ConnectionClosed:
+                log.critical("other end closed connection!")
+                return
+            message = json.loads(raw)
 
-                if 'message_id' in message:
-                    self._handle_response_message(message)
+            if 'message_id' in message:
+                self._handle_response_message(message)
 
-                elif 'subscription_id' in message:
-                    await self._handle_subscription_message(message)
+            elif 'subscription_id' in message:
+                await self._handle_subscription_message(message)
 
-                else:
-                    assert False, "unknown message type received"
-
-        except asyncio.CancelledError:
-            return
+            else:
+                assert False, "unknown message type received"
 
     async def _dispatch_message(self, message_type: str, payload: dict) -> asyncio.Future:
         assert 'message_id' not in payload
@@ -237,10 +233,10 @@ class Tree:
 
     # ########## High Level Interface ##########
     async def create_directory(self, parent_path: str, name: str):
-        self.create_node("Directory", parent_path, name)
+        await self.create_node("Directory", parent_path, name)
 
     async def create_file(self, parent_path: str, name: str):
-        self.create_node("File", parent_path, name)
+        await self.create_node("File", parent_path, name)
 
 
 class Connection:
