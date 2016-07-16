@@ -3,62 +3,66 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from aiohttp import web
-import asyncio
-import logging
 from oh_shared.args import parse_default_args
-from oh_shared.log import enable_logging
+from oh_shared.db import Tree, NotDirectory, TreeError
 from oh_shared.home import Home, NodeData
+from oh_shared.log import enable_logging
+import asyncio
+import json
+import logging
+import sys
 
-log = logging.getLogger('oh_sun')
+log = logging.getLogger('oh_rest')
 
 
-def make_device_handler(home: Home):
-    """Keep an open connection to home while we process transactions."""
-    def _get_path_and_query(request):
-        dwelling = request.match_info['dwelling']
-        room = request.match_info['room']
-        device = request.match_info['device']
-        return ('/{}/{}/{}'.format(dwelling, room, device),\
-                home.query("home[name='{}'] room[name='{}'] [name='{}']".format(dwelling, room, device)))
+async def make_connection(args):
+    tree = await Tree.connect((args.home_address, args.home_port),
+                              args.ca_chain, args.certificate, args.private_key)
+    return tree
 
-    @asyncio.coroutine
-    def get(request):
-        path, query = _get_path_and_query(request)
-        data = yield from query.run()
-        if not data:
-            return web.Response(status=404)
-        node = data[path]
-        value = node.attrs.get(request.match_info['attr'], None)
-        if value is None:
-            return web.Response(status=404)
-        return web.Response(body=str(value).encode('utf-8'))
 
-    @asyncio.coroutine
-    def post(request):
-        body_raw = yield from request.read()
-        value = body_raw.decode('utf-8')
-        attr = request.match_info['attr']
-        path, query = _get_path_and_query(request)
-        node = yield from query.attr(attr, value).run()
-        if not node:
-            return web.Response(status=405)
-        return web.Response(status=200)
+def make_handler(tree: Tree):
+    async def get(request):
+        path = '/' + request.match_info['path']
+
+        try:
+            entries = await tree.list_directory(path)
+            return web.json_response({'type': 'Directory', 'entries': entries})
+        except NotDirectory:
+            pass  # Fall back to try as a file.
+        except TreeError as ex:
+            return web.Response(status=502, reason=str(ex))
+
+        try:
+            content = await tree.get_file_content(path)
+            return web.json_response({'type': 'File', 'data': content})
+        except TreeError as ex:
+            return web.Response(status=502, reason=str(ex))
+
+    async def post(request):
+        path = '/' + request.match_info['path']
+        try:
+            await tree.set_file_content(path)
+            return web.Response(status=200)
+        except TreeError as ex:
+            return web.Response(status=502, reason=str(ex))
 
     return get, post
 
 
-@asyncio.coroutine
 def main():
-    args = parse_default_args('Respond to sunrise and sunset states with dramatic fades.')
+    args = parse_default_args('A REST gateway for interacting with OpenHouse over HTTP.')
     enable_logging(args.log_target, args.log_level)
-    home = yield from Home.connect((args.home_address, args.home_port))
-    return home
+
+    tree = asyncio.get_event_loop().run_until_complete(make_connection(args))
+
+    app = web.Application()
+    get_handler, post_handler = make_handler(tree)
+    paths = app.router.add_resource(r'/{path:[^{}]+}')
+    paths.add_route('GET', get_handler)
+    paths.add_route('POST', post_handler)
+    web.run_app(app, host='0.0.0.0', port=8889)
 
 
 if __name__ == '__main__':
-    home = asyncio.get_event_loop().run_until_complete(main())
-    app = web.Application()
-    get_handler, post_handler = make_device_handler(home)
-    app.router.add_route('GET', '/device/{dwelling}/{room}/{device}/{attr}', get_handler)
-    app.router.add_route('POST', '/device/{dwelling}/{room}/{device}/{attr}', post_handler)
-    web.run_app(app, host='0.0.0.0', port=8888)
+    sys.exit(main())
