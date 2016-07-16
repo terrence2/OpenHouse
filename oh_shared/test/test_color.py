@@ -1,5 +1,5 @@
 from unittest import TestCase
-from shared.color import parse_css_color, Color, RGB, BHS, Mired
+from oh_shared.color import parse_css_color, Color, RGB, BHS, Mired
 
 
 class TestColor(TestCase):

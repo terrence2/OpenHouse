@@ -2,7 +2,7 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from util import run_server, make_connection
-import db
+import oh_shared.db as db
 import pytest
 
 

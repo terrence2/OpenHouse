@@ -3,7 +3,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from collections import namedtuple
 from contextlib import contextmanager
-import db
+from oh_shared.db import Connection
 import os
 import subprocess
 
@@ -40,9 +40,9 @@ def run_server():
 
 
 def make_connection():
-    return db.Connection((server_config.address, server_config.port),
-                         client_config.ca_chain,
-                         client_config.certificate,
-                         client_config.private_key)
+    return Connection((server_config.address, server_config.port),
+                       client_config.ca_chain,
+                       client_config.certificate,
+                       client_config.private_key)
 
 
