@@ -3,6 +3,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from util import run_server, make_connection
 import asyncio
+import oh_shared.db as db
 import pytest
 
 
@@ -13,7 +14,7 @@ async def test_tree_async():
             futures = []
             children = "abcdefghijklmnopqrstuvwxyz"
             for i, a in enumerate(children):
-                ty = 'Directory' if i % 2 == 0 else 'File'
+                ty = db.NodeType.directory if i % 2 == 0 else db.NodeType.file
                 futures.append(await tree.create_node_async(ty, "/", a))
                 if i % 2 == 1:
                     futures.append(await tree.set_file_content_async("/" + a, a))
@@ -21,14 +22,14 @@ async def test_tree_async():
 
             future = await tree.list_directory_async("/")
             result = await future
-            assert "".join(sorted(result["children"])) == children
+            assert "".join(sorted(result.children)) == children
 
             futures = []
             for i, a in enumerate(children):
                 if i % 2 == 1:
                     futures.append(await tree.get_file_content_async("/" + a))
             results = await asyncio.gather(*futures)
-            assert "".join(sorted([rv['data'] for rv in results])) == children[1::2]
+            assert "".join(sorted([rv.data for rv in results])) == children[1::2]
 
             futures = []
             vowels = "aeiou"
@@ -38,7 +39,7 @@ async def test_tree_async():
 
             future = await tree.list_directory_async("/")
             result = await future
-            assert "".join(sorted(result["children"])) == \
+            assert "".join(sorted(result.children)) == \
                    "bcdfghjklmnpqrstvwxyz"
 
 
@@ -55,10 +56,10 @@ async def test_subscribe_same_client_layout():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(path: str, event: str, name: str):
+            async def on_child_changed1(path: str, event: db.EventKind, name: str):
                 assert path == "/"
                 assert name == "a"
-                assert event == "Create"
+                assert event == db.EventKind.created
                 nonlocal count1, notify1
                 count1 += 1
                 notify1.set_result(...)
@@ -66,10 +67,10 @@ async def test_subscribe_same_client_layout():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(path: str, event: str, name: str):
+            async def on_child_changed2(path: str, event: db.EventKind, name: str):
                 assert path == "/"
                 assert name == "a"
-                assert event == "Create" or event == "Remove"
+                assert event == db.EventKind.created or event == db.EventKind.removed
                 nonlocal count2, notify2
                 count2 += 1
                 notify2.set_result(...)
@@ -109,10 +110,10 @@ async def test_subscribe_same_client_data():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(path: str, event: str, context: str):
+            async def on_child_changed1(path: str, event: db.EventKind, context: str):
                 assert path == "/a"
                 assert context == "foo"
-                assert event == "Changed"
+                assert event == db.EventKind.changed
                 nonlocal count1, notify1
                 count1 += 1
                 notify1.set_result(...)
@@ -120,17 +121,17 @@ async def test_subscribe_same_client_data():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(path: str, event: str, context: str):
+            async def on_child_changed2(path: str, event: db.EventKind, context: str):
                 assert path == "/a"
                 assert context == "foo"
-                assert event == "Changed" or event == "Remove"
+                assert event == db.EventKind.changed or event == db.EventKind.removed
                 nonlocal count2, notify2
                 count2 += 1
                 notify2.set_result(...)
 
             # Create and subscribe to data node.
-            await tree.create_node("File", "/", "a")
-            await tree.create_node("File", "/", "b")
+            await tree.create_node(db.NodeType.file, "/", "a")
+            await tree.create_node(db.NodeType.file, "/", "b")
             subid1 = await tree.subscribe("/a", on_child_changed1)
             subid2 = await tree.subscribe("/a", on_child_changed2)
 
@@ -165,12 +166,12 @@ async def test_subscribe_multiple_clients():
                 count = 0
                 notify = asyncio.Future()
 
-                async def on_child_changed1(path: str, event: str, context: str):
+                async def on_child_changed1(path: str, event: db.EventKind, context: str):
                     assert path == "/"
                     assert context == "a"
                     nonlocal count, notify
                     count += 1
-                    if event == "Remove":
+                    if event == db.EventKind.removed:
                         notify.set_result(...)
 
                 await treeA.subscribe("/", on_child_changed1)

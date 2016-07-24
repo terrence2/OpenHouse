@@ -2,6 +2,7 @@
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import asyncio
+import capnp
 import json
 import itertools
 import logging
@@ -10,6 +11,17 @@ import ssl
 import websockets
 
 
+# Explicit is better than implicit.
+capnp.remove_import_hook()
+messages = capnp.load('oh_shared/db/messages.capnp')
+
+
+# Re-export some deeply nested enums so that users don't have to worry about message structural details.
+NodeType = messages.CreateNodeRequest.NodeType
+EventKind = messages.EventKind
+
+
+# Tag all log messages that come from this module.
 log = logging.getLogger('db.tree')
 
 
@@ -88,14 +100,14 @@ class Tree:
                 log.warn("Failed to connect, retrying in 0.5s")
                 await asyncio.sleep(0.5)
 
-        await websock.send(json.dumps({'message_id': 1,
-                                       'message_type': 'Ping',
-                                       'message_payload': {
-                                           'data': 'flimfniffle'}}))
+        request = messages.ClientRequest.new_message(id=1, ping=messages.PingRequest.new_message(data='flimfniffle'))
+        await websock.send(request.to_bytes_packed())
         raw = await websock.recv()
-        response = json.loads(raw)
-        assert response['message_id'] == 1
-        assert response['pong'] == 'flimfniffle'
+        message = messages.ServerMessage.from_bytes_packed(raw)
+        assert message.which() == 'response'
+        assert message.response.id == 1
+        assert message.response.which() == 'ping'
+        assert message.response.ping.pong == 'flimfniffle'
         return Tree(websock)
 
     async def _listener(self):
@@ -105,78 +117,81 @@ class Tree:
             except websockets.exceptions.ConnectionClosed:
                 log.critical("other end closed connection!")
                 return
-            message = json.loads(raw)
 
-            if 'message_id' in message:
-                self._handle_response_message(message)
-
-            elif 'subscription_id' in message:
-                await self._handle_subscription_message(message)
-
+            server_message = messages.ServerMessage.from_bytes_packed(raw)
+            if server_message.which() == 'response':
+                self._handle_response_message(server_message.response)
+            elif server_message.which() == 'event':
+                await self._handle_subscription_message(server_message.event)
             else:
                 assert False, "unknown message type received"
 
-    async def _dispatch_message(self, message_type: str, payload: dict) -> asyncio.Future:
-        assert 'message_id' not in payload
-        assert message_type in ("CreateNode", "ListDirectory", "SetFileContent",
-                                "GetFileContent", "RemoveNode", "Subscribe", "Unsubscribe")
-        message = {
-            'message_id': next(self.message_id),
-            'message_type': message_type,
-            'message_payload': payload,
-        }
-        log.debug("sending message: {}".format(message['message_id']))
-        response_future = self.awaiting_response[message['message_id']] = asyncio.Future()
-        await self.websock.send(json.dumps(message))
+    async def _dispatch_message(self, **kwargs) -> asyncio.Future:
+        message_id = next(self.message_id)
+        assert message_id not in self.awaiting_response
+        request = messages.ClientRequest.new_message(id=message_id, **kwargs)
+        response_future = self.awaiting_response[message_id] = asyncio.Future()
+        await self.websock.send(request.to_bytes_packed())
         return response_future
 
-    def _handle_response_message(self, message: dict):
-        log.debug("got response: {}".format(message['message_id']))
-        response_id = int(message['message_id'])
-        del message['message_id']
+    @staticmethod
+    def _get_concrete_response(response: messages.ServerResponse):
+        for name in ('ok', 'getFileContent', 'listDirectory', 'subscribe', 'ping'):
+            if response.which() == name:
+                return getattr(response, name)
+        raise NotImplementedError("unknown response type: {}".format(response.which()))
 
-        response_future = self.awaiting_response[response_id]
-        del self.awaiting_response[response_id]
-
+    def _handle_response_message(self, response: messages.ServerResponse):
+        log.debug("got response: {}".format(response.id))
+        response_future = self.awaiting_response.pop(response.id)
+        if response.which() == 'error':
+            print("FOUND ERROR RESPONSE")
+            err = self.make_error(response.error)
+            print("ERROR IS: {}: {}".format(err, dir(err)))
+            response_future.set_exception(err)
+            print("CANCELED FUTURE")
+            return
+        concrete = self._get_concrete_response(response)
         if not response_future.cancelled():
-            response_future.set_result(message)
+            response_future.set_result(concrete)
 
-    async def _handle_subscription_message(self, message: dict):
-        sid = message['subscription_id']
+    async def _handle_subscription_message(self, event: messages.SubscriptionMessage):
+        sid = event.subscriptionId
         if sid not in self.subscriptions:
             log.critical("received unknown subscription: {}", sid)
             return
         try:
             cb = self.subscriptions[sid]
-            await cb(message['path'], message['event'], message['context'])
+            await cb(event.path, event.kind, event.context)
         except Exception as e:
             log.critical("Handler for subscription id {} failed with exception:", sid)
             log.exception(e)
 
     @staticmethod
-    def make_error(message: dict):
-        assert message['status'] != 'Ok'
-        exc_class = globals().get(message['status'], UnknownErrorType)
-        raise exc_class(message['status'], message.get('context', "unknown"))
+    def make_error(error: messages.ErrorResponse):
+        print("ERORR IS: {} with {}".format(error.name, error.context))
+        exc_class = globals().get(error.name, UnknownErrorType)
+        return exc_class(error.name, error.context)
 
     # ########## LowLevel Async ##########
     async def create_node_async(self, node_type: str, parent_path: str, name: str):
-        return await self._dispatch_message('CreateNode', {'type': node_type,
-                                                           'parent_path': parent_path,
-                                                           'name': name})
+        return await self._dispatch_message(createNode=messages.CreateNodeRequest.new_message(parentPath=parent_path,
+                                                                                              nodeType=node_type,
+                                                                                              name=name))
 
     async def remove_node_async(self, parent_path: str, name: str) -> asyncio.Future:
-        return await self._dispatch_message('RemoveNode', {'parent_path': parent_path,
-                                                           'name': name})
+        return await self._dispatch_message(removeNode=messages.RemoveNodeRequest.new_message(parentPath=parent_path,
+                                                                                              name=name))
 
     async def list_directory_async(self, path: str) -> asyncio.Future:
-        return await self._dispatch_message('ListDirectory', {'path': path})
+        return await self._dispatch_message(listDirectory=messages.ListDirectoryRequest.new_message(path=path))
 
     async def set_file_content_async(self, path: str, content: str) -> asyncio.Future:
-        return await self._dispatch_message('SetFileContent', {'path': path, 'data': content})
+        return await self._dispatch_message(setFileContent=messages.SetFileContentRequest.new_message(path=path,
+                                                                                                      data=content))
 
     async def get_file_content_async(self, path: str) -> asyncio.Future:
-        return await self._dispatch_message('GetFileContent', {'path': path})
+        return await self._dispatch_message(getFileContent=messages.GetFileContentRequest.new_message(path=path))
 
     # Note that subscribe and unsubscribe do not have async varieties.
     # We do not guarantee message delivery order, so it is possible to
@@ -186,54 +201,40 @@ class Tree:
     # ########## LowLevel Sync ##########
     async def create_node(self, node_type: str, parent_path: str, name: str):
         future = await self.create_node_async(node_type, parent_path, name)
-        result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
+        await future
 
     async def remove_node(self, parent_path: str, name: str):
         future = await self.remove_node_async(parent_path, name)
-        result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
+        await future
 
     async def list_directory(self, path: str) -> [str]:
         future = await self.list_directory_async(path)
         result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
-        return result['children']
+        return result.children
 
     async def set_file_content(self, path: str, content: str):
         future = await self.set_file_content_async(path, content)
-        result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
+        await future
 
     async def get_file_content(self, path: str) -> str:
         future = await self.get_file_content_async(path)
         result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
-        return result['data']
+        return result.data
 
     async def subscribe(self, path: str, cb: callable) -> asyncio.Future:
-        future = await self._dispatch_message('Subscribe', {'path': path})
+        future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(path=path))
         result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
-        self.subscriptions[result['subscription_id']] = cb
-        return result['subscription_id']
+        self.subscriptions[result.subscriptionId] = cb
+        return result.subscriptionId
 
     async def unsubscribe(self, sid: int) -> asyncio.Future:
-        future = await self._dispatch_message('Unsubscribe', {'subscription_id': sid})
-        result = await future
-        if result['status'] != "Ok":
-            raise self.make_error(result)
+        future = await self._dispatch_message(unsubscribe=messages.UnsubscribeRequest.new_message(subscriptionId=sid))
+        await future
         del self.subscriptions[sid]
 
     # ########## High Level Interface ##########
     async def create_directory(self, parent_path: str, name: str):
-        await self.create_node("Directory", parent_path, name)
+        await self.create_node(NodeType.directory, parent_path, name)
 
     async def create_file(self, parent_path: str, name: str):
-        await self.create_node("File", parent_path, name)
+        await self.create_node(NodeType.file, parent_path, name)

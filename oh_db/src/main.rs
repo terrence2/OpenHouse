@@ -2,18 +2,25 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 extern crate argparse;
-#[macro_use] extern crate log;
+extern crate capnp;
 extern crate env_logger;
+#[macro_use] extern crate log;
 extern crate openssl;
 extern crate rand;
-extern crate rustc_serialize;
 extern crate ws;
 
 #[macro_use] mod utility;
-mod message;
+//mod message;
 mod subscriptions;
 mod tree;
 
+pub mod messages_capnp {
+    include!(concat!(env!("OUT_DIR"), "/messages_capnp.rs"));
+}
+
+use messages_capnp::*;
+
+use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -22,10 +29,13 @@ use std::path::Path;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
-use rustc_serialize::json;
 use tree::Tree;
-use message::*;
+//use message::*;
 use subscriptions::Subscriptions;
+
+
+make_identifier!(MessageId);
+make_identifier!(SubscriptionId);
 
 
 fn main() {
@@ -111,11 +121,52 @@ macro_rules! try_error {
         match $expr {
             Ok(a) => a,
             Err(e) => {
-                return $conn.sender.borrow_mut().send(
-                    format!(r#"{{ "message_id": "{}", "status": "{}", "context": "{}" }}"#,
-                            $id, e.description(), e));
+                // FIXME: simplify this somehow.
+                let mut builder = ::capnp::message::Builder::new_default();
+                {
+                    let message = builder.init_root::<server_message::Builder>();
+                    let mut response = message.init_response();
+                    response.set_id($id.to_u64());
+                    // // //
+                    let mut error_response = response.init_error();
+                    error_response.set_name(e.description());
+                    error_response.set_context(&format!("{}", e));
+                    // // //
+                }
+                let mut buf = Vec::new();
+                try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+                return $conn.sender.borrow_mut().send(buf.as_slice());
             }
         };
+    };
+}
+
+impl fmt::Display for create_node_request::NodeType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            create_node_request::NodeType::File => write!(f, "NodeType::File"),
+            create_node_request::NodeType::Directory => write!(f, "NodeType::Directory")
+        }
+    }
+}
+
+macro_rules! handle_client_request {
+    (
+        $kind:expr, $id:ident, $conn:ident;
+        [ $( ($a:ident | $b:ident) ),* ]
+    ) =>
+    {
+        match $kind {
+            $(
+                Ok(client_request::$a(req)) => {
+                    let unwrapped = try_fatal!(req, $conn);
+                    return $conn.$b($id, &unwrapped);
+                }
+            ),*
+            Err(e) => {
+                try_error!(Err(e), $id, $conn);
+            }
+        }
     };
 }
 
@@ -181,12 +232,13 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // The connection triggering the event does not care about failures to send to
         // subscriptions, so this method terminates any failure. We log and potentially
         // close the child connections, but do not report failures to the caller.
-        fn notify_subscriptions(&mut self, path: &Path, event: &str, context: &str) {
+        fn notify_subscriptions(&mut self, path: &Path, kind: EventKind, context: &str)
+        {
             for (token, sid) in self.subscriptions.get_subscriptions_for(path) {
                 // If this connection does not exist, then something is way off the rails
                 // and we need to shutdown anyway.
                 let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_change(&sid, path, event, context).ok();
+                conn.on_change(&sid, path, kind, context).ok();
             }
         }
     }
@@ -216,119 +268,167 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
 
     impl<'e> Connection<'e> {
         fn return_ok(&mut self, message_id: MessageId) -> ws::Result<()> {
-            self.sender.borrow_mut().send(
-                format!(r#"{{ "message_id": "{}", "status": "Ok" }}"#, message_id))
+            // FIXME: simplify this somehow.
+            let mut builder = ::capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut response = message.init_response();
+                response.set_id(message_id.to_u64());
+                // // //
+                response.init_ok();
+                // // //
+            }
+            let mut buf = Vec::new();
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
         }
 
-        fn handle_ping(&mut self, message_id: MessageId, msg: &PingPayload) -> ws::Result<()> {
-            info!("handling Ping -> {}", msg.data);
-            let out = PingResponse { message_id: message_id, pong: msg.data.to_string() };
-            let encoded = try_fatal!(json::encode(&out), self);
-            return self.sender.borrow_mut().send(encoded.to_string());
-        }
-
-        fn handle_create_node(&mut self, message_id: MessageId, msg: &CreateNodePayload)
+        fn handle_ping(&mut self, message_id: MessageId, msg: &ping_request::Reader)
             -> ws::Result<()>
         {
+            let data = try_error!(msg.get_data(), message_id, self);
+            info!("handling Ping -> {}", data);
+            let mut buf = Vec::new();
+            let mut builder = capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut response = message.init_response();
+                response.set_id(message_id.to_u64());
+                // // //
+                let mut pong = response.init_ping();
+                pong.set_pong(data);
+                // // //
+            }
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
+        }
+
+        fn handle_create_node(&mut self, message_id: MessageId, msg: &create_node_request::Reader)
+            -> ws::Result<()>
+        {
+            let parent_path = Path::new(try_error!(msg.get_parent_path(), message_id, self));
+            let name = try_error!(msg.get_name(), message_id, self);
+            let node_type = try_error!(msg.get_node_type(), message_id, self);
             info!("handling CreateNode -> parent: {},  name: {}, type: {}",
-                  msg.parent_path, msg.name, msg.node_type);
+                  parent_path.display(), name, node_type);
             {
                 let mut env = self.env.borrow_mut();
-                let parent_path = Path::new(msg.parent_path.as_str());
                 {
                     let db = &mut env.db;
                     let parent = try_error!(db.lookup_directory(parent_path), message_id, self);
-                    try_error!(match msg.node_type {
-                        NodeType::Directory => parent.add_directory(&msg.name),
-                        NodeType::File => parent.add_file(&msg.name)
+                    try_error!(match node_type {
+                        create_node_request::NodeType::Directory => parent.add_directory(&name),
+                        create_node_request::NodeType::File => parent.add_file(&name)
                     }, message_id, self);
                 }
-                env.notify_subscriptions(parent_path, "Create", msg.name.as_str());
+                env.notify_subscriptions(parent_path, EventKind::Created, name);
             }
             self.return_ok(message_id)
         }
 
-        fn handle_remove_node(&mut self, message_id: MessageId, msg: &RemoveNodePayload)
+        fn handle_remove_node(&mut self, message_id: MessageId, msg: &remove_node_request::Reader)
             -> ws::Result<()>
         {
-            info!("handling RemoveNode-> parent: {}, name: {}",
-                  msg.parent_path, msg.name);
+            let parent_path = try_error!(msg.get_parent_path(), message_id, self);
+            let name = try_error!(msg.get_name(), message_id, self);
+            info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
             {
                 let mut env = self.env.borrow_mut();
-                let parent_path = Path::new(msg.parent_path.as_str());
+                let parent_path = Path::new(parent_path);
                 {
                     // Before removing, check that we won't be orphaning subscriptions.
-                    try_error!(tree::check_path_component(&msg.name), message_id, self);
+                    try_error!(tree::check_path_component(&name), message_id, self);
                     let mut path = parent_path.to_owned();
-                    path.push(&msg.name);
+                    path.push(&name);
                     try_error!(env.subscriptions.verify_no_subscriptions_at_path(&path), message_id, self);
                 }
                 {
                     let db = &mut env.db;
                     let parent = try_error!(db.lookup_directory(parent_path), message_id, self);
-                    try_error!(parent.remove_child(&msg.name), message_id, self);
+                    try_error!(parent.remove_child(&name), message_id, self);
                 }
-                env.notify_subscriptions(parent_path, "Remove", msg.name.as_str());
+                env.notify_subscriptions(parent_path, EventKind::Removed, name);
             }
             self.return_ok(message_id)
         }
 
-        fn handle_list_directory(&mut self, message_id: MessageId, msg: &ListDirectoryPayload)
+        fn handle_list_directory(&mut self, message_id: MessageId, msg: &list_directory_request::Reader)
             -> ws::Result<()>
         {
-            info!("handling ListDirectory -> path: {}", msg.path);
+            let path = Path::new(try_error!(msg.get_path(), message_id, self));
+            info!("handling ListDirectory -> path: {}", path.display());
             let db = &mut self.env.borrow_mut().db;
-            let path = Path::new(msg.path.as_str());
             let directory = try_error!(db.lookup_directory(path), message_id, self);
             let children = directory.list_directory();
-            let out = ListDirectoryResponse {
-                message_id: message_id,
-                status: String::from("Ok"),
-                children: children
-            };
-            let encoded = try_fatal!(json::encode(&out), self);
-            return self.sender.borrow_mut().send(encoded.to_string());
+
+            // FIXME: simplify this somehow.
+            let mut builder = ::capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut response = message.init_response();
+                response.set_id(message_id.to_u64());
+                // // //
+                let ls_response = response.init_list_directory();
+                let mut ls_children = ls_response.init_children(children.len() as u32);
+                for (i, child) in children.iter().enumerate() {
+                    ls_children.set(i as u32, child)
+                }
+                // // //
+            }
+            let mut buf = Vec::new();
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
         }
 
-        fn handle_get_file_content(&mut self, message_id: MessageId, msg: &GetFileContentPayload)
+        fn handle_get_file_content(&mut self, message_id: MessageId, msg: &get_file_content_request::Reader)
             -> ws::Result<()>
         {
-            info!("handling GetFileContent -> path: {}", msg.path);
-            let path = Path::new(msg.path.as_str());
+            let path = Path::new(try_error!(msg.get_path(), message_id, self));
+            info!("handling GetFileContent -> path: {}", path.display());
             let data;
             {
                 let db = &mut self.env.borrow_mut().db;
                 let file = try_error!(db.lookup_file(path), message_id, self);
                 data = file.get_data();
             }
-            let out = GetFileContentResponse {
-                message_id: message_id,
-                status: String::from("Ok"),
-                data: data
-            };
-            let encoded = try_fatal!(json::encode(&out), self);
-            return self.sender.borrow_mut().send(encoded.to_string());
+
+            // FIXME: simplify this somehow.
+            let mut builder = ::capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut response = message.init_response();
+                response.set_id(message_id.to_u64());
+                // // //
+                let mut cat_response = response.init_get_file_content();
+                cat_response.set_data(&data);
+                // // //
+            }
+            let mut buf = Vec::new();
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
         }
 
-        fn handle_set_file_content(&mut self, message_id: MessageId, msg: &SetFileContentPayload)
+        fn handle_set_file_content(&mut self, message_id: MessageId, msg: &set_file_content_request::Reader)
             -> ws::Result<()>
         {
-            info!("handling SetFileContent -> path: {}", msg.path);
-            let path = Path::new(msg.path.as_str());
+            let path = try_error!(msg.get_path(), message_id, self);
+            let data = try_error!(msg.get_data(), message_id, self);
+            info!("handling SetFileContent -> path: {}", path);
+            let path = Path::new(path);
             {
                 let db = &mut self.env.borrow_mut().db;
                 let file = try_error!(db.lookup_file(path), message_id, self);
-                file.set_data(&msg.data);
+                file.set_data(&data);
             }
-            self.env.borrow_mut().notify_subscriptions(path, "Changed", &msg.data);
+            self.env.borrow_mut().notify_subscriptions(path, EventKind::Changed, &data);
             self.return_ok(message_id)
         }
 
-        fn handle_subscribe(&mut self, message_id: MessageId, msg: &SubscribePayload)
+        fn handle_subscribe(&mut self, message_id: MessageId, msg: &subscribe_request::Reader)
             -> ws::Result<()>
         {
-            info!("handling Subscribe -> path: {}", msg.path);
-            let path = Path::new(msg.path.as_str());
+            let path = Path::new(try_error!(msg.get_path(), message_id, self));
+            info!("handling Subscribe -> path: {}", path.display());
             let mut env = self.env.borrow_mut();
             {
                 // Look up the node to ensure that it exists.
@@ -337,43 +437,95 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             env.last_subscription_id += 1;
             let sid = SubscriptionId::from_u64(env.last_subscription_id);
             env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &path);
-            let out = SubscribeResponse {
-                message_id: message_id,
-                status: String::from("Ok"),
-                subscription_id: sid
-            };
-            let encoded = try_fatal!(json::encode(&out), self);
-            return self.sender.borrow_mut().send(encoded.to_string());
+
+            // FIXME: simplify this somehow.
+            let mut builder = ::capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut response = message.init_response();
+                response.set_id(message_id.to_u64());
+                // // //
+                let mut sub_response = response.init_subscribe();
+                sub_response.set_subscription_id(sid.to_u64());
+                // // //
+            }
+            let mut buf = Vec::new();
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
         }
 
-        fn handle_unsubscribe(&mut self, message_id: MessageId,
-                              msg: &UnsubscribePayload)
+        fn handle_unsubscribe(&mut self, message_id: MessageId, msg: &unsubscribe_request::Reader)
             -> ws::Result<()>
         {
+            let sid = SubscriptionId::from_u64(msg.get_subscription_id());
             {
                 let mut env = self.env.borrow_mut();
-                let sid = &msg.subscription_id;
-                try_error!(env.subscriptions.remove_subscription(sid), message_id, self);
+                try_error!(env.subscriptions.remove_subscription(&sid), message_id, self);
             }
             self.return_ok(message_id)
         }
 
-        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, event: &str, context: &str)
+        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, kind: EventKind, context: &str)
             -> ws::Result<()>
         {
-            let message = SubscriptionMessage {
-                subscription_id: *sid,
-                path: path.to_string_lossy().into_owned(),
-                event: event.to_owned(),
-                context: context.to_owned()
-            };
-            let encoded = try_fatal!(json::encode(&message), self);
-            return self.sender.borrow_mut().send(encoded);
+            let mut builder = ::capnp::message::Builder::new_default();
+            {
+                let message = builder.init_root::<server_message::Builder>();
+                let mut event = message.init_event();
+                event.set_subscription_id(sid.to_u64());
+                event.set_path(&path.to_string_lossy().into_owned());
+                event.set_kind(kind);
+                event.set_context(context);
+            }
+            let mut buf = Vec::new();
+            try!(capnp::serialize_packed::write_message(&mut buf, &builder));
+            return self.sender.borrow_mut().send(buf.as_slice());
         }
     }
 
     impl<'e> ws::Handler for Connection<'e> {
         fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
+            if !msg.is_binary() {
+                return self.sender.borrow_mut().close_with_reason(ws::CloseCode::Error,
+                                                                  "did not expect TEXT messages");
+            }
+
+            let message_data = msg.into_data();
+            let message_reader = try_fatal!(
+                capnp::serialize_packed::read_message(&mut std::io::Cursor::new(message_data),
+                                               ::capnp::message::ReaderOptions::new()), self);
+            let message = try_fatal!(
+                message_reader.get_root::<client_request::Reader>(), self);
+            let message_id = MessageId::from_u64(message.get_id());
+            handle_client_request!(message.which(), message_id, self;
+                                   [(Ping | handle_ping),
+                                    (CreateNode | handle_create_node),
+                                    (RemoveNode | handle_remove_node),
+                                    (GetFileContent | handle_get_file_content),
+                                    (SetFileContent | handle_set_file_content),
+                                    (ListDirectory | handle_list_directory),
+                                    (Subscribe | handle_subscribe),
+                                    (Unsubscribe | handle_unsubscribe)
+                                   ]);
+
+            /*
+            match message.which() {
+
+                Ok(client_request::Ping(req)) => {
+                    let ping_req = try_error!(req, message_id, self);
+                    return self.handle_ping(message_id, &ping_req)
+                },
+                Ok(client_request::CreateNode(req)) => {
+                    let create_node_req = try_error!(req, message_id, self);
+                    return self.handle_create_node(message_id, &create_node_req);
+                },
+                _ => { return Ok(()); }
+            }
+            */
+
+
+            return Ok(());
+            /*
             let message_text = try!(msg.into_text());
             let data = try_fatal!(json::Json::from_str(&message_text), self);
             let message_id = try_fatal!(parse_message_id(&data), self);
@@ -405,6 +557,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 },
                 //_ => { self.sender.borrow_mut().shutdown() }
             }
+            */
         }
 
         fn on_close(&mut self, code: ws::CloseCode, reason: &str) {

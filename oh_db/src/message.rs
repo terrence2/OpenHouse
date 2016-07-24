@@ -1,12 +1,11 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use rustc_serialize::{json, Encoder, Encodable};
-use std::error::Error;
-use std::fmt;
-
+//use rustc_serialize::{json, Encoder, Encodable};
+//use std::error::Error;
 // Extract $field and call $type_conv on it. Return a ParseError if the
 // field does not exist or the call fails.
+/*
 macro_rules! get_field {
     ($obj:ident, $field:expr, $type_conv:ident) => {
         match $obj.get($field) {
@@ -26,45 +25,12 @@ make_error!(ParseError; {
     UnknownNodeType => String,
     WrongFieldType => String
 });
+*/
 
 // The result of parsing is a Message or an error.
-pub type ParseResult = Result<Message, ParseError>;
+//pub type ParseResult = Result<Message, ParseError>;
 
-// Produce a "new type" for u64 representing a uid.
-macro_rules! make_identifier {
-    ($name:ident) => {
-        #[derive(Debug, PartialEq, Eq, Hash)]
-        pub struct $name(u64);
-        impl $name {
-            pub fn from_u64(ident: u64) -> $name {
-                $name(ident)
-            }
-        }
-        impl Clone for $name {
-            fn clone(&self) -> $name {
-                let $name(ident) = *self;
-                return $name(ident);
-            }
-        }
-        impl Copy for $name {}
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                let $name(ident) = *self;
-                write!(f, "{}", ident)
-            }
-        }
-        impl Encodable for $name {
-            fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-                let $name(ident) = *self;
-                s.emit_u64(ident)
-            }
-        }
-    };
-}
-
-make_identifier!(SubscriptionId);
-make_identifier!(MessageId);
-
+/*
 /// The largest integer which is uniquely representable by
 /// an f64/double/Number. This is important since we want to
 /// safely round-trip identifiers through JSON.
@@ -86,7 +52,7 @@ pub enum Message {
     Subscribe(SubscribePayload), // path => status
     Unsubscribe(UnsubscribePayload), // uid => status
 }
-
+*/
 
 // ////////////////////////////////////////////////////////////////////////////
 // Ping
@@ -114,6 +80,7 @@ pub enum Message {
 //     Errors:
 //       <none>
 //
+/*
 #[derive(Debug)]
 pub struct PingPayload {
     pub data: String
@@ -125,13 +92,7 @@ impl PingPayload {
         Ok(Message::Ping(PingPayload{data: data_field.into()}))
     }
 }
-
-#[derive(RustcEncodable)]
-pub struct PingResponse {
-    pub message_id: MessageId,
-    pub pong: String,  // The string that the client sent in the |ping| field.
-    //pub protocol_version: i32,  // The protcol version.
-}
+*/
 
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -164,27 +125,8 @@ pub struct PingResponse {
 //       NoSuchNode
 //       NodeAlreadyExists
 //       NotDirectory
-//
-#[derive(Debug)]
-pub enum NodeType { File, Directory }
-impl fmt::Display for NodeType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            NodeType::File => write!(f, "NodeType::File"),
-            NodeType::Directory => write!(f, "NodeType::Directory")
-        }
-    }
-}
-impl NodeType {
-    fn parse(type_str: &str) -> Result<NodeType, ParseError> {
-        match type_str {
-            "File" => Ok(NodeType::File),
-            "Directory" => Ok(NodeType::Directory),
-            _ => Err(ParseError::UnknownNodeType(type_str.into()))
-        }
-    }
-}
 
+/*
 #[derive(Debug)]
 pub struct CreateNodePayload {
     pub node_type: NodeType,
@@ -205,6 +147,7 @@ impl CreateNodePayload {
         Ok(Message::CreateNode(payload))
     }
 }
+*/
 
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -235,6 +178,7 @@ impl CreateNodePayload {
 //       NoSuchNode
 //       NotDirectory
 //
+/*
 #[derive(Debug)]
 pub struct ListDirectoryPayload {
     pub path: String,
@@ -256,6 +200,7 @@ pub struct ListDirectoryResponse {
     pub status: String,
     pub children: Vec<String>
 }
+*/
 
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -285,6 +230,7 @@ pub struct ListDirectoryResponse {
 //       NoSuchNode
 //       NotFile
 //
+/*
 #[derive(Debug)]
 pub struct GetFileContentPayload {
     pub path: String,
@@ -306,6 +252,7 @@ pub struct GetFileContentResponse {
     pub status: String,
     pub data: String
 }
+*/
 
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -334,7 +281,7 @@ pub struct GetFileContentResponse {
 //       MalformedPath
 //       NoSuchNode
 //       NotFile
-//
+/*
 #[derive(Debug)]
 pub struct SetFileContentPayload {
     pub path: String,
@@ -352,7 +299,7 @@ impl SetFileContentPayload {
         Ok(Message::SetFileContent(payload))
     }
 }
-
+*/
 
 // ////////////////////////////////////////////////////////////////////////////
 // RemoveNode
@@ -384,7 +331,7 @@ impl SetFileContentPayload {
 //       NodeContainsChildren
 //       NodeContainsSubscriptions
 //       NodeContainsData
-//
+/*
 #[derive(Debug)]
 pub struct RemoveNodePayload {
     pub parent_path: String,
@@ -402,7 +349,7 @@ impl RemoveNodePayload {
         Ok(Message::RemoveNode(payload))
     }
 }
-
+*/
 
 // ////////////////////////////////////////////////////////////////////////////
 // Subscribe
@@ -438,7 +385,7 @@ impl RemoveNodePayload {
 //     Errors:
 //       MalformedPath
 //       NoSuchNode
-//
+/*
 #[derive(Debug)]
 pub struct SubscribePayload {
     pub path: String,
@@ -468,7 +415,7 @@ pub struct SubscriptionMessage {
     pub event: String,
     pub context: String
 }
-
+*/
 
 // ////////////////////////////////////////////////////////////////////////////
 // Unsubscribe
@@ -495,6 +442,7 @@ pub struct SubscriptionMessage {
 //     Errors:
 //       NoSuchSubscription
 //
+/*
 #[derive(Debug)]
 pub struct UnsubscribePayload {
     pub subscription_id: SubscriptionId,
@@ -509,7 +457,6 @@ impl UnsubscribePayload {
         Ok(Message::Unsubscribe(payload))
     }
 }
-
 
 // ////////////////////////////////////////////////////////////////////////////
 // Parse the id out of the given message and return it to the caller.
@@ -526,7 +473,6 @@ pub fn parse_message_id(data: &json::Json) -> Result<MessageId, ParseError> {
 
     return Ok(MessageId::from_u64(message_id));
 }
-
 
 // ////////////////////////////////////////////////////////////////////////////
 // Parse the given message and return the payload.
@@ -551,4 +497,4 @@ pub fn parse_message(data: &json::Json) -> ParseResult {
         _ => Err(ParseError::UnknownMessageType(type_field.into()))
     };
 }
-
+*/

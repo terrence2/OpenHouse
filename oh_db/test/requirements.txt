@@ -1,3 +1,4 @@
 pytest
 pytest-asyncio
 websockets
+pycapnp==0.5

@@ -6,17 +6,15 @@ import oh_shared.db as db
 import pytest
 
 
-NodeTypes = ("Directory", "File")
+NodeTypes = (db.NodeType.directory, db.NodeType.file)
 
 
 @pytest.mark.asyncio
 async def test_create_errors():
     with run_server():
         async with make_connection() as tree:
-            await tree.create_node("Directory", "/", "dir")
-            await tree.create_node("File", "/", "file")
-            with pytest.raises(db.UnknownNodeType):
-                await tree.create_node("Hello, World!", "/", "dir/b")
+            await tree.create_node(db.NodeType.directory, "/", "dir")
+            await tree.create_node(db.NodeType.file, "/", "file")
             for ty in NodeTypes:
                 with pytest.raises(db.InvalidPathComponent):
                     await tree.create_node(ty, "/", "dir/b")
@@ -41,8 +39,8 @@ async def test_remove_errors():
             with pytest.raises(db.NoSuchNode):
                 await tree.remove_node("/", "a")
 
-            await tree.create_node("Directory", "/", "a")
-            await tree.create_node("Directory", "/a", "b")
+            await tree.create_node(db.NodeType.directory, "/", "a")
+            await tree.create_node(db.NodeType.directory, "/a", "b")
             with pytest.raises(db.DirectoryNotEmpty):
                 await tree.remove_node("/", "a")
             await tree.remove_node("/a", "b")
