@@ -10,7 +10,6 @@ extern crate rand;
 extern crate ws;
 
 #[macro_use] mod utility;
-//mod message;
 mod subscriptions;
 mod tree;
 
@@ -30,7 +29,6 @@ use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
 use tree::Tree;
-//use message::*;
 use subscriptions::Subscriptions;
 
 
@@ -99,9 +97,10 @@ fn main() {
                Path::new(&private_key)).unwrap();
 }
 
-// Try and close the connection on failure. This should be reserved for client
-// mistakes such as invalid formats and such.
-macro_rules! try_fatal {
+// Try; close the connection on failure. This should be reserved for client
+// mistakes so severe that we cannot return an error: e.g. if we're not sure if
+// we're even speaking the same protocol.
+macro_rules! close_on_failure {
     ( $expr : expr, $conn : expr ) => {
         match $expr {
             Ok(a) => a,
@@ -109,23 +108,6 @@ macro_rules! try_fatal {
                 return $conn.sender.borrow_mut().close_with_reason(
                     ws::CloseCode::Error,
                     format!("{}", e));
-            }
-        };
-    };
-}
-
-// Try and send an error to the client on failure. This should be used for
-// any recoverable error.
-macro_rules! try_error {
-    ( $expr:expr, $conn:expr, $response:ident ) => {
-        match $expr {
-            Ok(a) => a,
-            Err(e) => {
-                info!("handling error!");
-                let mut error_response = $response.init_error();
-                error_response.set_name(e.description());
-                error_response.set_context(&format!("{}", e));
-                return Ok(());
             }
         };
     };
@@ -148,22 +130,35 @@ macro_rules! handle_client_request {
         match $kind {
             $(
                 Ok(client_request::$a(req)) => {
-                    let unwrapped = try_fatal!(req, $conn);
+                    let unwrapped = close_on_failure!(req, $conn);
 
+                    let result;
                     let mut builder = ::capnp::message::Builder::new_default();
                     {
                         let message = builder.init_root::<server_message::Builder>();
                         let mut response = message.init_response();
                         response.set_id($id.to_u64());
 
-                        match $conn.$b(&unwrapped, response) {
-                            Ok(_) => {},
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
+                        // Note that since capnp's generated response objects' |self| only
+                        // takes a copy, we *have* to move when calling our handler. This means
+                        // that we need to process the result later when message is not pinning
+                        // builder. We have to re-create the message, but not all the other
+                        // machinery.
+                        result = $conn.$b(&unwrapped, response);
                     }
 
+                    // If we got an error, rebuild message as an error.
+                    match result {
+                        Ok(_) => {}
+                        Err(e) => {
+                            let message = builder.init_root::<server_message::Builder>();
+                            let mut response = message.init_response();
+                            response.set_id($id.to_u64());
+                            let mut error_response = response.init_error();
+                            error_response.set_name(e.description());
+                            error_response.set_context(&format!("{}", e));
+                        }
+                    };
 
                     let mut buf = Vec::new();
                     try!(capnp::serialize::write_message(&mut buf, &builder));
@@ -171,7 +166,7 @@ macro_rules! handle_client_request {
                 }
             ),*
             Err(e) => {
-                try_fatal!(Err(e), $conn);
+                close_on_failure!(Err(e), $conn);
             }
         }
     };
@@ -275,32 +270,33 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
 
     impl<'e> Connection<'e> {
         fn handle_ping(&mut self, msg: &ping_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+            -> Result<(), Box<Error>>
         {
-            let data = try_error!(msg.get_data(), self, response);
+            let data = try!(msg.get_data());
             info!("handling Ping -> {}", data);
             let mut pong = response.init_ping();
             pong.set_pong(data);
             return Ok(());
         }
 
-        fn handle_create_node(&mut self, msg: &create_node_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_create_node(&mut self, msg: &create_node_request::Reader,
+                              response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let parent_path = Path::new(try_error!(msg.get_parent_path(), self, response));
-            let name = try_error!(msg.get_name(), self, response);
-            let node_type = try_error!(msg.get_node_type(), self, response);
+            let parent_path = Path::new(try!(msg.get_parent_path()));
+            let name = try!(msg.get_name());
+            let node_type = try!(msg.get_node_type());
             info!("handling CreateNode -> parent: {},  name: {}, type: {}",
                   parent_path.display(), name, node_type);
             {
                 let mut env = self.env.borrow_mut();
                 {
                     let db = &mut env.db;
-                    let parent = try_error!(db.lookup_directory(parent_path), self, response);
-                    try_error!(match node_type {
+                    let parent = try!(db.lookup_directory(parent_path));
+                    try!(match node_type {
                         create_node_request::NodeType::Directory => parent.add_directory(&name),
                         create_node_request::NodeType::File => parent.add_file(&name)
-                    }, self, response);
+                    });
                 }
                 env.notify_subscriptions(parent_path, EventKind::Created, name);
             }
@@ -308,26 +304,27 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_remove_node(&mut self, msg: &remove_node_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_remove_node(&mut self, msg: &remove_node_request::Reader,
+                              response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let parent_path = try_error!(msg.get_parent_path(), self, response);
-            let name = try_error!(msg.get_name(), self, response);
+            let parent_path = try!(msg.get_parent_path());
+            let name = try!(msg.get_name());
             info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
             {
                 let mut env = self.env.borrow_mut();
                 let parent_path = Path::new(parent_path);
                 {
                     // Before removing, check that we won't be orphaning subscriptions.
-                    try_error!(tree::check_path_component(&name), self, response);
+                    try!(tree::check_path_component(&name));
                     let mut path = parent_path.to_owned();
                     path.push(&name);
-                    try_error!(env.subscriptions.verify_no_subscriptions_at_path(&path), self, response);
+                    try!(env.subscriptions.verify_no_subscriptions_at_path(&path));
                 }
                 {
                     let db = &mut env.db;
-                    let parent = try_error!(db.lookup_directory(parent_path), self, response);
-                    try_error!(parent.remove_child(&name), self, response);
+                    let parent = try!(db.lookup_directory(parent_path));
+                    try!(parent.remove_child(&name));
                 }
                 env.notify_subscriptions(parent_path, EventKind::Removed, name);
             }
@@ -335,13 +332,14 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_list_directory(&mut self, msg: &list_directory_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_list_directory(&mut self, msg: &list_directory_request::Reader,
+                                 response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let path = Path::new(try_error!(msg.get_path(), self, response));
+            let path = Path::new(try!(msg.get_path()));
             info!("handling ListDirectory -> path: {}", path.display());
             let db = &mut self.env.borrow_mut().db;
-            let directory = try_error!(db.lookup_directory(path), self, response);
+            let directory = try!(db.lookup_directory(path));
             let children = directory.list_directory();
 
             // Build the response.
@@ -353,15 +351,16 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_get_file_content(&mut self, msg: &get_file_content_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_get_file_content(&mut self, msg: &get_file_content_request::Reader,
+                                   response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let path = Path::new(try_error!(msg.get_path(), self, response));
+            let path = Path::new(try!(msg.get_path()));
             info!("handling GetFileContent -> path: {}", path.display());
             let data;
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try_error!(db.lookup_file(path), self, response);
+                let file = try!(db.lookup_file(path));
                 data = file.get_data();
             }
             let mut cat_response = response.init_get_file_content();
@@ -369,16 +368,17 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_set_file_content(&mut self, msg: &set_file_content_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_set_file_content(&mut self, msg: &set_file_content_request::Reader,
+                                   response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let path = try_error!(msg.get_path(), self, response);
-            let data = try_error!(msg.get_data(), self, response);
+            let path = try!(msg.get_path());
+            let data = try!(msg.get_data());
             info!("handling SetFileContent -> path: {}", path);
             let path = Path::new(path);
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try_error!(db.lookup_file(path), self, response);
+                let file = try!(db.lookup_file(path));
                 file.set_data(&data);
             }
             self.env.borrow_mut().notify_subscriptions(path, EventKind::Changed, &data);
@@ -386,15 +386,16 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_subscribe(&mut self, msg: &subscribe_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_subscribe(&mut self, msg: &subscribe_request::Reader,
+                            response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
-            let path = Path::new(try_error!(msg.get_path(), self, response));
+            let path = Path::new(try!(msg.get_path()));
             info!("handling Subscribe -> path: {}", path.display());
             let mut env = self.env.borrow_mut();
             {
                 // Look up the node to ensure that it exists.
-                let _ = try_error!(env.db.contains_path(path), self, response);
+                let _ = try!(env.db.contains_path(path));
             }
             env.last_subscription_id += 1;
             let sid = SubscriptionId::from_u64(env.last_subscription_id);
@@ -405,13 +406,14 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn handle_unsubscribe(&mut self, msg: &unsubscribe_request::Reader, response: server_response::Builder)
-            -> ws::Result<()>
+        fn handle_unsubscribe(&mut self, msg: &unsubscribe_request::Reader,
+                              response: server_response::Builder)
+            -> Result<(), Box<Error>>
         {
             let sid = SubscriptionId::from_u64(msg.get_subscription_id());
             {
                 let mut env = self.env.borrow_mut();
-                try_error!(env.subscriptions.remove_subscription(&sid), self, response);
+                try!(env.subscriptions.remove_subscription(&sid));
             }
             response.init_ok();
             return Ok(());
@@ -443,10 +445,10 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             }
 
             let message_data = msg.into_data();
-            let message_reader = try_fatal!(
+            let message_reader = close_on_failure!(
                 capnp::serialize::read_message(&mut std::io::Cursor::new(message_data),
                                                ::capnp::message::ReaderOptions::new()), self);
-            let message = try_fatal!(
+            let message = close_on_failure!(
                 message_reader.get_root::<client_request::Reader>(), self);
             let message_id = MessageId::from_u64(message.get_id());
             handle_client_request!(message.which(), message_id, self,
