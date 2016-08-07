@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use glob::Pattern;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -8,12 +9,19 @@ use std::path::{Component, Components, Path};
 
 make_error!(TreeError; {
     DirectoryNotEmpty => String,
-    InvalidPathComponent => String,
-    MalformedPath => String,
     NoSuchNode => String,
     NodeAlreadyExists => String,
     NotDirectory => String,
-    NotFile => String
+    NotFile => String,
+
+    // Path format errors.
+    NonAbsolutePath => String,
+    NonUTF8Path => String,
+    FoundDotfile => String,
+    FoundEmptyComponent => String,
+    InvalidCharacter => String,
+    InvalidPathComponent => String,
+    MalformedPath => String
 });
 pub type TreeResult<T> = Result<T, TreeError>;
 
@@ -190,18 +198,73 @@ impl Tree {
         let parent_directory = try!(self.lookup_directory(parent_path));
         return parent_directory.lookup_file(file_name.to_string_lossy().to_mut());
     }
+}
 
-    pub fn contains_path(&mut self, path: &Path) -> TreeResult<()> {
-        match self.lookup_directory(path) {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                match self.lookup_file(path) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e)
-                }
+/// OpenHouse paths have somewhat stricter rules than a typical filesystem. The
+/// rules are:
+///   * must be unix style
+///   * must be absolute
+///   * path components may not start with '.'
+///   * path components must not be empty, e.g. //
+///   * must only contain printable UTF-8 characters
+///   * the following characters are disallowed:
+///     - any whitespace character other than 0x20 (plain ol space)
+///     - any characters special to yaml:
+///       \ : ,
+///     - any globbing characters:
+///       ? * [ ] !
+pub fn validate_path(path: &Path) -> TreeResult<()> {
+    try!(validate_path_shared(path));
+    // FIXME: we need to also validate against glob chars.
+    return Ok(());
+}
+
+/// Check that the given glob is suitable for use with Tree.
+///
+/// A glob must obey the same rules as path, except that glob
+/// characters are allowed.
+pub fn validate_glob(glob: &Pattern) -> TreeResult<()> {
+    let as_path = Path::new(glob.as_str());
+    try!(validate_path_shared(as_path));
+    return Ok(());
+}
+
+fn validate_path_shared(path: &Path) -> TreeResult<()> {
+    if !path.is_absolute() {
+        return Err(TreeError::NonAbsolutePath(
+                   path.to_string_lossy().into_owned()));
+    }
+
+    let chars = match path.to_str() {
+        Some(s) => s,
+        None => {
+            return Err(TreeError::NonUTF8Path(
+                       path.to_string_lossy().into_owned()));
+        }
+    };
+    assert!(chars == path.to_string_lossy());
+
+    /*
+    if chars.char_at(0) == '.' {
+        return Err(TreeError::FoundDotfile(chars.to_owned()));
+    }
+    */
+
+    for c in chars.chars() {
+        if c == '\\' ||
+           c == ':' ||
+           c == ',' ||
+           (c.is_whitespace() && c != ' ')
+        {
+            if c != ' ' {
+                return Err(TreeError::InvalidCharacter(
+                        chars.to_owned() + " at char: " + &c.to_string()));
             }
         }
+
     }
+
+    return Ok(());
 }
 
 #[cfg(test)]

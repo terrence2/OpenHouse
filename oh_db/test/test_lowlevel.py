@@ -56,8 +56,9 @@ async def test_subscribe_same_client_layout():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(path: str, event: db.EventKind, name: str):
-                assert path == "/"
+            async def on_child_changed1(paths: str, event: db.EventKind, name: str):
+                assert len(paths) == 1
+                assert paths[0] == "/"
                 assert name == "a"
                 assert event == db.EventKind.created
                 nonlocal count1, notify1
@@ -67,8 +68,9 @@ async def test_subscribe_same_client_layout():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(path: str, event: db.EventKind, name: str):
-                assert path == "/"
+            async def on_child_changed2(paths: str, event: db.EventKind, name: str):
+                assert len(paths) == 1
+                assert paths[0] == "/"
                 assert name == "a"
                 assert event == db.EventKind.created or event == db.EventKind.removed
                 nonlocal count2, notify2
@@ -110,8 +112,9 @@ async def test_subscribe_same_client_data():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(path: str, event: db.EventKind, context: str):
-                assert path == "/a"
+            async def on_child_changed1(paths: str, event: db.EventKind, context: str):
+                assert len(paths) == 1
+                assert paths[0] == "/a"
                 assert context == "foo"
                 assert event == db.EventKind.changed
                 nonlocal count1, notify1
@@ -121,8 +124,9 @@ async def test_subscribe_same_client_data():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(path: str, event: db.EventKind, context: str):
-                assert path == "/a"
+            async def on_child_changed2(paths: str, event: db.EventKind, context: str):
+                assert len(paths) == 1
+                assert paths[0] == "/a"
                 assert context == "foo"
                 assert event == db.EventKind.changed or event == db.EventKind.removed
                 nonlocal count2, notify2
@@ -166,8 +170,9 @@ async def test_subscribe_multiple_clients():
                 count = 0
                 notify = asyncio.Future()
 
-                async def on_child_changed1(path: str, event: db.EventKind, context: str):
-                    assert path == "/"
+                async def on_child_changed1(paths: str, event: db.EventKind, context: str):
+                    assert len(paths) == 1
+                    assert paths[0] == "/"
                     assert context == "a"
                     nonlocal count, notify
                     count += 1

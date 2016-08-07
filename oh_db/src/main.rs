@@ -4,6 +4,7 @@
 extern crate argparse;
 extern crate capnp;
 extern crate env_logger;
+extern crate glob;
 #[macro_use] extern crate log;
 extern crate openssl;
 extern crate rand;
@@ -19,6 +20,7 @@ pub mod messages_capnp {
 
 use messages_capnp::*;
 
+use glob::Pattern;
 use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -319,7 +321,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                     try!(tree::check_path_component(&name));
                     let mut path = parent_path.to_owned();
                     path.push(&name);
-                    try!(env.subscriptions.verify_no_subscriptions_at_path(&path));
+                    //try!(env.subscriptions.verify_no_subscriptions_at_path(&path));
                 }
                 {
                     let db = &mut env.db;
@@ -390,17 +392,13 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                             response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = Path::new(try!(msg.get_path()));
-            info!("handling Subscribe -> path: {}", path.display());
+            let glob = try!(Pattern::new(try!(msg.get_glob())));
+            info!("handling Subscribe -> glob: {}", glob.as_str());
+            try!(tree::validate_glob(&glob));
             let mut env = self.env.borrow_mut();
-            {
-                // Look up the node to ensure that it exists.
-                let _ = try!(env.db.contains_path(path));
-            }
             env.last_subscription_id += 1;
             let sid = SubscriptionId::from_u64(env.last_subscription_id);
-            env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &path);
-
+            env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &glob);
             let mut sub_response = response.init_subscribe();
             sub_response.set_subscription_id(sid.to_u64());
             return Ok(());
@@ -427,9 +425,11 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 let message = builder.init_root::<server_message::Builder>();
                 let mut event = message.init_event();
                 event.set_subscription_id(sid.to_u64());
-                event.set_path(&path.to_string_lossy().into_owned());
                 event.set_kind(kind);
                 event.set_context(context);
+                let mut path_list = event.init_paths(1);
+                path_list.set(0, path.to_str().unwrap());
+                //event.set_path(&path.to_string_lossy().into_owned());
             }
             let mut buf = Vec::new();
             try!(capnp::serialize::write_message(&mut buf, &builder));

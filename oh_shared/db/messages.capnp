@@ -117,8 +117,7 @@ enum EventKind {
 
 struct SubscribeRequest {
     # Register to receive messages whenever the given path changes.
-    path @0 :Text;
-    # FIXME: make this multivariate.
+    glob @0 :Text;
 }
 struct SubscribeResponse {
     subscriptionId @0 :UInt64;
@@ -127,8 +126,7 @@ struct SubscribeResponse {
 }
 struct SubscriptionMessage {
     subscriptionId @0 :UInt64;
-    path @1 :Text;
-    # FIXME: make this multivariate.
+    paths @1 :List(Text);
     kind @2 :EventKind;
     context @3 :Text;
 }

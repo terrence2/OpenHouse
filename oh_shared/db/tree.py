@@ -159,7 +159,7 @@ class Tree:
             return
         try:
             cb = self.subscriptions[sid]
-            await cb(event.path, event.kind, event.context)
+            await cb(event.paths, event.kind, event.context)
         except Exception as e:
             log.critical("Handler for subscription id {} failed with exception:", sid)
             log.exception(e)
@@ -217,8 +217,8 @@ class Tree:
         result = await future
         return result.data
 
-    async def subscribe(self, path: str, cb: callable) -> asyncio.Future:
-        future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(path=path))
+    async def subscribe(self, glob: str, cb: callable) -> asyncio.Future:
+        future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(glob=glob))
         result = await future
         self.subscriptions[result.subscriptionId] = cb
         return result.subscriptionId
