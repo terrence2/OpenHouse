@@ -101,9 +101,9 @@ class Tree:
                 await asyncio.sleep(0.5)
 
         request = messages.ClientRequest.new_message(id=1, ping=messages.PingRequest.new_message(data='flimfniffle'))
-        await websock.send(request.to_bytes_packed())
+        await websock.send(request.to_bytes())
         raw = await websock.recv()
-        message = messages.ServerMessage.from_bytes_packed(raw)
+        message = messages.ServerMessage.from_bytes(raw)
         assert message.which() == 'response'
         assert message.response.id == 1
         assert message.response.which() == 'ping'
@@ -118,7 +118,7 @@ class Tree:
                 log.critical("other end closed connection!")
                 return
 
-            server_message = messages.ServerMessage.from_bytes_packed(raw)
+            server_message = messages.ServerMessage.from_bytes(raw)
             if server_message.which() == 'response':
                 self._handle_response_message(server_message.response)
             elif server_message.which() == 'event':
@@ -131,7 +131,7 @@ class Tree:
         assert message_id not in self.awaiting_response
         request = messages.ClientRequest.new_message(id=message_id, **kwargs)
         response_future = self.awaiting_response[message_id] = asyncio.Future()
-        await self.websock.send(request.to_bytes_packed())
+        await self.websock.send(request.to_bytes())
         return response_future
 
     @staticmethod
@@ -145,11 +145,8 @@ class Tree:
         log.debug("got response: {}".format(response.id))
         response_future = self.awaiting_response.pop(response.id)
         if response.which() == 'error':
-            print("FOUND ERROR RESPONSE")
             err = self.make_error(response.error)
-            print("ERROR IS: {}: {}".format(err, dir(err)))
             response_future.set_exception(err)
-            print("CANCELED FUTURE")
             return
         concrete = self._get_concrete_response(response)
         if not response_future.cancelled():
@@ -169,7 +166,6 @@ class Tree:
 
     @staticmethod
     def make_error(error: messages.ErrorResponse):
-        print("ERORR IS: {} with {}".format(error.name, error.context))
         exc_class = globals().get(error.name, UnknownErrorType)
         return exc_class(error.name, error.context)
 
