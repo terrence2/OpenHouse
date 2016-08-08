@@ -5,7 +5,7 @@ use glob::Pattern;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use std::path::{Path};
+use tree::TreePath;
 use ws::util::Token;
 use ::SubscriptionId;
 
@@ -44,9 +44,9 @@ impl Subscriptions {
     }
 
     /// Return a vector containing all subscriptions that match the given path.
-    pub fn get_subscriptions_for(&self, path: &Path) -> Vec<(Token, SubscriptionId)> {
+    pub fn get_subscriptions_for(&self, path: &TreePath) -> Vec<(Token, SubscriptionId)> {
         for (glob, subs) in self.globs.iter() {
-            if glob.matches_path(path) {
+            if glob.matches(path.as_str()) {
                 return subs.get_subscriptions_for();
             }
         }

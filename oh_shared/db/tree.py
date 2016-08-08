@@ -42,8 +42,11 @@ class WrongFieldType(ParseError): pass
 
 # The following must match up with tree.rs' TreeError enum.
 class TreeError(DatabaseError): pass
-class InvalidPathComponent(TreeError): pass
-class MalformedPath(TreeError): pass
+class NonAbsolutePath(TreeError): pass
+class Dotfile(TreeError): pass
+class EmptyComponent(TreeError): pass
+class InvalidCharacter(TreeError): pass
+class InvalidWhitespace(TreeError): pass
 class NoSuchKey(TreeError): pass
 class NoSuchNode(TreeError): pass
 class NodeAlreadyExists(TreeError): pass

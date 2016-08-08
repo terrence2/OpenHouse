@@ -16,10 +16,18 @@ async def test_create_errors():
             await tree.create_node(db.NodeType.directory, "/", "dir")
             await tree.create_node(db.NodeType.file, "/", "file")
             for ty in NodeTypes:
-                with pytest.raises(db.InvalidPathComponent):
+                with pytest.raises(db.InvalidCharacter):
                     await tree.create_node(ty, "/", "dir/b")
-                with pytest.raises(db.MalformedPath):
+                with pytest.raises(db.Dotfile):
                     await tree.create_node(ty, "/../../usr/lib/", "libGL.so")
+                with pytest.raises(db.EmptyComponent):
+                    await tree.create_node(ty, "//", "libGL.so")
+                with pytest.raises(db.EmptyComponent):
+                    await tree.create_node(ty, "//foo", "libGL.so")
+                with pytest.raises(db.EmptyComponent):
+                    await tree.create_node(ty, "/foo/", "libGL.so")
+                with pytest.raises(db.EmptyComponent):
+                    await tree.create_node(ty, "/foo//bar", "libGL.so")
                 with pytest.raises(db.NoSuchNode):
                     await tree.create_node(ty, "/b", "a")
                 with pytest.raises(db.NodeAlreadyExists):
@@ -32,9 +40,9 @@ async def test_create_errors():
 async def test_remove_errors():
     with run_server():
         async with make_connection() as tree:
-            with pytest.raises(db.InvalidPathComponent):
+            with pytest.raises(db.InvalidCharacter):
                 await tree.remove_node("/", "a/b")
-            with pytest.raises(db.MalformedPath):
+            with pytest.raises(db.Dotfile):
                 await tree.remove_node("/../../usr/lib/", "libGL.so")
             with pytest.raises(db.NoSuchNode):
                 await tree.remove_node("/", "a")
@@ -45,14 +53,6 @@ async def test_remove_errors():
                 await tree.remove_node("/", "a")
             await tree.remove_node("/a", "b")
 
-            async def on_touch_root(**_):
-                pass
-
-            subscription_id = await tree.subscribe("/a", on_touch_root)
-            with pytest.raises(db.NodeContainsSubscriptions):
-                await tree.remove_node("/", "a")
-            await tree.unsubscribe(subscription_id)
-
 
 @pytest.mark.asyncio
 async def test_data_errors():
@@ -62,14 +62,18 @@ async def test_data_errors():
                 await tree.set_file_content("/", "")
             with pytest.raises(db.NotFile):
                 await tree.get_file_content("/")
-            with pytest.raises(db.NotFile):
+            with pytest.raises(db.Dotfile):
                 await tree.set_file_content("/.", "")
-            with pytest.raises(db.NotFile):
+            with pytest.raises(db.Dotfile):
                 await tree.get_file_content("/.")
-            with pytest.raises(db.MalformedPath):
+            with pytest.raises(db.NonAbsolutePath):
                 await tree.set_file_content("a/b", "")
-            with pytest.raises(db.MalformedPath):
+            with pytest.raises(db.NonAbsolutePath):
                 await tree.get_file_content("a/b")
+
+            await tree.create_file("/", "a")
+            with pytest.raises(db.NotDirectory):
+                await tree.set_file_content("/a/b", "")
 
 
 @pytest.mark.asyncio
@@ -79,10 +83,8 @@ async def test_subscribe_errors():
             async def target(**_):
                 pass
 
-            with pytest.raises(db.MalformedPath):
+            with pytest.raises(db.Dotfile):
                 await tree.subscribe("/../../usr/lib/libGL.so", target)
-            with pytest.raises(db.NoSuchNode):
-                await tree.subscribe("/a", target)
 
 
 @pytest.mark.asyncio

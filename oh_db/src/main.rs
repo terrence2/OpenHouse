@@ -30,7 +30,7 @@ use std::path::Path;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
-use tree::Tree;
+use tree::{Tree, TreePath};
 use subscriptions::Subscriptions;
 
 
@@ -236,11 +236,11 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // The connection triggering the event does not care about failures to send to
         // subscriptions, so this method terminates any failure. We log and potentially
         // close the child connections, but do not report failures to the caller.
-        fn notify_subscriptions(&mut self, path: &Path, kind: EventKind, context: &str)
+        fn notify_subscriptions(&mut self, path: &TreePath, kind: EventKind, context: &str)
         {
             for (token, sid) in self.subscriptions.get_subscriptions_for(path) {
                 // If this connection does not exist, then something is way off the rails
-                // and we need to shutdown anyway.
+                // and we need to panic.
                 let mut conn = self.connections.get_mut(&token).unwrap();
                 conn.on_change(&sid, path, kind, context).ok();
             }
@@ -285,22 +285,22 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = Path::new(try!(msg.get_parent_path()));
+            let parent_path = try!(tree::TreePath::new(try!(msg.get_parent_path())));
             let name = try!(msg.get_name());
             let node_type = try!(msg.get_node_type());
             info!("handling CreateNode -> parent: {},  name: {}, type: {}",
-                  parent_path.display(), name, node_type);
+                  parent_path, name, node_type);
             {
                 let mut env = self.env.borrow_mut();
                 {
                     let db = &mut env.db;
-                    let parent = try!(db.lookup_directory(parent_path));
+                    let parent = try!(db.lookup_directory(&parent_path));
                     try!(match node_type {
                         create_node_request::NodeType::Directory => parent.add_directory(&name),
                         create_node_request::NodeType::File => parent.add_file(&name)
                     });
                 }
-                env.notify_subscriptions(parent_path, EventKind::Created, name);
+                env.notify_subscriptions(&parent_path, EventKind::Created, name);
             }
             response.init_ok();
             return Ok(());
@@ -310,25 +310,17 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = try!(msg.get_parent_path());
+            let parent_path = try!(tree::TreePath::new(try!(msg.get_parent_path())));
             let name = try!(msg.get_name());
             info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
             {
                 let mut env = self.env.borrow_mut();
-                let parent_path = Path::new(parent_path);
-                {
-                    // Before removing, check that we won't be orphaning subscriptions.
-                    try!(tree::check_path_component(&name));
-                    let mut path = parent_path.to_owned();
-                    path.push(&name);
-                    //try!(env.subscriptions.verify_no_subscriptions_at_path(&path));
-                }
                 {
                     let db = &mut env.db;
-                    let parent = try!(db.lookup_directory(parent_path));
+                    let parent = try!(db.lookup_directory(&parent_path));
                     try!(parent.remove_child(&name));
                 }
-                env.notify_subscriptions(parent_path, EventKind::Removed, name);
+                env.notify_subscriptions(&parent_path, EventKind::Removed, name);
             }
             response.init_ok();
             return Ok(());
@@ -338,10 +330,11 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                  response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = Path::new(try!(msg.get_path()));
-            info!("handling ListDirectory -> path: {}", path.display());
+            let path = try!(tree::TreePath::new(try!(msg.get_path())));
+            //let path = Path::new(try!(msg.get_path()));
+            info!("handling ListDirectory -> path: {}", path);
             let db = &mut self.env.borrow_mut().db;
-            let directory = try!(db.lookup_directory(path));
+            let directory = try!(db.lookup_directory(&path));
             let children = directory.list_directory();
 
             // Build the response.
@@ -357,12 +350,12 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = Path::new(try!(msg.get_path()));
-            info!("handling GetFileContent -> path: {}", path.display());
+            let path = try!(tree::TreePath::new(try!(msg.get_path())));
+            info!("handling GetFileContent -> path: {}", path);
             let data;
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try!(db.lookup_file(path));
+                let file = try!(db.lookup_file(&path));
                 data = file.get_data();
             }
             let mut cat_response = response.init_get_file_content();
@@ -374,16 +367,15 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(msg.get_path());
+            let path = try!(tree::TreePath::new(try!(msg.get_path())));
             let data = try!(msg.get_data());
             info!("handling SetFileContent -> path: {}", path);
-            let path = Path::new(path);
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try!(db.lookup_file(path));
+                let file = try!(db.lookup_file(&path));
                 file.set_data(&data);
             }
-            self.env.borrow_mut().notify_subscriptions(path, EventKind::Changed, &data);
+            self.env.borrow_mut().notify_subscriptions(&path, EventKind::Changed, &data);
             response.init_ok();
             return Ok(());
         }
@@ -417,7 +409,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, kind: EventKind, context: &str)
+        fn on_change(&mut self, sid: &SubscriptionId, path: &TreePath, kind: EventKind, context: &str)
             -> ws::Result<()>
         {
             let mut builder = ::capnp::message::Builder::new_default();
@@ -428,7 +420,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 event.set_kind(kind);
                 event.set_context(context);
                 let mut path_list = event.init_paths(1);
-                path_list.set(0, path.to_str().unwrap());
+                path_list.set(0, path.as_str());
                 //event.set_path(&path.to_string_lossy().into_owned());
             }
             let mut buf = Vec::new();
