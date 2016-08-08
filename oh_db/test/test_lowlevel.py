@@ -9,6 +9,9 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_tree_async():
+    """
+    Do some work using async calls.
+    """
     with run_server():
         async with make_connection() as tree:
             futures = []
@@ -46,8 +49,8 @@ async def test_tree_async():
 @pytest.mark.asyncio
 async def test_subscribe_same_client_layout():
     """
-    Ensure that subscriptions work and that we can:
-      * make multiple subscriptions to the same path on a single client.
+    Ensure that subscriptions work on a directory and that we can:
+      * make multiple subscriptions to the same directory on a single client.
       * touch a subpath without being notified in the parent
       * remove one subscription of multiple
     """
@@ -56,7 +59,7 @@ async def test_subscribe_same_client_layout():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(paths: str, event: db.EventKind, name: str):
+            async def on_child_changed1(paths: [str], event: db.EventKind, name: str):
                 assert len(paths) == 1
                 assert paths[0] == "/"
                 assert name == "a"
@@ -68,7 +71,7 @@ async def test_subscribe_same_client_layout():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(paths: str, event: db.EventKind, name: str):
+            async def on_child_changed2(paths: [str], event: db.EventKind, name: str):
                 assert len(paths) == 1
                 assert paths[0] == "/"
                 assert name == "a"
@@ -102,7 +105,7 @@ async def test_subscribe_same_client_layout():
 @pytest.mark.asyncio
 async def test_subscribe_same_client_data():
     """
-    Ensure that subscriptions work and that we can:
+    Ensure that subscriptions to data work and that we can:
       * make multiple subscriptions to the same path on a single client.
       * touch a subpath without being notified in the parent
       * remove one subscription of multiple
@@ -112,7 +115,7 @@ async def test_subscribe_same_client_data():
             count1 = 0
             notify1 = asyncio.Future()
 
-            async def on_child_changed1(paths: str, event: db.EventKind, context: str):
+            async def on_child_changed1(paths: [str], event: db.EventKind, context: str):
                 assert len(paths) == 1
                 assert paths[0] == "/a"
                 assert context == "foo"
@@ -124,7 +127,7 @@ async def test_subscribe_same_client_data():
             count2 = 0
             notify2 = asyncio.Future()
 
-            async def on_child_changed2(paths: str, event: db.EventKind, context: str):
+            async def on_child_changed2(paths: [str], event: db.EventKind, context: str):
                 assert len(paths) == 1
                 assert paths[0] == "/a"
                 assert context == "foo"
@@ -170,7 +173,7 @@ async def test_subscribe_multiple_clients():
                 count = 0
                 notify = asyncio.Future()
 
-                async def on_child_changed1(paths: str, event: db.EventKind, context: str):
+                async def on_child_changed1(paths: [str], event: db.EventKind, context: str):
                     assert len(paths) == 1
                     assert paths[0] == "/"
                     assert context == "a"
@@ -188,5 +191,80 @@ async def test_subscribe_multiple_clients():
 
                 assert count == 2
 
+
+@pytest.mark.asyncio
+async def test_subscribe_glob_basic():
+    """
+    Ensure that subscribing to a glob works properly.
+    """
+    with run_server():
+        async with make_connection() as tree:
+            expect = None
+            count = 0
+            async def on_foo_changed(paths: [str], event: db.EventKind, context: str):
+                nonlocal count
+                assert expect is not None
+                assert expect == (count, list(paths), event, context)
+                count += 1
+
+            sid = await tree.subscribe("/?-foo", on_foo_changed)
+
+            # We should be able to create a new path and have the glob pick it up.
+            await tree.create_directory("/", "a-foo")
+
+            # Check with creating and removing a directory.
+            expect = (0, ["/a-foo"], db.EventKind.created, "test")
+            await tree.create_directory("/a-foo", "test")
+            expect = (1, ["/a-foo"], db.EventKind.removed, "test")
+            await tree.remove_node("/a-foo", "test")
+            expect = None
+
+            # We should not get a notification on removing the watched node.
+            await tree.remove_node("/", "a-foo")
+
+            # We should not get a notification for inserting into a non-matching directory.
+            await tree.create_directory("/", "a-bar")
+            await tree.create_directory("/a-bar", "test")
+            await tree.remove_node("/a-bar", "test")
+            await tree.remove_node("/", "a-bar")
+
+            # We should not get a notice when creating a file of the matched name.
+            await tree.create_file("/", "a-foo")
+
+            expect = (2, ["/a-foo"], db.EventKind.changed, "hello")
+            await tree.set_file_content("/a-foo", "hello")
+            expect = (3, ["/a-foo"], db.EventKind.removed, "???")
+            await tree.remove_node("/", "a-foo")
+            expect = None
+
+
+@pytest.mark.asyncio
+async def test_subscribe_glob_filter():
+    """
+    Ensure that globs only match matching files.
+    """
+    with run_server():
+        async with make_connection() as tree:
+            expect = None
+            count = 0
+            async def on_changed(paths: [str], event: db.EventKind, context: str):
+                nonlocal count
+                assert expect is not None
+                assert expect == (count, list(paths), event, context)
+                count += 1
+
+            for name in "abcd":
+                await tree.create_file("/", name)
+            await tree.subscribe("/[abc]", on_changed)
+
+            expect = (0, ["/a"], db.EventKind.changed, "foo")
+            await tree.set_file_content("/a", "foo")
+            await tree.set_file_content("/d", "foo")
+            expect = (1, ["/b"], db.EventKind.changed, "bar")
+            await tree.set_file_content("/b", "bar")
+            await tree.set_file_content("/d", "bar")
+            expect = (2, ["/c"], db.EventKind.changed, "baz")
+            await tree.set_file_content("/c", "baz")
+            await tree.set_file_content("/d", "baz")
 
 

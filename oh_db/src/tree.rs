@@ -239,7 +239,6 @@ pub struct TreePathIter<'a> {
 impl<'a> Iterator for TreePathIter<'a> {
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
-        info!("AT {:?} with offset {}", self.parts, self.offset);
         if self.offset >= self.parts.len() {
             return None;
         }

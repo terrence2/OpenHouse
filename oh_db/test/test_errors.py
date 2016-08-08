@@ -8,6 +8,16 @@ import pytest
 
 NodeTypes = (db.NodeType.directory, db.NodeType.file)
 
+InvalidNames = {
+    db.Dotfile: (".", "..", ".foo"),
+}
+EmptyComponentPaths = {
+    db.EmptyComponent: ("//", "/foo/", "/foo//bar"),
+}
+InvalidChars = {
+    db.InvalidCharacter: "/\\:,?*[]!",
+    db.InvalidWhitespace: "\v\t\n\r\u00A0",
+}
 
 @pytest.mark.asyncio
 async def test_create_errors():
@@ -15,19 +25,27 @@ async def test_create_errors():
         async with make_connection() as tree:
             await tree.create_node(db.NodeType.directory, "/", "dir")
             await tree.create_node(db.NodeType.file, "/", "file")
-            for ty in NodeTypes:
-                with pytest.raises(db.InvalidCharacter):
-                    await tree.create_node(ty, "/", "dir/b")
-                with pytest.raises(db.Dotfile):
-                    await tree.create_node(ty, "/../../usr/lib/", "libGL.so")
-                with pytest.raises(db.EmptyComponent):
-                    await tree.create_node(ty, "//", "libGL.so")
-                with pytest.raises(db.EmptyComponent):
-                    await tree.create_node(ty, "//foo", "libGL.so")
-                with pytest.raises(db.EmptyComponent):
-                    await tree.create_node(ty, "/foo/", "libGL.so")
-                with pytest.raises(db.EmptyComponent):
-                    await tree.create_node(ty, "/foo//bar", "libGL.so")
+
+            for path in ("/", "/dir"):
+                for ty in NodeTypes:
+                    for exc_type, chars in InvalidChars.items():
+                        for c in chars:
+                            with pytest.raises(exc_type):
+                                await tree.create_node(ty, path, "a" + c + "b")
+                            if c != '/':
+                                with pytest.raises(exc_type):
+                                    await tree.create_node(ty, "/a" + c + "b", "foo")
+                    for exc_type, names in InvalidNames.items():
+                        for name in names:
+                            with pytest.raises(exc_type):
+                                await tree.create_node(ty, path, name)
+                            with pytest.raises(exc_type):
+                                await tree.create_node(ty, "/" + name, "foo")
+                    for exc_type, names in EmptyComponentPaths.items():
+                        for name in names:
+                            with pytest.raises(exc_type):
+                                await tree.create_node(ty, name, "foo")
+
                 with pytest.raises(db.NoSuchNode):
                     await tree.create_node(ty, "/b", "a")
                 with pytest.raises(db.NodeAlreadyExists):
@@ -40,10 +58,24 @@ async def test_create_errors():
 async def test_remove_errors():
     with run_server():
         async with make_connection() as tree:
-            with pytest.raises(db.InvalidCharacter):
-                await tree.remove_node("/", "a/b")
-            with pytest.raises(db.Dotfile):
-                await tree.remove_node("/../../usr/lib/", "libGL.so")
+            for exc_type, chars in InvalidChars.items():
+                for c in chars:
+                    with pytest.raises(exc_type):
+                        await tree.remove_node("/", "a" + c + "b")
+                    if c != '/':
+                        with pytest.raises(exc_type):
+                            await tree.remove_node("/a" + c + "b", "foo")
+            for exc_type, names in InvalidNames.items():
+                for name in names:
+                    with pytest.raises(exc_type):
+                        await tree.remove_node("/", name)
+                    with pytest.raises(exc_type):
+                        await tree.remove_node("/" + name, "foo")
+            for exc_type, names in EmptyComponentPaths.items():
+                for name in names:
+                    with pytest.raises(exc_type):
+                        await tree.remove_node(name, "foo")
+
             with pytest.raises(db.NoSuchNode):
                 await tree.remove_node("/", "a")
 
