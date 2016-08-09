@@ -185,8 +185,8 @@ class Tree:
     async def list_directory_async(self, path: str) -> asyncio.Future:
         return await self._dispatch_message(listDirectory=messages.ListDirectoryRequest.new_message(path=path))
 
-    async def set_file_content_async(self, path: str, content: str) -> asyncio.Future:
-        return await self._dispatch_message(setFileContent=messages.SetFileContentRequest.new_message(path=path,
+    async def set_file_content_async(self, glob: str, content: str) -> asyncio.Future:
+        return await self._dispatch_message(setFileContent=messages.SetFileContentRequest.new_message(glob=glob,
                                                                                                       data=content))
 
     async def get_file_content_async(self, path: str) -> asyncio.Future:

@@ -62,7 +62,6 @@ struct OkResponse {
 struct CreateNodeRequest {
     parentPath @0 :Text;
     # The parent must already exist and have type directory.
-    # FIXME: make this multivariate
     nodeType @1 :NodeType;
     name @2 :Text;
     # Must not contain /,#,*, or other restricted characters.
@@ -102,8 +101,7 @@ struct GetFileContentResponse {
 }
 
 struct SetFileContentRequest {
-    path @0 :Text;
-    # FIXME: make this multivariate.
+    glob @0 :Text;
 
     data @1 :Text;
     # FIXME: this should be Data type, but we need to fix Tree first.

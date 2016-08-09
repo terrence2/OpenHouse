@@ -11,6 +11,7 @@ extern crate rand;
 extern crate ws;
 
 #[macro_use] mod utility;
+mod path;
 mod subscriptions;
 mod tree;
 
@@ -30,7 +31,8 @@ use std::path::Path;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
-use tree::{Tree, TreePath};
+use tree::Tree;
+use path::TreePath;
 use subscriptions::Subscriptions;
 
 
@@ -245,6 +247,13 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 conn.on_change(&sid, path, kind, context).ok();
             }
         }
+        fn notify_subscriptions_glob(&mut self, paths: &[TreePath], kind: EventKind, context: &str)
+        {
+            // FIXME: aggregate subscription notifications.
+            for path in paths {
+                self.notify_subscriptions(path, kind, context);
+            }
+        }
     }
 
     struct Connection<'e> {
@@ -285,7 +294,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = try!(tree::TreePath::new(try!(msg.get_parent_path())));
+            let parent_path = try!(TreePath::new(try!(msg.get_parent_path())));
             let name = try!(msg.get_name());
             let node_type = try!(msg.get_node_type());
             info!("handling CreateNode -> parent: {},  name: {}, type: {}",
@@ -310,7 +319,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = try!(tree::TreePath::new(try!(msg.get_parent_path())));
+            let parent_path = try!(TreePath::new(try!(msg.get_parent_path())));
             let name = try!(msg.get_name());
             info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
             {
@@ -330,8 +339,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                  response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(tree::TreePath::new(try!(msg.get_path())));
-            //let path = Path::new(try!(msg.get_path()));
+            let path = try!(TreePath::new(try!(msg.get_path())));
             info!("handling ListDirectory -> path: {}", path);
             let db = &mut self.env.borrow_mut().db;
             let directory = try!(db.lookup_directory(&path));
@@ -350,7 +358,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(tree::TreePath::new(try!(msg.get_path())));
+            let path = try!(TreePath::new(try!(msg.get_path())));
             info!("handling GetFileContent -> path: {}", path);
             let data;
             {
@@ -367,15 +375,20 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(tree::TreePath::new(try!(msg.get_path())));
+            let glob = try!(glob::Pattern::new(try!(msg.get_glob())));
             let data = try!(msg.get_data());
-            info!("handling SetFileContent -> path: {}", path);
+            let mut paths: Vec<TreePath> = Vec::new();
+            info!("handling SetFileContent -> glob: {}, data: {}", glob, data);
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try!(db.lookup_file(&path));
-                file.set_data(&data);
+                let matches = try!(db.lookup_matching_files(&glob));
+                for (path, file) in matches {
+                    info!("Matching file: {}", path);
+                    file.set_data(&data);
+                    paths.push(path);
+                }
             }
-            self.env.borrow_mut().notify_subscriptions(&path, EventKind::Changed, &data);
+            self.env.borrow_mut().notify_subscriptions_glob(paths.as_slice(), EventKind::Changed, &data);
             response.init_ok();
             return Ok(());
         }
@@ -386,7 +399,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         {
             let glob = try!(Pattern::new(try!(msg.get_glob())));
             info!("handling Subscribe -> glob: {}", glob.as_str());
-            try!(tree::validate_glob(&glob));
+            try!(path::validate_glob(&glob));
             let mut env = self.env.borrow_mut();
             env.last_subscription_id += 1;
             let sid = SubscriptionId::from_u64(env.last_subscription_id);

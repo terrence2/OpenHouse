@@ -2,10 +2,10 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use glob::Pattern;
+use path::TreePath;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use tree::TreePath;
 use ws::util::Token;
 use ::SubscriptionId;
 
