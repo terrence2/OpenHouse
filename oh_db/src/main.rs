@@ -27,12 +27,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
-use std::path::Path;
+use std::path::Path as FilePath;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
 use tree::Tree;
-use path::TreePath;
+use path::{Path, PathBuilder};
 use subscriptions::Subscriptions;
 
 
@@ -96,9 +96,9 @@ fn main() {
     info!("Using {}", openssl::version::version());
 
     run_server(&address, port,
-               Path::new(&ca_chain),
-               Path::new(&certificate),
-               Path::new(&private_key)).unwrap();
+               FilePath::new(&ca_chain),
+               FilePath::new(&certificate),
+               FilePath::new(&private_key)).unwrap();
 }
 
 // Try; close the connection on failure. This should be reserved for client
@@ -176,7 +176,10 @@ macro_rules! handle_client_request {
     };
 }
 
-fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, private_key: &Path)
+fn run_server(address: &str, port: u16,
+              ca_chain: &FilePath,
+              certificate: &FilePath,
+              private_key: &FilePath)
     -> ws::Result<()>
 {
     struct Environment<'e> {
@@ -197,7 +200,10 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
     }
 
     impl<'e> Environment<'e> {
-        fn new(ca_chain: &'e Path, certificate: &'e Path, private_key: &'e Path) -> Self {
+        fn new(ca_chain: &'e FilePath,
+               certificate: &'e FilePath,
+               private_key: &'e FilePath) -> Self
+        {
             let mut context = SslContext::new(SslMethod::Tlsv1_2).unwrap();
 
             // Verify peer certificates.
@@ -238,7 +244,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         // The connection triggering the event does not care about failures to send to
         // subscriptions, so this method terminates any failure. We log and potentially
         // close the child connections, but do not report failures to the caller.
-        fn notify_subscriptions(&mut self, path: &TreePath, kind: EventKind, context: &str)
+        fn notify_subscriptions(&mut self, path: &Path, kind: EventKind, context: &str)
         {
             for (token, sid) in self.subscriptions.get_subscriptions_for(path) {
                 // If this connection does not exist, then something is way off the rails
@@ -247,7 +253,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 conn.on_change(&sid, path, kind, context).ok();
             }
         }
-        fn notify_subscriptions_glob(&mut self, paths: &[TreePath], kind: EventKind, context: &str)
+        fn notify_subscriptions_glob(&mut self, paths: &[Path], kind: EventKind, context: &str)
         {
             // FIXME: aggregate subscription notifications.
             for path in paths {
@@ -294,7 +300,8 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = try!(TreePath::new(try!(msg.get_parent_path())));
+            let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
+                                   .finish_path());
             let name = try!(msg.get_name());
             let node_type = try!(msg.get_node_type());
             info!("handling CreateNode -> parent: {},  name: {}, type: {}",
@@ -319,7 +326,8 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let parent_path = try!(TreePath::new(try!(msg.get_parent_path())));
+            let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
+                                   .finish_path());
             let name = try!(msg.get_name());
             info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
             {
@@ -339,7 +347,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                  response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(TreePath::new(try!(msg.get_path())));
+            let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
             info!("handling ListDirectory -> path: {}", path);
             let db = &mut self.env.borrow_mut().db;
             let directory = try!(db.lookup_directory(&path));
@@ -358,7 +366,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(TreePath::new(try!(msg.get_path())));
+            let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
             info!("handling GetFileContent -> path: {}", path);
             let data;
             {
@@ -377,7 +385,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
         {
             let glob = try!(glob::Pattern::new(try!(msg.get_glob())));
             let data = try!(msg.get_data());
-            let mut paths: Vec<TreePath> = Vec::new();
+            let mut paths: Vec<Path> = Vec::new();
             info!("handling SetFileContent -> glob: {}, data: {}", glob, data);
             {
                 let db = &mut self.env.borrow_mut().db;
@@ -422,7 +430,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
             return Ok(());
         }
 
-        fn on_change(&mut self, sid: &SubscriptionId, path: &TreePath, kind: EventKind, context: &str)
+        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, kind: EventKind, context: &str)
             -> ws::Result<()>
         {
             let mut builder = ::capnp::message::Builder::new_default();
@@ -433,7 +441,7 @@ fn run_server(address: &str, port: u16, ca_chain: &Path, certificate: &Path, pri
                 event.set_kind(kind);
                 event.set_context(context);
                 let mut path_list = event.init_paths(1);
-                path_list.set(0, path.as_str());
+                path_list.set(0, &path.to_str());
                 //event.set_path(&path.to_string_lossy().into_owned());
             }
             let mut buf = Vec::new();

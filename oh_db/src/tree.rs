@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use path::{TreePath, TreePathIter, validate_path_component, validate_glob, maybe_become_path};
+use path::{Path, PathIter, validate_path_component, validate_glob, maybe_become_path};
 use glob::Pattern;
 use std::collections::HashMap;
 use std::error::Error;
@@ -36,7 +36,7 @@ impl DirectoryData {
 
     /// Find the directory at the bottom of path. If the path crosses
     /// a file, return Err(NotDirectory).
-    fn lookup_directory_recursive(&mut self, parts: &mut TreePathIter)
+    fn lookup_directory_recursive(&mut self, parts: &mut PathIter)
         -> TreeResult<&mut DirectoryData>
     {
         let name = match parts.next() {
@@ -53,7 +53,7 @@ impl DirectoryData {
         };
     }
 
-    fn lookup_file_recursive(&mut self, parts: &mut TreePathIter)
+    fn lookup_file_recursive(&mut self, parts: &mut PathIter)
         -> TreeResult<&mut FileData>
     {
         info!("In lookup_file_recursive({:?})", parts);
@@ -172,14 +172,14 @@ impl Tree {
     }
 
     /// Returns the directory at the given path or an error.
-    pub fn lookup_directory(&mut self, path: &TreePath)
+    pub fn lookup_directory(&mut self, path: &Path)
         -> TreeResult<&mut DirectoryData>
     {
         return self.root.lookup_directory_recursive(&mut path.iter());
     }
 
     /// Returns the file at the given directory or an error.
-    pub fn lookup_file(&mut self, path: &TreePath)
+    pub fn lookup_file(&mut self, path: &Path)
         -> TreeResult<&mut FileData>
     {
         info!("In lookup_file({})", path);
@@ -187,9 +187,9 @@ impl Tree {
     }
 
     pub fn lookup_matching_files<'a>(&'a mut self, glob: &'a Pattern)
-        -> TreeResult<Vec<(TreePath, &mut FileData)>>
+        -> TreeResult<Vec<(Path, &mut FileData)>>
     {
-        let mut out: Vec<(TreePath, &mut FileData)> = Vec::new();
+        let mut out: Vec<(Path, &mut FileData)> = Vec::new();
         match maybe_become_path(glob) {
             Some(path) => {
                 out.push((path.clone(), try!(self.lookup_file(&path))));
@@ -217,7 +217,7 @@ mod tests {
                 #[test]
                 #[should_panic(expected=$expect)]
                 fn $name() {
-                    TreePath::new($string).unwrap();
+                    Path::new($string).unwrap();
                 }
             )*
         }
@@ -264,12 +264,12 @@ mod tests {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
-            let root = tree.lookup_directory(&TreePath::new("/").unwrap()).unwrap();
+            let root = tree.lookup_directory(&Path::new("/").unwrap()).unwrap();
             add_children_to_node(root);
         }
         {
             for name in &NAMES {
-                let path = TreePath::new(format!("/{}", name).as_str()).unwrap();
+                let path = Path::new(format!("/{}", name).as_str()).unwrap();
                 let node = tree.lookup_directory(&path).unwrap();
                 add_children_to_node(node);
             }
@@ -281,7 +281,7 @@ mod tests {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
-            let root = tree.lookup_directory(&TreePath::new("/").unwrap()).unwrap();
+            let root = tree.lookup_directory(&Path::new("/").unwrap()).unwrap();
             root.add_file("hello").unwrap();
             root.remove_child("hello").unwrap();
         }
@@ -292,7 +292,7 @@ mod tests {
         let _ = env_logger::init();
         let mut tree = Tree::new();
         {
-            let root = tree.lookup_directory(&TreePath::new("/").unwrap()).unwrap();
+            let root = tree.lookup_directory(&Path::new("/").unwrap()).unwrap();
             root.add_file("a").unwrap();
             root.add_file("ab").unwrap();
             root.add_file("b").unwrap();

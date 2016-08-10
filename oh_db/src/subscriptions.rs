@@ -2,7 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use glob::Pattern;
-use path::TreePath;
+use path::Path;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
@@ -44,9 +44,9 @@ impl Subscriptions {
     }
 
     /// Return a vector containing all subscriptions that match the given path.
-    pub fn get_subscriptions_for(&self, path: &TreePath) -> Vec<(Token, SubscriptionId)> {
+    pub fn get_subscriptions_for(&self, path: &Path) -> Vec<(Token, SubscriptionId)> {
         for (glob, subs) in self.globs.iter() {
-            if glob.matches(path.as_str()) {
+            if glob.matches(&path.to_str()) {
                 return subs.get_subscriptions_for();
             }
         }
