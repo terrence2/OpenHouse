@@ -9,7 +9,9 @@ make_error!(PathError; {
     Dotfile => String,
     EmptyComponent => String,
     InvalidCharacter => String,
-    InvalidWhitespace => String,
+    InvalidGlobCharacter => String,
+    InvalidWhitespaceCharacter => String,
+    InvalidControlCharacter => String,
     UnreachablePattern => String,
     NoParent => String,
     NoBasename => String
@@ -35,6 +37,25 @@ pub type PathResult<T> = Result<T, PathError>;
 pub struct PathBuilder {
     parts: Vec<String>,
     contains_glob_chars: bool
+}
+
+fn is_invalid_character(c: char) -> bool {
+    c == '!' || // Reserved for glob usage
+    c == '[' || // "
+    c == ']' || // "
+    c == '{' || // "
+    c == '}' || // "
+    c == '/' || // Should be removed already by .split('/')
+    c == '\\'|| // Confusing and restricted in windows paths regardless.
+    c == ':' || // "
+    c == ',' || // Confusable in yaml or shell contexts, so disallowed.
+    c == '"' || // "
+    c == '\''   // "
+}
+
+fn is_glob_character(c: char) -> bool {
+    c == '?' ||
+    c == '*'
 }
 
 impl PathBuilder {
@@ -79,23 +100,18 @@ impl PathBuilder {
             return Err(PathError::Dotfile(part.to_owned()));
         }
         for c in part.chars() {
-            if c == '\\' ||
-               c == '/' ||
-               c == ':' ||
-               c == ','
-            {
+            if is_invalid_character(c) {
                 return Err(PathError::InvalidCharacter(
                            part.to_owned() + " character: " + &c.to_string()));
             }
-            if c.is_whitespace() {
-                return Err(PathError::InvalidWhitespace(part.to_owned()));
+            if c.is_control() {
+                return Err(PathError::InvalidControlCharacter(part.to_owned()));
             }
-            if c == '?' ||
-               c == '*' ||
-               c == '[' ||
-               c == ']' ||
-               c == '!'
-            {
+            if c.is_whitespace() {
+                return Err(PathError::InvalidWhitespaceCharacter(part.to_owned()));
+            }
+
+            if is_glob_character(c) {
                 contains_glob_chars = true;
             }
         }
@@ -106,7 +122,7 @@ impl PathBuilder {
     /// error if the part contains invalid characters, including glob characters.
     pub fn validate_path_component(part: &str) -> PathResult<()> {
         if try!(PathBuilder::validate_path_or_glob_component(part)) {
-            return Err(PathError::InvalidCharacter(part.to_owned()));
+            return Err(PathError::InvalidGlobCharacter(part.to_owned()));
         }
         return Ok(());
     }
@@ -115,8 +131,8 @@ impl PathBuilder {
     /// an error.
     pub fn finish_path(self) -> PathResult<Path> {
         if self.contains_glob_chars {
-            return Err(PathError::InvalidCharacter(
-                       format!("unexpected glob character")));
+            return Err(PathError::InvalidGlobCharacter(
+                       "unexpected glob character".to_owned()));
         }
         return Ok(Path {parts: self.parts});
     }
@@ -220,6 +236,7 @@ pub struct Glob {
 }
 
 impl Glob {
+    /// Produce the components of a glob, one at a time.
     pub fn iter(&self) -> GlobIter {
         GlobIter { parts: &self.parts, offset: 0 }
     }
@@ -229,6 +246,55 @@ impl Glob {
                               .map(|x| x.source.clone())
                               .collect::<Vec<_>>()
                               .join("/")
+    }
+
+    /// Check if the given path matches this glob.
+    fn matches(&self, path: &Path) -> bool {
+        println!("TOP: {} matches {}", self.to_str(), path.to_str());
+        let mut path_parts = path.iter();
+        let mut glob_parts = self.iter();
+        loop {
+            let glob_part = match glob_parts.next() {
+                Some(p) => p,
+                // Exit to check if our path is exhausted too.
+                None => break
+            };
+            let mut path_part = match path_parts.next() {
+                Some(p) => p,
+                // If there are more glob parts, we might still match if the
+                // glob matcher is ** and it is the last part.
+                None => {
+                    return glob_part.source == "**" &&
+                           glob_parts.next() == None;
+                }
+            };
+            println!("AT: {:?} matches {:?}", glob_part, path_part);
+            match glob_part.matches(path_part) {
+                MatchResult::Match => continue,
+                MatchResult::NoMatch => return false,
+                MatchResult::MatchRecurse => {
+                    // Fast-forward until this path_part or a subsequent one
+                    // matches the *next* glob_part.
+                    let glob_next = match glob_parts.next() {
+                        Some(g) => g,
+                        // The last glob part is **, which matches everything.
+                        None => return true
+                    };
+                    while glob_next.matches(path_part) == MatchResult::NoMatch {
+                        path_part = match path_parts.next() {
+                            Some(p) => p,
+                            None => return true // ** matches everything.
+                        }
+                    }
+                }
+            }
+        }
+        println!("Exited loop");
+        // If we matched all parts, return success, else fail.
+        return match path_parts.next() {
+            None => true,
+            Some(_) => false
+        };
     }
 }
 
@@ -248,6 +314,7 @@ enum GlobToken {
     // TODO: decide whether we want to bother supporting these.
     //AnyWithin(Vec<char>), // []
     //AnyExcept(Vec<char>) // [!]
+    //AnyOf(Vec<String>) // {}
 }
 
 // A single path component of a glob.
@@ -255,6 +322,13 @@ enum GlobToken {
 pub struct GlobComponent {
     source: String,
     tokens: Vec<GlobToken>
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MatchResult {
+    NoMatch,
+    Match,
+    MatchRecurse // i.e. **
 }
 
 impl GlobComponent {
@@ -271,13 +345,19 @@ impl GlobComponent {
         while i < chars.len() {
             match chars[i] {
                 '?' => {
+                    // Detect *?; this would require backtracking so disallow.
+                    if let Some(&GlobToken::AnySequence) = tokens.last() {
+                        return Err(PathError::InvalidGlobCharacter(
+                            "detected *?, which would require backtracking".to_owned()));
+                    }
                     tokens.push(GlobToken::AnyChar);
                     i += 1;
                 }
                 '*' => {
                     // Detect ** not as whole part or, ***, ****, etc.
                     if chars.len() > i + 1 && chars[i + 1] == '*' {
-                        return Err(PathError::InvalidCharacter("***+".to_owned()));
+                        return Err(PathError::InvalidGlobCharacter(
+                                   "detected **".to_owned()));
                     }
                     tokens.push(GlobToken::AnySequence);
                     i += 1;
@@ -291,27 +371,75 @@ impl GlobComponent {
         return Ok(GlobComponent { source: part.to_owned(), tokens: tokens });
     }
 
-    pub fn matches(&self, name: &str) -> bool {
-        /*
-        assert!(self.tokens.len() > 0);
-        let chars = name.chars().collect::<Vec<_>>();
-        let mut i = 0;
-        for token in self.tokens {
-            if i >= chars.len() {
-                return false;
-            }
-            match token {
-                GlobToken::Char(c) => {
-                    if chars[i] != c {
-                        return false;
+    /// Returns whether the token matches and whether the match is recursive.
+    pub fn matches(&self, name: &str) -> MatchResult {
+        let mut part = name.chars();
+        let mut tokens = self.tokens.iter();
+        'head: loop {
+            // Take the next token.
+            let token = match tokens.next() {
+                None => break,
+                Some(t) => t
+            };
+            match *token {
+                GlobToken::AnyRecursiveSequence => { // **
+                    return MatchResult::MatchRecurse;
+                },
+                GlobToken::AnyChar => { // ?
+                    if let Some(c) = part.next() {
+                        continue;
+                    } else {
+                        // Out of chars in the string to match against.
+                        return MatchResult::NoMatch;
                     }
-                    i += 1;
+                },
+                GlobToken::Char(token_char) => {
+                    if let Some(c) = part.next() {
+                        if token_char != c {
+                            // Mismatched pattern.
+                            return MatchResult::NoMatch;
+                        }
+                        continue;
+                    } else {
+                        // Out of chars to match against.
+                        return MatchResult::NoMatch;
+                    }
+                },
+                GlobToken::AnySequence => { // *
+                    // We process the next token inline instead of recursing to
+                    // avoid making a copy. We can do this because we do not
+                    // support backtracking currently.
+                    let expect_next = match tokens.next() {
+                        // If our last token is star, we'll match the rest of
+                        // the string regardless, so we can shortcut here and
+                        // return early without having to drain all chars.
+                        None => return MatchResult::Match,
+                        Some(t) => match *t {
+                            GlobToken::Char(c) => c,
+                            _ => { panic!("reached *? state"); }
+                        }
+                    };
+                    // If there are no constant chars anywhere after the *, we
+                    // have already exited.
+                    while let Some(c) = part.next() {
+                        if c == expect_next {
+                            // Found it, move on to our next token.
+                            continue 'head;
+                        }
+                    }
+                    // We ran out of tokens in |part| before finding our
+                    // expected next character.
+                    return MatchResult::NoMatch;
                 }
-                _ => {}
             }
         }
-        */
-        return true;
+        // Off the end of the token stream means we did not fail to match
+        // against tokens, but we still must have consumed all of our input.
+        return if let Some(c) = part.next() {
+            MatchResult::NoMatch
+        } else {
+            MatchResult::Match
+        }
     }
 }
 
@@ -344,6 +472,7 @@ mod tests {
         PathBuilder::new(p).unwrap().finish_path().unwrap()
     }
 
+    // Ensure that various examples of bad paths fail with the right error code.
     macro_rules! make_badpath_tests {
         ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
         {
@@ -356,7 +485,6 @@ mod tests {
             )*
         }
     }
-
     make_badpath_tests!([
         ("NonAbsolutePath", test_empty_path, ""),
         ("NonAbsolutePath", test_relative_path, "foo/bar"),
@@ -370,25 +498,29 @@ mod tests {
         ("Dotfile", test_dotfile_parent_middle, "/foo/../bar"),
         ("Dotfile", test_dotfile_hidden, "/foo/.bar"),
         ("Dotfile", test_dotfile_hidden_middle, "/foo/.bar/baz"),
-        ("InvalidWhitespace", test_whitespace_tab, "/foo/a\tb/baz"),
-        ("InvalidWhitespace", test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
-        ("InvalidWhitespace", test_whitespace_newline, "/foo/a\nb/baz"),
-        ("InvalidWhitespace", test_whitespace_carriage_return, "/foo/a\rb/baz"),
-        ("InvalidWhitespace", test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
+        ("InvalidWhitespaceCharacter", test_whitespace_space, "/foo/a b/baz"),
+        ("InvalidWhitespaceCharacter", test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
+        ("InvalidControlCharacter", test_whitespace_tab, "/foo/a\tb/baz"),
+        ("InvalidControlCharacter", test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
+        ("InvalidControlCharacter", test_whitespace_newline, "/foo/a\nb/baz"),
+        ("InvalidControlCharacter", test_whitespace_carriage_return, "/foo/a\rb/baz"),
         ("InvalidCharacter", test_invalid_backslash, "/foo/a\\b/baz"),
         ("InvalidCharacter", test_invalid_colon, "/foo/a:b/baz"),
         ("InvalidCharacter", test_invalid_comma, "/foo/a,b/baz"),
-        ("InvalidCharacter", test_invalid_star, "/foo/a*b/baz"),
-        ("InvalidCharacter", test_invalid_question, "/foo/a?b/baz"),
         ("InvalidCharacter", test_invalid_open_bracket, "/foo/a[b/baz"),
         ("InvalidCharacter", test_invalid_close_bracket, "/foo/a]b/baz"),
-        ("InvalidCharacter", test_invalid_exclamation, "/foo/a!b/baz")
+        ("InvalidCharacter", test_invalid_exclamation, "/foo/a!b/baz"),
+        ("InvalidCharacter", test_invalid_open_brace, "/foo/a{b/baz"),
+        ("InvalidCharacter", test_invalid_close_brace, "/foo/a}b/baz"),
+        ("InvalidGlobCharacter", test_invalid_star, "/foo/a*b/baz"),
+        ("InvalidGlobCharacter", test_invalid_question, "/foo/a?b/baz")
     ]);
 
     fn make_glob(p: &str) -> Glob {
         PathBuilder::new(p).unwrap().finish_glob().unwrap()
     }
 
+    // Ensure that various examples of bad glob syntax fails with the right error.
     macro_rules! make_badglob_tests {
         ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
         {
@@ -401,19 +533,21 @@ mod tests {
             )*
         }
     }
-
     make_badglob_tests!([
         ("UnreachablePattern", test_unreachable_sole, "/**/**"),
         ("UnreachablePattern", test_unreachable_end, "/a/**/**"),
         ("UnreachablePattern", test_unreachable_prefix, "/**/**/b"),
         ("UnreachablePattern", test_unreachable_middle, "/a/**/**/b"),
-        ("InvalidCharacter", test_invalid_multistar2_start, "/a/**foo/b"),
-        ("InvalidCharacter", test_invalid_multistar2_end, "/a/foo**/b"),
-        ("InvalidCharacter", test_invalid_multistar2_middle, "/a/fo**oo/b"),
-        ("InvalidCharacter", test_invalid_multistar3, "/a/***/b"),
-        ("InvalidCharacter", test_invalid_multistar4, "/a/****/b")
+        ("InvalidGlobCharacter", test_invalid_multistar2_start, "/a/**foo/b"),
+        ("InvalidGlobCharacter", test_invalid_multistar2_end, "/a/foo**/b"),
+        ("InvalidGlobCharacter", test_invalid_multistar2_middle, "/a/fo**oo/b"),
+        ("InvalidGlobCharacter", test_invalid_multistar3, "/a/***/b"),
+        ("InvalidGlobCharacter", test_invalid_multistar4, "/a/****/b"),
+        ("InvalidGlobCharacter", test_invalid_backtracking1, "/a/foo*?/b"),
+        ("InvalidGlobCharacter", test_invalid_backtracking2, "/a/*?foo/b")
     ]);
 
+    // Generic glob construction test to make sure that sane combinations don't crash.
     #[test]
     fn test_construct_glob() {
         PathBuilder::new("/?a/a?/a?b/*c/c*/c*d").unwrap().finish_glob().unwrap();
@@ -433,27 +567,37 @@ mod tests {
                     let success: Vec<&'static str> = vec![ $($successes),* ];
                     let failure: Vec<&'static str> = vec![ $($failures),* ];
                     let glob = make_glob($glob);
-                    let component = glob.iter().next().unwrap();
-                    for part in success {
-                        assert!(component.matches(part));
+                    for path_str in success {
+                        let path = make_path(path_str);
+                        assert!(glob.matches(&path));
                     }
-                    for part in failure {
-                        assert!(!component.matches(part));
+                    for path_str in failure {
+                        let path = make_path(path_str);
+                        assert!(!glob.matches(&path));
                     }
                 }
             )*
         }
     }
-
     make_glob_match_tests!([
-        (test_match_q_start, "/?a", ["/aa", "/ba", "/Xa"], ["/ab", "/Xaa", "/Xa/a"])
+        (test_match_exact, "/foo", ["/foo"], ["/Xfoo", "/fooX", "/FOO"]),
+        (test_match_q_start, "/?a", ["/Xa"], ["/ab", "/Xaa"]),
+        (test_match_q_end, "/a?", ["/aX", "/a."], ["/Xa", "/aXX", "/AX"]),
+        (test_match_q_middle, "/a?b", ["/aXb", "/a.b"], ["/XaXb", "/aXXb", "/aXbX"]),
+        (test_match_s_start, "/*a", ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
+                                    ["/aX", "/XXaX"]),
+        (test_match_s_end, "/a*", ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
+                                  ["/Xa", "/XaXXXXX", "/XaABCDEF"]),
+        (test_match_s_middle, "/a*b", ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
+                                      ["/Xab", "/abX", "/XaXb", "/aXbX"]),
+        (test_match_ss, "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
+        (test_match_ss_start, "/**/foo", ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
+                                         ["/foo/X", "/X/foo/X"]),
+        (test_match_ss_end, "/foo/**", ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
+                                         ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]),
+        (test_match_ss_middle, "/foo/**/bar", ["/foo/bar", "/foo/X/bar",
+                                               "/foo/X/Y/bar", "/foo/X/Y/Z/bar"],
+                                              ["/X/foo/bar", "/foo/bar/X",
+                                               "/X/foo/X/Y/bar", "/foo/X/Y/bar/Z"])
     ]);
-    #[test]
-    fn test_match_glob_component() {
-        let glob = make_glob("/?a");
-        let component = glob.iter().next().unwrap();
-        assert!(component.matches("aa"));
-        assert!(component.matches("ba"));
-        assert!(component.matches("ca"));
-    }
 }
