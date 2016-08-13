@@ -324,15 +324,12 @@ mod tests {
             )*
         }
     }
-
-    /*
     make_glob_matching_tests!([
         (test_match_one_char,
          "/?",
          [], ["/a", "/b", "/c", "/aa", "/bb", "/cc"],
          ["/a", "/b", "/c"])
     ]);
-    */
 
     /*
     #[test]

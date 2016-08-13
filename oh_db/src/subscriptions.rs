@@ -45,11 +45,9 @@ impl Subscriptions {
     /// Return a vector containing all subscriptions that match the given path.
     pub fn get_subscriptions_for(&self, path: &Path) -> Vec<(Token, SubscriptionId)> {
         for (glob, subs) in self.globs.iter() {
-            /* FIXME: implement matching against paths
-            if glob.matches(&path.to_str()) {
+            if glob.matches(&path) {
                 return subs.get_subscriptions_for();
             }
-            */
         }
         return Vec::new();
     }

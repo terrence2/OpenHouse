@@ -249,8 +249,7 @@ impl Glob {
     }
 
     /// Check if the given path matches this glob.
-    fn matches(&self, path: &Path) -> bool {
-        println!("TOP: {} matches {}", self.to_str(), path.to_str());
+    pub fn matches(&self, path: &Path) -> bool {
         let mut path_parts = path.iter();
         let mut glob_parts = self.iter();
         loop {
@@ -268,7 +267,6 @@ impl Glob {
                            glob_parts.next() == None;
                 }
             };
-            println!("AT: {:?} matches {:?}", glob_part, path_part);
             match glob_part.matches(path_part) {
                 MatchResult::Match => continue,
                 MatchResult::NoMatch => return false,
@@ -386,7 +384,7 @@ impl GlobComponent {
                     return MatchResult::MatchRecurse;
                 },
                 GlobToken::AnyChar => { // ?
-                    if let Some(c) = part.next() {
+                    if let Some(_) = part.next() {
                         continue;
                     } else {
                         // Out of chars in the string to match against.
@@ -435,7 +433,7 @@ impl GlobComponent {
         }
         // Off the end of the token stream means we did not fail to match
         // against tokens, but we still must have consumed all of our input.
-        return if let Some(c) = part.next() {
+        return if let Some(_) = part.next() {
             MatchResult::NoMatch
         } else {
             MatchResult::Match
