@@ -4,7 +4,6 @@
 extern crate argparse;
 extern crate capnp;
 extern crate env_logger;
-extern crate glob;
 #[macro_use] extern crate log;
 extern crate openssl;
 extern crate rand;
@@ -21,7 +20,6 @@ pub mod messages_capnp {
 
 use messages_capnp::*;
 
-use glob::Pattern;
 use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -383,7 +381,7 @@ fn run_server(address: &str, port: u16,
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let glob = try!(glob::Pattern::new(try!(msg.get_glob())));
+            let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
             let data = try!(msg.get_data());
             let mut paths: Vec<Path> = Vec::new();
             info!("handling SetFileContent -> glob: {}, data: {}", glob, data);
@@ -405,9 +403,8 @@ fn run_server(address: &str, port: u16,
                             response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let glob = try!(Pattern::new(try!(msg.get_glob())));
-            info!("handling Subscribe -> glob: {}", glob.as_str());
-            try!(path::validate_glob(&glob));
+            let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
+            info!("handling Subscribe -> glob: {}", glob);
             let mut env = self.env.borrow_mut();
             env.last_subscription_id += 1;
             let sid = SubscriptionId::from_u64(env.last_subscription_id);

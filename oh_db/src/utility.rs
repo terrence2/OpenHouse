@@ -48,12 +48,14 @@ macro_rules! make_identifier {
                 return id;
             }
         }
+        // FIXME: why can I not just derive Clone?
         impl Clone for $name {
             fn clone(&self) -> $name {
                 let $name(ident) = *self;
                 return $name(ident);
             }
         }
+        // FIXME: ditto Copy
         impl Copy for $name {}
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -61,14 +63,6 @@ macro_rules! make_identifier {
                 write!(f, "{}", ident)
             }
         }
-        /*
-        impl Encodable for $name {
-            fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-                let $name(ident) = *self;
-                s.emit_u64(ident)
-            }
-        }
-        */
     };
 }
 

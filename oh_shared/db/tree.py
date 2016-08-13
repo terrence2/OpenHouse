@@ -42,11 +42,6 @@ class WrongFieldType(ParseError): pass
 
 # The following must match up with tree.rs' TreeError enum.
 class TreeError(DatabaseError): pass
-class NonAbsolutePath(TreeError): pass
-class Dotfile(TreeError): pass
-class EmptyComponent(TreeError): pass
-class InvalidCharacter(TreeError): pass
-class InvalidWhitespace(TreeError): pass
 class NoSuchKey(TreeError): pass
 class NoSuchNode(TreeError): pass
 class NodeAlreadyExists(TreeError): pass
@@ -54,6 +49,17 @@ class DirectoryNotEmpty(TreeError): pass
 class NodeContainsSubscriptions(TreeError): pass
 class NotDirectory(TreeError): pass
 class NotFile(TreeError): pass
+
+# The following should match up with path.rs' PathError enum.
+class PathError(DatabaseError): pass
+class NonAbsolutePath(PathError): pass
+class Dotfile(PathError): pass
+class EmptyComponent(PathError): pass
+class InvalidCharacter(PathError): pass
+class InvalidWhitespace(PathError): pass
+class UnreachablePattern(PathError): pass
+class NoParent(PathError): pass
+class NoBasename(PathError): pass
 
 # The following must match up with subscriptions.rs' SubscriptionError enum.
 class SubscriptionError(DatabaseError): pass

@@ -1,8 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use glob::Pattern;
-use path::Path;
+use path::{Glob, Path};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
@@ -17,7 +16,7 @@ pub type SubscriptionResult<T> = Result<T, SubscriptionError>;
 /// The collection of observed patterns and who to notify when a path
 /// matching one of the patterns changes.
 pub struct Subscriptions {
-    globs: HashMap<Pattern, GlobSubscriptions>
+    globs: HashMap<Glob, GlobSubscriptions>
 }
 
 // A single connection may listen to the same glob in multiple locations,
@@ -36,7 +35,7 @@ impl Subscriptions {
     pub fn new() -> Subscriptions { Subscriptions { globs: HashMap::new() } }
 
     pub fn add_subscription(&mut self, sid: &SubscriptionId,
-                            conn: &Token, glob: &Pattern)
+                            conn: &Token, glob: &Glob)
     {
         let subs = self.get_subscription_set(conn, glob);
         let is_new = subs.layout.insert(*sid);
@@ -46,9 +45,11 @@ impl Subscriptions {
     /// Return a vector containing all subscriptions that match the given path.
     pub fn get_subscriptions_for(&self, path: &Path) -> Vec<(Token, SubscriptionId)> {
         for (glob, subs) in self.globs.iter() {
+            /* FIXME: implement matching against paths
             if glob.matches(&path.to_str()) {
                 return subs.get_subscriptions_for();
             }
+            */
         }
         return Vec::new();
     }
@@ -75,7 +76,7 @@ impl Subscriptions {
     }
 
     // Return the subscription set at path:conn, creating it if it doesn't exist.
-    fn get_subscription_set(&mut self, conn: &Token, glob: &Pattern) -> &mut SubscriptionSet {
+    fn get_subscription_set(&mut self, conn: &Token, glob: &Glob) -> &mut SubscriptionSet {
         if !self.globs.contains_key(glob) {
             self.globs.insert(glob.clone(), GlobSubscriptions::new());
         }

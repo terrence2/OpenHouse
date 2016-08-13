@@ -1,10 +1,20 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use glob::Pattern;
-use tree::{TreeError, TreeResult};
+use std::error::Error;
 use std::fmt;
 
+make_error!(PathError; {
+    NonAbsolutePath => String,
+    Dotfile => String,
+    EmptyComponent => String,
+    InvalidCharacter => String,
+    InvalidWhitespace => String,
+    UnreachablePattern => String,
+    NoParent => String,
+    NoBasename => String
+});
+pub type PathResult<T> = Result<T, PathError>;
 
 /// OpenHouse paths have somewhat stricter rules than a typical filesystem. The
 /// rules are:
@@ -30,9 +40,9 @@ pub struct PathBuilder {
 impl PathBuilder {
     /// Parse the given raw UTF-8 string. This function may return an error
     /// if it cannot be a path or glob.
-    pub fn new(raw: &str) -> TreeResult<PathBuilder> {
+    pub fn new(raw: &str) -> PathResult<PathBuilder> {
         if !raw.starts_with('/') {
-            return Err(TreeError::NonAbsolutePath(raw.to_owned()));
+            return Err(PathError::NonAbsolutePath(raw.to_owned()));
         }
 
         // Split produces two empty strings for "/", so just handle it separately
@@ -47,37 +57,9 @@ impl PathBuilder {
         // Note that since we start with /, we have to skip the first, empty, part.
         let mut contains_glob_chars = false;
         let mut parts: Vec<String> = Vec::new();
-        for (i, part) in raw.split('/').skip(1).enumerate() {
-            if part.len() == 0 {
-                return Err(TreeError::EmptyComponent(
-                           raw.to_owned() + " at part " + &i.to_string()));
-            }
-            if part.starts_with(".") {
-                return Err(TreeError::Dotfile(
-                           raw.to_owned() + " at part " + &i.to_string()));
-            }
-            for c in part.chars() {
-                if c == '\\' ||
-                   c == '/' ||
-                   c == ':' ||
-                   c == ','
-                {
-                    return Err(TreeError::InvalidCharacter(
-                        raw.to_owned() + " character: " + &c.to_string()));
-                }
-                // FIXME: whitespace should just be invalid character.
-                if c.is_whitespace() {
-                    return Err(TreeError::InvalidWhitespace(
-                        format!("{} at 0x{:X}", raw, c as u32)));
-                }
-                if c == '?' ||
-                   c == '*' ||
-                   c == '[' ||
-                   c == ']' ||
-                   c == '!'
-                {
-                    contains_glob_chars = true;
-                }
+        for part in raw.split('/').skip(1) {
+            if try!(PathBuilder::validate_path_or_glob_component(part)) {
+                contains_glob_chars = true;
             }
             parts.push(part.to_owned());
         }
@@ -87,14 +69,84 @@ impl PathBuilder {
         });
     }
 
-    /// Return the given path, if it is a path and not a glob. Otherwise returns
+    // Returns whether there are glob chars in the component.
+    fn validate_path_or_glob_component(part: &str) -> PathResult<bool> {
+        let mut contains_glob_chars = false;
+        if part.len() == 0 {
+            return Err(PathError::EmptyComponent("".to_owned()));
+        }
+        if part.starts_with(".") {
+            return Err(PathError::Dotfile(part.to_owned()));
+        }
+        for c in part.chars() {
+            if c == '\\' ||
+               c == '/' ||
+               c == ':' ||
+               c == ','
+            {
+                return Err(PathError::InvalidCharacter(
+                           part.to_owned() + " character: " + &c.to_string()));
+            }
+            if c.is_whitespace() {
+                return Err(PathError::InvalidWhitespace(part.to_owned()));
+            }
+            if c == '?' ||
+               c == '*' ||
+               c == '[' ||
+               c == ']' ||
+               c == '!'
+            {
+                contains_glob_chars = true;
+            }
+        }
+        return Ok(contains_glob_chars);
+    }
+
+    /// Check that the given string is a valid path component. Returns an
+    /// error if the part contains invalid characters, including glob characters.
+    pub fn validate_path_component(part: &str) -> PathResult<()> {
+        if try!(PathBuilder::validate_path_or_glob_component(part)) {
+            return Err(PathError::InvalidCharacter(part.to_owned()));
+        }
+        return Ok(());
+    }
+
+    /// Return the built path, if it is a path and not a glob. Otherwise returns
     /// an error.
-    pub fn finish_path(self) -> TreeResult<Path> {
+    pub fn finish_path(self) -> PathResult<Path> {
         if self.contains_glob_chars {
-            return Err(TreeError::InvalidCharacter(
+            return Err(PathError::InvalidCharacter(
                        format!("unexpected glob character")));
         }
         return Ok(Path {parts: self.parts});
+    }
+
+    /// Return the built glob.
+    pub fn finish_glob(self) -> PathResult<Glob> {
+        // Construct Glob part matchers from our strings.
+        let mut parts = Vec::new();
+        for part in self.parts {
+            parts.push(try!(GlobComponent::new(&part)));
+        }
+
+        // Check that we do not have multiple RecursiveSequence in a row.
+        // e.g. /foo/**/**/bar does not make any sense.
+        {
+            let i = parts.iter();
+            let j = parts.iter().skip(1);
+            for (a, b) in i.zip(j) {
+                if a.tokens[0] == GlobToken::AnyRecursiveSequence &&
+                   b.tokens[0] == GlobToken::AnyRecursiveSequence
+                {
+                    return Err(PathError::UnreachablePattern("**".to_owned()));
+                }
+            }
+        }
+
+        return Ok(Glob {
+            parts: parts,
+            is_exact: !self.contains_glob_chars
+        });
     }
 }
 
@@ -113,6 +165,24 @@ impl Path {
 
     pub fn iter(&self) -> PathIter {
         PathIter { parts: &self.parts, offset: 0 }
+    }
+
+    pub fn parent(&self) -> PathResult<Path> {
+        if self.parts.len() == 0 {
+            return Err(PathError::NoParent("already at top".to_owned()));
+        }
+        let mut parent_parts: Vec<String> = Vec::new();
+        for part in self.parts.iter().take(self.parts.len() - 1) {
+            parent_parts.push(part.clone());
+        }
+        return Ok(Path {parts: parent_parts});
+    }
+
+    pub fn basename(&self) -> PathResult<String> {
+        match self.parts.last() {
+            None => Err(PathError::NoBasename("the root has no name".to_owned())),
+            Some(p) => Ok(p.clone())
+        }
     }
 }
 
@@ -143,81 +213,209 @@ impl<'a> Iterator for PathIter<'a> {
 }
 
 /// A glob refers to one or more locations in a Tree.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Glob {
-    parts: Vec<String>,
+    parts: Vec<GlobComponent>,
     is_exact: bool
 }
 
-/// Verify that the given glob obeys the same restrictions as those set on tree
-/// paths.
-pub fn validate_glob(glob: &Pattern) -> TreeResult<()> {
-    validate_path_common(glob.as_str(), true)
-}
+impl Glob {
+    pub fn iter(&self) -> GlobIter {
+        GlobIter { parts: &self.parts, offset: 0 }
+    }
 
-/// Attempt to create a path from the given glob. If the path creation fails,
-/// e.g. because we contain glob characters, we return None, otherwise we
-/// return the new Path. Note that this does not validate the glob: that
-/// must still be done before evaluating it.
-pub fn maybe_become_path(glob: &Pattern) -> Option<Path> {
-    match PathBuilder::new(glob.as_str()) {
-        Ok(p) => match p.finish_path() {
-            Ok(p) => Some(p),
-            Err(_) => None
-        },
-        Err(_) => None
+    fn to_str(&self) -> String {
+        "/".to_owned() + &self.parts.iter()
+                              .map(|x| x.source.clone())
+                              .collect::<Vec<_>>()
+                              .join("/")
     }
 }
 
-fn validate_path_common(path: &str, allow_glob: bool) -> TreeResult<()>
-{
-    if !path.starts_with('/') {
-        return Err(TreeError::NonAbsolutePath(path.to_owned()));
+impl fmt::Display for Glob {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str())
     }
-
-    // Split produces two empty strings for "/", so just handle it separately
-    // instead of trying to do something smart in the loop below.
-    if path == "/" {
-        return Ok(());
-    }
-
-    // Note that since we start with /, we have to skip the first, empty, part.
-    for (i, part) in path.split('/').skip(1).enumerate() {
-        try!(validate_path_component(path, i, part, allow_glob));
-    }
-    return Ok(());
 }
 
-pub fn validate_path_component(path: &str, i: usize, part: &str, allow_glob: bool)
-    -> TreeResult<()>
-{
-    if part.len() == 0 {
-        return Err(TreeError::EmptyComponent(
-                path.to_owned() + " at part " + &i.to_string()));
-    }
-    if part.starts_with(".") {
-        return Err(TreeError::Dotfile(
-                path.to_owned() + " at part " + &i.to_string()));
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+enum GlobToken {
+    Char(char),
+    AnyChar, // ?
+    AnySequence, // *
+    AnyRecursiveSequence, // **
+
+    // TODO: decide whether we want to bother supporting these.
+    //AnyWithin(Vec<char>), // []
+    //AnyExcept(Vec<char>) // [!]
+}
+
+// A single path component of a glob.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GlobComponent {
+    source: String,
+    tokens: Vec<GlobToken>
+}
+
+impl GlobComponent {
+    fn new(part: &str) -> PathResult<GlobComponent> {
+        // ** Can only be a whole path component, so we can check for it up front.
+        let mut tokens = Vec::new();
+        if part == "**" {
+            tokens.push(GlobToken::AnyRecursiveSequence);
+            return Ok(GlobComponent { source: part.to_owned(), tokens: tokens });
+        }
+
+        let mut i = 0;
+        let chars = part.chars().collect::<Vec<_>>();
+        while i < chars.len() {
+            match chars[i] {
+                '?' => {
+                    tokens.push(GlobToken::AnyChar);
+                    i += 1;
+                }
+                '*' => {
+                    // Detect ** not as whole part or, ***, ****, etc.
+                    if chars.len() > i + 1 && chars[i + 1] == '*' {
+                        return Err(PathError::InvalidCharacter("***+".to_owned()));
+                    }
+                    tokens.push(GlobToken::AnySequence);
+                    i += 1;
+                }
+                c => {
+                    tokens.push(GlobToken::Char(c));
+                    i += 1;
+                }
+            }
+        }
+        return Ok(GlobComponent { source: part.to_owned(), tokens: tokens });
     }
 
-    for c in part.chars() {
-        if c == '\\' ||
-           c == '/' ||
-           c == ':' ||
-           c == ',' ||
-           (!allow_glob && c == '?') ||
-           (!allow_glob && c == '*') ||
-           (!allow_glob && c == '[') ||
-           (!allow_glob && c == ']') ||
-           (!allow_glob && c == '!')
+    pub fn matches(&self, name: &str) -> bool {
+        assert!(self.tokens.len() > 0);
+        let chars = name.chars().collect::<Vec<_>>();
+        /*
+        let mut i = 0;
+        for token in self.tokens {
+            if i >= chars.len() {
+                return false;
+            }
+            match token {
+                GlobToken::Char(c) => {
+                    if chars[i] != c {
+                        return false;
+                    }
+                    i += 1;
+                }
+                _ => {}
+            }
+        }
+        */
+        return true;
+    }
+}
+
+/// An iteration of the components of a Path.
+#[derive(Debug)]
+pub struct GlobIter<'a> {
+    parts: &'a Vec<GlobComponent>,
+    offset: usize
+}
+
+impl<'a> Iterator for GlobIter<'a> {
+    type Item = &'a GlobComponent;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.offset >= self.parts.len() {
+            return None;
+        }
+
+        let off = self.offset;
+        self.offset += 1;
+        return Some(&self.parts[off]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate env_logger;
+    use super::*;
+
+    fn make_path(p: &str) -> Path {
+        PathBuilder::new(p).unwrap().finish_path().unwrap()
+    }
+
+    macro_rules! make_badpath_tests {
+        ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
         {
-            return Err(TreeError::InvalidCharacter(
-                path.to_owned() + " character: " + &c.to_string()));
-        }
-        if c.is_whitespace() && c != ' ' {
-            return Err(TreeError::InvalidWhitespace(
-                format!("{} at 0x{:X}", path, c as u32)));
+            $(
+                #[test]
+                #[should_panic(expected=$expect)]
+                fn $name() {
+                    make_path($string);
+                }
+            )*
         }
     }
-    return Ok(());
-}
 
+    make_badpath_tests!([
+        ("NonAbsolutePath", test_empty_path, ""),
+        ("NonAbsolutePath", test_relative_path, "foo/bar"),
+        ("EmptyComponent", test_empty_component_root, "//"),
+        ("EmptyComponent", test_empty_component_front, "//foo"),
+        ("EmptyComponent", test_empty_component_back, "/foo/"),
+        ("EmptyComponent", test_empty_component_middle, "/foo//bar"),
+        ("Dotfile", test_dotfile_self, "/foo/."),
+        ("Dotfile", test_dotfile_self_middle, "/foo/./bar"),
+        ("Dotfile", test_dotfile_parent, "/foo/.."),
+        ("Dotfile", test_dotfile_parent_middle, "/foo/../bar"),
+        ("Dotfile", test_dotfile_hidden, "/foo/.bar"),
+        ("Dotfile", test_dotfile_hidden_middle, "/foo/.bar/baz"),
+        ("InvalidWhitespace", test_whitespace_tab, "/foo/a\tb/baz"),
+        ("InvalidWhitespace", test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
+        ("InvalidWhitespace", test_whitespace_newline, "/foo/a\nb/baz"),
+        ("InvalidWhitespace", test_whitespace_carriage_return, "/foo/a\rb/baz"),
+        ("InvalidWhitespace", test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
+        ("InvalidCharacter", test_invalid_backslash, "/foo/a\\b/baz"),
+        ("InvalidCharacter", test_invalid_colon, "/foo/a:b/baz"),
+        ("InvalidCharacter", test_invalid_comma, "/foo/a,b/baz"),
+        ("InvalidCharacter", test_invalid_star, "/foo/a*b/baz"),
+        ("InvalidCharacter", test_invalid_question, "/foo/a?b/baz"),
+        ("InvalidCharacter", test_invalid_open_bracket, "/foo/a[b/baz"),
+        ("InvalidCharacter", test_invalid_close_bracket, "/foo/a]b/baz"),
+        ("InvalidCharacter", test_invalid_exclamation, "/foo/a!b/baz")
+    ]);
+
+    fn make_glob(p: &str) -> Glob {
+        PathBuilder::new(p).unwrap().finish_glob().unwrap()
+    }
+
+    macro_rules! make_badglob_tests {
+        ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
+        {
+            $(
+                #[test]
+                #[should_panic(expected=$expect)]
+                fn $name() {
+                    make_glob($string);
+                }
+            )*
+        }
+    }
+
+    make_badglob_tests!([
+        ("UnreachablePattern", test_unreachable_sole, "/**/**"),
+        ("UnreachablePattern", test_unreachable_end, "/a/**/**"),
+        ("UnreachablePattern", test_unreachable_prefix, "/**/**/b"),
+        ("UnreachablePattern", test_unreachable_middle, "/a/**/**/b"),
+        ("InvalidCharacter", test_invalid_multistar2_start, "/a/**foo/b"),
+        ("InvalidCharacter", test_invalid_multistar2_end, "/a/foo**/b"),
+        ("InvalidCharacter", test_invalid_multistar2_middle, "/a/fo**oo/b"),
+        ("InvalidCharacter", test_invalid_multistar3, "/a/***/b"),
+        ("InvalidCharacter", test_invalid_multistar4, "/a/****/b")
+    ]);
+
+    #[test]
+    fn test_construct_glob() {
+        PathBuilder::new("/?a/a?/a?b/*c/c*/c*d").unwrap().finish_glob().unwrap();
+    }
+}
