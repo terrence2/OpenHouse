@@ -292,9 +292,9 @@ impl GlobComponent {
     }
 
     pub fn matches(&self, name: &str) -> bool {
+        /*
         assert!(self.tokens.len() > 0);
         let chars = name.chars().collect::<Vec<_>>();
-        /*
         let mut i = 0;
         for token in self.tokens {
             if i >= chars.len() {
@@ -417,5 +417,43 @@ mod tests {
     #[test]
     fn test_construct_glob() {
         PathBuilder::new("/?a/a?/a?b/*c/c*/c*d").unwrap().finish_glob().unwrap();
+    }
+
+    macro_rules! make_glob_match_tests {
+        ( [ $(
+           ($name: ident,
+            $glob:expr,
+            [ $( $successes:expr ),* ],
+            [ $( $failures:expr ),* ])
+        ),* ] ) =>
+        {
+            $(
+                #[test]
+                fn $name() {
+                    let success: Vec<&'static str> = vec![ $($successes),* ];
+                    let failure: Vec<&'static str> = vec![ $($failures),* ];
+                    let glob = make_glob($glob);
+                    let component = glob.iter().next().unwrap();
+                    for part in success {
+                        assert!(component.matches(part));
+                    }
+                    for part in failure {
+                        assert!(!component.matches(part));
+                    }
+                }
+            )*
+        }
+    }
+
+    make_glob_match_tests!([
+        (test_match_q_start, "/?a", ["/aa", "/ba", "/Xa"], ["/ab", "/Xaa", "/Xa/a"])
+    ]);
+    #[test]
+    fn test_match_glob_component() {
+        let glob = make_glob("/?a");
+        let component = glob.iter().next().unwrap();
+        assert!(component.matches("aa"));
+        assert!(component.matches("ba"));
+        assert!(component.matches("ca"));
     }
 }
