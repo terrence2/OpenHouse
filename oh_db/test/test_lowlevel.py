@@ -277,16 +277,7 @@ async def test_set_glob_basic():
         async with make_connection() as tree:
             for name in "abcd":
                 await tree.create_file("/", name)
-            #await tree.set_file_content("/*", "hello")
+            await tree.set_file_content("/*", "hello")
             for name in "abcd":
                 assert "hello" == await tree.get_file_content("/" + name)
 
-            #await tree.create_directory("/", "dir")
-            #for name in "abcd":
-            #    await tree.create_file("/dir", name)
-            #await tree.set_file_content("/*", "hello")
-            #await tree.set_file_content("/[!ac]", "world")
-            #assert "hello" == await tree.get_file_content("/a")
-            #assert "world" == await tree.get_file_content("/b")
-            #assert "hello" == await tree.get_file_content("/c")
-            #assert "world" == await tree.get_file_content("/d")

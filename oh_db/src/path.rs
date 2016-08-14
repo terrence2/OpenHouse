@@ -200,6 +200,13 @@ impl Path {
             Some(p) => Ok(p.clone())
         }
     }
+
+    pub fn slash(&self, part: &str) -> PathResult<Path> {
+        // FIXME: take &PathComponent so that we don't lose verification.
+        let mut out = self.parts.clone();
+        out.push(part.to_owned());
+        return Ok(Path {parts: out});
+    }
 }
 
 impl fmt::Display for Path {
@@ -564,12 +571,13 @@ mod tests {
                 fn $name() {
                     let success: Vec<&'static str> = vec![ $($successes),* ];
                     let failure: Vec<&'static str> = vec![ $($failures),* ];
+
                     let glob = make_glob($glob);
-                    for path_str in success {
+                    for path_str in success.iter() {
                         let path = make_path(path_str);
                         assert!(glob.matches(&path));
                     }
-                    for path_str in failure {
+                    for path_str in failure.iter() {
                         let path = make_path(path_str);
                         assert!(!glob.matches(&path));
                     }

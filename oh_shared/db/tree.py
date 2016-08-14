@@ -56,7 +56,9 @@ class NonAbsolutePath(PathError): pass
 class Dotfile(PathError): pass
 class EmptyComponent(PathError): pass
 class InvalidCharacter(PathError): pass
-class InvalidWhitespace(PathError): pass
+class InvalidControlCharacter(PathError): pass
+class InvalidWhitespaceCharacter(PathError): pass
+class InvalidGlobCharacter(PathError): pass
 class UnreachablePattern(PathError): pass
 class NoParent(PathError): pass
 class NoBasename(PathError): pass

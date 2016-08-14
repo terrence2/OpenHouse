@@ -309,10 +309,12 @@ fn run_server(address: &str, port: u16,
                 {
                     let db = &mut env.db;
                     let parent = try!(db.lookup_directory(&parent_path));
-                    try!(match node_type {
-                        create_node_request::NodeType::Directory => parent.add_directory(&name),
-                        create_node_request::NodeType::File => parent.add_file(&name)
-                    });
+                    if node_type == create_node_request::NodeType::Directory {
+                        try!(parent.add_directory(&name));
+                    } else {
+                        debug_assert!(node_type == create_node_request::NodeType::File);
+                        try!(parent.add_file(&name));
+                    }
                 }
                 env.notify_subscriptions(&parent_path, EventKind::Created, name);
             }
@@ -387,7 +389,7 @@ fn run_server(address: &str, port: u16,
             info!("handling SetFileContent -> glob: {}, data: {}", glob, data);
             {
                 let db = &mut self.env.borrow_mut().db;
-                let matches = try!(db.lookup_matching_files(&glob));
+                let matches = try!(db.find_matching_files(&glob));
                 for (path, file) in matches {
                     info!("Matching file: {}", path);
                     file.set_data(&data);

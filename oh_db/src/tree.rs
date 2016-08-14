@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use path::{PathBuilder, Glob, GlobIter, Path, PathIter};
+use path::{PathBuilder, Glob, Path, PathIter};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -74,44 +74,33 @@ impl DirectoryData {
         }
     }
 
-    fn lookup_matching_files_recursive(&mut self, path: &mut Path, parts: &mut GlobIter) ->
-        TreeResult<Vec<(Path, &mut FileData)>>
+    /// Recursively trawl all directories finding matching globs. Note that
+    /// doing something smarter here is really hard because any ** will force
+    /// us to visit most paths anyway.
+    ///
+    /// TODO: think of reasonable caching strategies.
+    pub fn find_matching_files_recursive(&mut self, own_path: &Path, glob: &Glob)
+        -> TreeResult<Vec<(Path, &mut FileData)>>
     {
-        let glob_component = match parts.next() {
-            Some(component) => component,
-            None => return Err(Box::new(TreeError::NotFile("".to_owned())))
-        };
-        let mut out = Vec::new();
-        /*
-        for (child_name, child) in self.children.iter() {
-            if glob_component.matches(&child_name) {
-                match child {
-                    &mut Node::Directory(ref mut d) => {
-                        d.lookup_matching_files_recursive(path, parts);
-                    }
-                    &mut Node::File(ref mut f) => {
-                        if parts.next().is_some() {
-                            Err(Box::new(TreeError::NotDirectory(name.to_owned())))
-                        } else {
-                            Ok(f)
-                        }
-                        out.push((path, f));
+        let mut acc: Vec<(Path, &mut FileData)> = Vec::new();
+        for (child_name, child_node) in &mut self.children {
+            let child_path = try!(own_path.slash(child_name));
+            match child_node {
+                &mut Node::Directory(ref mut d) => {
+                    let matching = try!(d.find_matching_files_recursive(&child_path, glob));
+                    acc.extend(matching);
+                }
+                &mut Node::File(ref mut f) => {
+                    if glob.matches(&child_path) {
+                        acc.push((child_path, f));
                     }
                 }
             }
         }
-        */
-        return Ok(out);
+        return Ok(acc);
     }
 
-    pub fn add_directory(&mut self, name: &str) -> TreeResult<()> {
-        return self.add_child(name, Node::Directory(DirectoryData::new()));
-    }
-
-    pub fn add_file(&mut self, name: &str) -> TreeResult<()> {
-        return self.add_child(name, Node::File(FileData::new()))
-    }
-
+    // Internal helper for add_foo.
     fn add_child(&mut self, name: &str, node: Node) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         if self.children.contains_key(name) {
@@ -122,6 +111,36 @@ impl DirectoryData {
         return Ok(());
     }
 
+    /// Returns the directory that was just created.
+    pub fn add_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
+        try!(self.add_child(name, Node::Directory(DirectoryData::new())));
+        return self.get_child_directory(name);
+    }
+
+    /// Returns the file that was just created.
+    pub fn add_file(&mut self, name: &str) -> TreeResult<&mut FileData> {
+        try!(self.add_child(name, Node::File(FileData::new())));
+        return match self.children.get_mut(name) {
+            None => panic!("Unable to find a file we just added!"),
+            Some(n) => match n {
+                &mut Node::Directory(_) => panic!("We just added a file!"),
+                &mut Node::File(ref mut f) => Ok(f)
+            }
+        };
+    }
+
+    // Returns the indicated child.
+    fn get_child_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
+        return match self.children.get_mut(name) {
+            None => Err(Box::new(TreeError::NoSuchNode(name.to_owned()))),
+            Some(n) => match n {
+                &mut Node::File(_) => Err(Box::new(TreeError::NotDirectory(name.to_owned()))),
+                &mut Node::Directory(ref mut d) => Ok(d)
+            }
+        };
+    }
+
+    /// Remove the given name from the tree.
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         {
@@ -205,11 +224,12 @@ impl Tree {
     }
 
     /// Returns pairs of (path, file) that match the given glob.
-    pub fn lookup_matching_files<'a>(&'a mut self, glob: &'a Glob)
+    /// TODO: do we still need the lifetime params?
+    pub fn find_matching_files<'a>(&'a mut self, glob: &'a Glob)
         -> TreeResult<Vec<(Path, &mut FileData)>>
     {
         let mut path = try!(try!(PathBuilder::new("/")).finish_path());
-        return self.root.lookup_matching_files_recursive(&mut path, &mut glob.iter());
+        return self.root.find_matching_files_recursive(&mut path, glob);
     }
 }
 
@@ -268,15 +288,9 @@ mod tests {
         ( [ $(
             (   $name:ident,
                 $glob:expr,
-                [
-                    $( $dirnames:expr ),*
-                ],
-                [
-                    $( $filenames:expr ),*
-                ],
-                [
-                    $( $results:expr ),*
-                ]
+                [ $( $dirnames:expr ),* ],
+                [ $( $filenames:expr ),* ],
+                [ $( $results:expr ),* ]
             )
         ),* ] ) =>
         {
@@ -304,7 +318,7 @@ mod tests {
                     }
 
                     let glob = make_glob($glob);
-                    let results = tree.lookup_matching_files(&glob).unwrap();
+                    let results = tree.find_matching_files(&glob).unwrap();
                     assert!(expect.len() == results.len());
                     for (path, _) in results {
                         let mut found = false;
@@ -325,30 +339,15 @@ mod tests {
         }
     }
     make_glob_matching_tests!([
-        (test_match_one_char,
-         "/?",
-         [], ["/a", "/b", "/c", "/aa", "/bb", "/cc"],
+        (test_match_one_char, "/?",
+         ["/d"], ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a"],
          ["/a", "/b", "/c"])
+       ,(test_match_one_char_subdir, "/?/a",
+         ["/d", "/e", "/f", "/f/g"], ["/a", "/b", "/c", "/d/a", "/d/X", "/e/a", "/e/X",
+                                      "/f/a", "/f/X", "/f/g/a", "/f/g/X"],
+         ["/d/a", "/e/a", "/f/a"])
+       ,(test_match_star, "/*",
+         ["/d"], ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a", "/d/b", "/d/c"],
+         ["/a", "/b", "/c", "/aa", "/bb", "/cc"])
     ]);
-
-    /*
-    #[test]
-    fn test_glob_set() {
-        let _ = env_logger::init();
-        let mut tree = Tree::new();
-        {
-            let root = tree.lookup_directory(&make_path("/")).unwrap();
-            root.add_file("a").unwrap();
-            root.add_file("ab").unwrap();
-            root.add_file("b").unwrap();
-            root.add_file("bb").unwrap();
-        }
-        let glob = Pattern::new("/a*").unwrap();
-        let matching = tree.lookup_matching_files(&glob).unwrap();
-        assert_eq!(matching.len(), 2);
-        for (path, _) in matching {
-            assert!(path.to_str() == "/a" || path.to_str() == "/ab");
-        }
-    }
-    */
 }

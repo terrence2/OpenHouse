@@ -15,8 +15,10 @@ EmptyComponentPaths = {
     db.EmptyComponent: ("//", "/foo/", "/foo//bar"),
 }
 InvalidChars = {
-    db.InvalidCharacter: "/\\:,?*[]!",
-    db.InvalidWhitespace: "\v\t\n\r\u00A0",
+    db.InvalidCharacter: "/\\:,![]{}",
+    db.InvalidControlCharacter: "\n\v\t\r",
+    db.InvalidWhitespaceCharacter: " \u00A0",
+    db.InvalidGlobCharacter: "?*",
 }
 
 @pytest.mark.asyncio
