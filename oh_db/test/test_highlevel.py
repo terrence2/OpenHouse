@@ -52,5 +52,5 @@ async def test_data():
             await tree.create_file("/", "a")
             await tree.set_file_content("/a", "flinfniffle")
             data = await tree.get_file_content("/a")
-            assert data == "flinfniffle"
+            assert data['/a'] == "flinfniffle"
             await tree.remove_node("/", "a")

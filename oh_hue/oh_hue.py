@@ -7,12 +7,14 @@ import logging
 from hue.bridge import Bridge
 from hue.light import Light
 from oh_shared.args import parse_default_args
-from oh_shared.home import Home, NodeData
 from oh_shared.log import enable_logging
+from oh_shared.db import Connection
+from pathlib import Path
 
 log = logging.getLogger('oh_hue')
 
 
+"""
 class BridgeNotFound(Exception):
     def __init__(self, light_name):
         super().__init__()
@@ -25,22 +27,26 @@ def find_bridge_owning_light(bridges: [Bridge], light_node: NodeData) -> (Bridge
         if bridge.owns_light_named(name):
             return bridge, bridge.get_id_for_light_named(name)
     raise BridgeNotFound(name)
+"""
 
-
-@asyncio.coroutine
-def main():
+async def main():
     args = parse_default_args('Map light style changes to hue commands.')
     enable_logging(args.log_target, args.log_level)
-    home = yield from Home.connect((args.home_address, args.home_port))
 
-    # Find all configured bridges.
-    res = yield from home.query("hue-bridge").run()
-    bridges = []
-    for path, node in res.items():
-        bridge = yield from Bridge.create(path, node.attrs['ipv4'], node.attrs['username'], home)
-        bridges.append(bridge)
+    async with Connection((args.home_address, args.home_port),
+                          args.ca_chain, args.certificate, args.private_key) as tree:
+        address = await tree.get_file_content("/hue-bridge/address")
+        username = await tree.get_file_content("/hue-bridge/username")
+        bridge = await Bridge.create(address, username)
 
-    # Find all configured lights.
+        # Find all configured lights.
+        lights_type = await tree.get_file_content("/rooms/*/lights/*/type")
+        for type_path, light_type in lights_type:
+            if light_type == 'hue':
+                light_path = Path(type_path).parent
+                print("Found Hue light at: {}", light_path)
+
+    """
     res = yield from home.query("light[kind=hue], light[kind=hue-livingcolors]").run()
     lights = []
     for path, node in res.items():
@@ -56,6 +62,7 @@ def main():
     # Show lights that may be unconfigured.
     for bridge in bridges:
         bridge.show_unqueried_lights()
+    """
 
 
 if __name__ == '__main__':

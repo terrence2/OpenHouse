@@ -91,20 +91,20 @@ struct ListDirectoryResponse {
 }
 
 struct GetFileContentRequest {
-    path @0 :Text;
-    # The path must be a single, absolute path. The path must refer to a file
-    # node.
+    glob @0 :Text;
 }
 struct GetFileContentResponse {
-    data @0 :Text;
-    # FIXME: make this data after fixing tree.
+    data @0 :List(PathAndData);
+
+    struct PathAndData {
+        path @0 :Text;
+        data @1 :Text;
+    }
 }
 
 struct SetFileContentRequest {
     glob @0 :Text;
-
     data @1 :Text;
-    # FIXME: this should be Data type, but we need to fix Tree first.
 }
 
 enum EventKind {

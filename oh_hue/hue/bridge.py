@@ -18,11 +18,8 @@ LightUpdate = namedtuple('LightUpdate', ['request_time', 'light_id', 'json_data'
 
 
 class Bridge:
-    def __init__(self, path: str, addr: str, username: str, home: Home):
+    def __init__(self, addr: str, username: str):
         super().__init__()
-        self.home = home
-        self.path = path
-        self.bridge_query = Home.path_to_query(self.path)
 
         # Bridge access.
         self.address = addr
@@ -47,21 +44,27 @@ class Bridge:
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, path: str, addr: str, username: str, home: Home) -> 'Bridge':
-        bridge = cls(path, addr, username, home)
+    def create(cls, addr: str, username: str) -> 'Bridge':
+        bridge = cls(addr, username)
 
         # Make initial status query.
         res = yield from aiohttp.request('GET', bridge.url(''))
-        bridge.status_ = yield from res.json()
-        #log.debug(pformat(bridge.status_))
+        status = yield from res.json()
+        config = status['config']
+        interesting = ['name', 'modelid', 'bridgeid', 'apiversion', 'swversion',
+                       'UTC', 'localtime', 'timezone',
+                       'ipaddress', 'mac', 'gateway', 'netmask', 'zigbeechannel']
+        log.info("Hue Bridge Configuration:")
+        for prop in interesting:
+            log.info("{}: {}".format(prop, config[prop]))
 
         # Print light configuration.
-        for i, (light_id, props) in enumerate(bridge.status_['lights'].items()):
-            log.debug("light#{:<2} {:>2} : {:20} : {} : {}".format(i, light_id, props['name'], props['modelid'],
-                                                                   props['swversion'], props['uniqueid']))
+        for i, (light_id, props) in enumerate(status['lights'].items()):
+            log.info("light#{:<2} {:>2} : {:20} : {} : {}".format(i, light_id, props['name'], props['modelid'],
+                                                                  props['swversion'], props['uniqueid']))
 
         # Print any pre-configured groups.
-        for i, (group_id, props) in enumerate(bridge.status_['groups'].items()):
+        for i, (group_id, props) in enumerate(status['groups'].items()):
             log.warning("removing pre-existing group {}".format(group_id))
             response = yield from aiohttp.request('DELETE', bridge.url('/groups/{}'.format(group_id)))
             content = yield from response.json()
@@ -69,7 +72,7 @@ class Bridge:
 
         # Derive initial group list.
         bridge.known_groups_ = {
-            frozenset(bridge.status_['lights'].keys()): '0'
+            frozenset(status['lights'].keys()): '0'
         }
         # TODO: record any other well-known groups.
 
@@ -81,6 +84,7 @@ class Bridge:
         """
         return "http://{}/api/{}{}".format(self.address, self.username, target)
 
+    '''
     def owns_light_named(self, light_name: str) -> bool:
         """
         Return true if the given light is controlled by this bridge. In theory, two bridges could have
@@ -90,6 +94,7 @@ class Bridge:
             if light_state['name'] == light_name:
                 return True
         return False
+    '''
 
     def get_id_for_light_named(self, light_name: str) -> str:
         """

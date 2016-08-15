@@ -92,10 +92,6 @@ async def test_remove_errors():
 async def test_data_errors():
     with run_server():
         async with make_connection() as tree:
-            with pytest.raises(db.NotFile):
-                await tree.set_file_content("/", "")
-            with pytest.raises(db.NotFile):
-                await tree.get_file_content("/")
             with pytest.raises(db.Dotfile):
                 await tree.set_file_content("/.", "")
             with pytest.raises(db.Dotfile):
@@ -104,10 +100,6 @@ async def test_data_errors():
                 await tree.set_file_content("a/b", "")
             with pytest.raises(db.NonAbsolutePath):
                 await tree.get_file_content("a/b")
-
-            await tree.create_file("/", "a")
-            with pytest.raises(db.NotDirectory):
-                await tree.set_file_content("/a/b", "")
 
 
 @pytest.mark.asyncio

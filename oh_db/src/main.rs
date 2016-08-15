@@ -366,16 +366,22 @@ fn run_server(address: &str, port: u16,
                                    response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
-            let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
-            info!("handling GetFileContent -> path: {}", path);
-            let data;
+            let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
+            info!("handling GetFileContent -> glob: {}", glob);
+            let mut out = Vec::new();
             {
                 let db = &mut self.env.borrow_mut().db;
-                let file = try!(db.lookup_file(&path));
-                data = file.get_data();
+                let matches = try!(db.find_matching_files(&glob));
+                for (path, file) in matches {
+                    out.push((path, file.get_data()));
+                }
             }
-            let mut cat_response = response.init_get_file_content();
-            cat_response.set_data(&data);
+            let cat_response = response.init_get_file_content();
+            let mut cat_data = cat_response.init_data(out.len() as u32);
+            for (i, &(ref path, ref data)) in out.iter().enumerate() {
+                cat_data.borrow().get(i as u32).set_path(&path.to_str());
+                cat_data.borrow().get(i as u32).set_data(data);
+            }
             return Ok(());
         }
 

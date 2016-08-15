@@ -4,6 +4,25 @@ from subprocess import check_call
 from contextlib import contextmanager
 
 
+CLIENTS = [
+    "oh_alarm",
+    "oh_apply_scene",
+    "oh_apply_sensor",
+    "oh_cli",
+    "oh_db_test",
+    "oh_fs",
+    "oh_hue",
+    "oh_infer_activity",
+    "oh_motion_filter",
+    "oh_populate",
+    "oh_rave",
+    "oh_rest",
+    "oh_sun",
+    "oh_web",
+    "oh_wemo",
+]
+
+
 config_template = """
 [ ca ]
 # `man ca`
@@ -267,10 +286,7 @@ def make_certificates():
         make_certificate(server, 'server_cert', key_size=4096, expire=100*365,
                          key_security='', x509_security='-nodes')
 
-    clients = ["oh_alarm", "oh_apply_scene", "oh_apply_sensor", "oh_cli", "hue", "oh_infer_activity",
-               "oh_motion_filter", "oh_rave", "oh_rest", "oh_sun", "oh_web", "oh_wemo", "oh_db_test",
-               "oh_populate", "oh_fs"]
-    for client in clients:
+    for client in CLIENTS:
         make_certificate(client, 'usr_cert', key_size=4096, expire=100*365,
                          key_security='', x509_security='-nodes')
 

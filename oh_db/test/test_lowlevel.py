@@ -8,6 +8,16 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_initial_tree():
+    """
+    Do some work using async calls.
+    """
+    with run_server():
+        async with make_connection() as tree:
+            assert await tree.list_directory("/") == []
+
+
+@pytest.mark.asyncio
 async def test_tree_async():
     """
     Do some work using async calls.
@@ -32,7 +42,8 @@ async def test_tree_async():
                 if i % 2 == 1:
                     futures.append(await tree.get_file_content_async("/" + a))
             results = await asyncio.gather(*futures)
-            assert "".join(sorted([rv.data for rv in results])) == children[1::2]
+            paths = [rv.data[0].path for rv in results]
+            assert "".join([p[1] for p in sorted(paths)]) == children[1::2]
 
             futures = []
             vowels = "aeiou"
@@ -146,7 +157,7 @@ async def test_subscribe_same_client_data():
             await tree.set_file_content("/a", "foo")
             await tree.set_file_content("/b", "foo")
             rv = await tree.get_file_content("/a")
-            assert rv == "foo"
+            assert rv['/a'] == "foo"
             await asyncio.gather(notify1, notify2)
             assert count1 == 1
             assert count2 == 1
@@ -253,19 +264,19 @@ async def test_subscribe_glob_filter():
                 assert expect == (count, list(paths), event, context)
                 count += 1
 
-            for name in "abcd":
+            for name in "abc".split() + ['aa']:
                 await tree.create_file("/", name)
-            await tree.subscribe("/[abc]", on_changed)
+            await tree.subscribe("/?", on_changed)
 
             expect = (0, ["/a"], db.EventKind.changed, "foo")
             await tree.set_file_content("/a", "foo")
-            await tree.set_file_content("/d", "foo")
+            await tree.set_file_content("/aa", "foo")
             expect = (1, ["/b"], db.EventKind.changed, "bar")
             await tree.set_file_content("/b", "bar")
-            await tree.set_file_content("/d", "bar")
+            await tree.set_file_content("/aa", "bar")
             expect = (2, ["/c"], db.EventKind.changed, "baz")
             await tree.set_file_content("/c", "baz")
-            await tree.set_file_content("/d", "baz")
+            await tree.set_file_content("/aa", "baz")
 
 
 @pytest.mark.asyncio
@@ -278,6 +289,7 @@ async def test_set_glob_basic():
             for name in "abcd":
                 await tree.create_file("/", name)
             await tree.set_file_content("/*", "hello")
+            data = await tree.get_file_content("/*")
             for name in "abcd":
-                assert "hello" == await tree.get_file_content("/" + name)
+                assert data["/" + name] == "hello"
 

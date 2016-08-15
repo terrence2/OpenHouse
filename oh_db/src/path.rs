@@ -12,9 +12,7 @@ make_error!(PathError; {
     InvalidGlobCharacter => String,
     InvalidWhitespaceCharacter => String,
     InvalidControlCharacter => String,
-    UnreachablePattern => String,
-    NoParent => String,
-    NoBasename => String
+    UnreachablePattern => String
 });
 pub type PathResult<T> = Result<T, PathError>;
 
@@ -183,9 +181,10 @@ impl Path {
         PathIter { parts: &self.parts, offset: 0 }
     }
 
+    #[cfg(test)]
     pub fn parent(&self) -> PathResult<Path> {
         if self.parts.len() == 0 {
-            return Err(PathError::NoParent("already at top".to_owned()));
+            return Err(PathError::EmptyComponent("already at top".to_owned()));
         }
         let mut parent_parts: Vec<String> = Vec::new();
         for part in self.parts.iter().take(self.parts.len() - 1) {
@@ -194,9 +193,10 @@ impl Path {
         return Ok(Path {parts: parent_parts});
     }
 
+    #[cfg(test)]
     pub fn basename(&self) -> PathResult<String> {
         match self.parts.last() {
-            None => Err(PathError::NoBasename("the root has no name".to_owned())),
+            None => Err(PathError::EmptyComponent("the root has no name".to_owned())),
             Some(p) => Ok(p.clone())
         }
     }
@@ -294,7 +294,6 @@ impl Glob {
                 }
             }
         }
-        println!("Exited loop");
         // If we matched all parts, return success, else fail.
         return match path_parts.next() {
             None => true,

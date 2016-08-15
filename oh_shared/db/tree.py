@@ -1,9 +1,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+import attr
 import asyncio
 import capnp
-import json
 import itertools
 import logging
 import os.path
@@ -153,7 +153,6 @@ class Tree:
         raise NotImplementedError("unknown response type: {}".format(response.which()))
 
     def _handle_response_message(self, response: messages.ServerResponse):
-        log.debug("got response: {}".format(response.id))
         response_future = self.awaiting_response.pop(response.id)
         if response.which() == 'error':
             err = self.make_error(response.error)
@@ -197,8 +196,8 @@ class Tree:
         return await self._dispatch_message(setFileContent=messages.SetFileContentRequest.new_message(glob=glob,
                                                                                                       data=content))
 
-    async def get_file_content_async(self, path: str) -> asyncio.Future:
-        return await self._dispatch_message(getFileContent=messages.GetFileContentRequest.new_message(path=path))
+    async def get_file_content_async(self, glob: str) -> asyncio.Future:
+        return await self._dispatch_message(getFileContent=messages.GetFileContentRequest.new_message(glob=glob))
 
     # Note that subscribe and unsubscribe do not have async varieties.
     # We do not guarantee message delivery order, so it is possible to
@@ -217,7 +216,7 @@ class Tree:
     async def list_directory(self, path: str) -> [str]:
         future = await self.list_directory_async(path)
         result = await future
-        return result.children
+        return list(result.children)
 
     async def set_file_content(self, path: str, content: str):
         future = await self.set_file_content_async(path, content)
@@ -226,7 +225,7 @@ class Tree:
     async def get_file_content(self, path: str) -> str:
         future = await self.get_file_content_async(path)
         result = await future
-        return result.data
+        return {x.path: x.data for x in result.data}
 
     async def subscribe(self, glob: str, cb: callable) -> asyncio.Future:
         future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(glob=glob))
