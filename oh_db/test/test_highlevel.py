@@ -50,7 +50,7 @@ async def test_data():
     with run_server():
         async with make_connection() as tree:
             await tree.create_file("/", "a")
-            await tree.set_file_content("/a", "flinfniffle")
-            data = await tree.get_file_content("/a")
-            assert data['/a'] == "flinfniffle"
+            await tree.set_file("/a", "flinfniffle")
+            data = await tree.get_file("/a")
+            assert data == "flinfniffle"
             await tree.remove_node("/", "a")

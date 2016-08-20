@@ -30,7 +30,7 @@ async def test_tree_async():
                 ty = db.NodeType.directory if i % 2 == 0 else db.NodeType.file
                 futures.append(await tree.create_node_async(ty, "/", a))
                 if i % 2 == 1:
-                    futures.append(await tree.set_file_content_async("/" + a, a))
+                    futures.append(await tree.set_file_async("/" + a, a))
             await asyncio.gather(*futures)
 
             future = await tree.list_directory_async("/")
@@ -40,10 +40,9 @@ async def test_tree_async():
             futures = []
             for i, a in enumerate(children):
                 if i % 2 == 1:
-                    futures.append(await tree.get_file_content_async("/" + a))
+                    futures.append(await tree.get_file_async("/" + a))
             results = await asyncio.gather(*futures)
-            paths = [rv.data[0].path for rv in results]
-            assert "".join([p[1] for p in sorted(paths)]) == children[1::2]
+            assert "".join(sorted([rv.data for rv in results])) == children[1::2]
 
             futures = []
             vowels = "aeiou"
@@ -154,10 +153,10 @@ async def test_subscribe_same_client_data():
             subid2 = await tree.subscribe("/a", on_child_changed2)
 
             # Check that we get messages when we change the data, but not when we set siblings, or query it.
-            await tree.set_file_content("/a", "foo")
-            await tree.set_file_content("/b", "foo")
-            rv = await tree.get_file_content("/a")
-            assert rv['/a'] == "foo"
+            await tree.set_file("/a", "foo")
+            await tree.set_file("/b", "foo")
+            data = await tree.get_file("/a")
+            assert data == "foo"
             await asyncio.gather(notify1, notify2)
             assert count1 == 1
             assert count2 == 1
@@ -166,7 +165,7 @@ async def test_subscribe_same_client_data():
             notify1 = asyncio.Future()
             notify2 = asyncio.Future()
             await tree.unsubscribe(subid1)
-            await tree.set_file_content("/a", "foo")
+            await tree.set_file("/a", "foo")
             await asyncio.sleep(0.1)  # we don't expect a response from 1, but give it some time to be more sure.
             await notify2
             assert count1 == 1
@@ -243,7 +242,7 @@ async def test_subscribe_glob_basic():
             await tree.create_file("/", "a-foo")
 
             expect = (2, ["/a-foo"], db.EventKind.changed, "hello")
-            await tree.set_file_content("/a-foo", "hello")
+            await tree.set_file("/a-foo", "hello")
             expect = (3, ["/a-foo"], db.EventKind.removed, "???")
             await tree.remove_node("/", "a-foo")
             expect = None
@@ -264,19 +263,19 @@ async def test_subscribe_glob_filter():
                 assert expect == (count, list(paths), event, context)
                 count += 1
 
-            for name in "abc".split() + ['aa']:
+            for name in ['a', 'b', 'c', 'aa']:
                 await tree.create_file("/", name)
             await tree.subscribe("/?", on_changed)
 
             expect = (0, ["/a"], db.EventKind.changed, "foo")
-            await tree.set_file_content("/a", "foo")
-            await tree.set_file_content("/aa", "foo")
+            await tree.set_file("/a", "foo")
+            await tree.set_file("/aa", "foo")
             expect = (1, ["/b"], db.EventKind.changed, "bar")
-            await tree.set_file_content("/b", "bar")
-            await tree.set_file_content("/aa", "bar")
+            await tree.set_file("/b", "bar")
+            await tree.set_file("/aa", "bar")
             expect = (2, ["/c"], db.EventKind.changed, "baz")
-            await tree.set_file_content("/c", "baz")
-            await tree.set_file_content("/aa", "baz")
+            await tree.set_file("/c", "baz")
+            await tree.set_file("/aa", "baz")
 
 
 @pytest.mark.asyncio
@@ -288,8 +287,8 @@ async def test_set_glob_basic():
         async with make_connection() as tree:
             for name in "abcd":
                 await tree.create_file("/", name)
-            await tree.set_file_content("/*", "hello")
-            data = await tree.get_file_content("/*")
+            await tree.set_matching_files("/*", "hello")
+            data = await tree.get_matching_files("/*")
             for name in "abcd":
                 assert data["/" + name] == "hello"
 

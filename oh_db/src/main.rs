@@ -362,12 +362,29 @@ fn run_server(address: &str, port: u16,
             return Ok(());
         }
 
-        fn handle_get_file_content(&mut self, msg: &get_file_content_request::Reader,
-                                   response: server_response::Builder)
+        fn handle_get_file(&mut self, msg: &get_file_request::Reader,
+                           response: server_response::Builder)
+            -> Result<(), Box<Error>>
+        {
+            let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
+            info!("handling GetFile -> path: {}", path);
+            let out;
+            {
+                let db = &mut self.env.borrow_mut().db;
+                let file = try!(db.lookup_file(&path));
+                out = file.get_data();
+            }
+            let mut cat_response = response.init_get_file();
+            cat_response.set_data(&out);
+            return Ok(());
+        }
+
+        fn handle_get_matching_files(&mut self, msg: &get_matching_files_request::Reader,
+                                     response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
             let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
-            info!("handling GetFileContent -> glob: {}", glob);
+            info!("handling GetMatchingFiles -> glob: {}", glob);
             let mut out = Vec::new();
             {
                 let db = &mut self.env.borrow_mut().db;
@@ -376,7 +393,7 @@ fn run_server(address: &str, port: u16,
                     out.push((path, file.get_data()));
                 }
             }
-            let cat_response = response.init_get_file_content();
+            let cat_response = response.init_get_matching_files();
             let mut cat_data = cat_response.init_data(out.len() as u32);
             for (i, &(ref path, ref data)) in out.iter().enumerate() {
                 cat_data.borrow().get(i as u32).set_path(&path.to_str());
@@ -385,14 +402,31 @@ fn run_server(address: &str, port: u16,
             return Ok(());
         }
 
-        fn handle_set_file_content(&mut self, msg: &set_file_content_request::Reader,
-                                   response: server_response::Builder)
+        fn handle_set_file(&mut self, msg: &set_file_request::Reader,
+                           response: server_response::Builder)
+            -> Result<(), Box<Error>>
+        {
+            let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
+            let data = try!(msg.get_data());
+            info!("handling SetFile -> path: {}, data: {}", path, data);
+            {
+                let db = &mut self.env.borrow_mut().db;
+                let file = try!(db.lookup_file(&path));
+                file.set_data(&data);
+            }
+            self.env.borrow_mut().notify_subscriptions(&path, EventKind::Changed, &data);
+            response.init_ok();
+            return Ok(());
+        }
+
+        fn handle_set_matching_files(&mut self, msg: &set_matching_files_request::Reader,
+                                     response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
             let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
             let data = try!(msg.get_data());
             let mut paths: Vec<Path> = Vec::new();
-            info!("handling SetFileContent -> glob: {}, data: {}", glob, data);
+            info!("handling SetMatchingFiles -> glob: {}, data: {}", glob, data);
             {
                 let db = &mut self.env.borrow_mut().db;
                 let matches = try!(db.find_matching_files(&glob));
@@ -470,14 +504,16 @@ fn run_server(address: &str, port: u16,
                 message_reader.get_root::<client_request::Reader>(), self);
             let message_id = MessageId::from_u64(message.get_id());
             handle_client_request!(message.which(), message_id, self,
-                                   [(Ping | handle_ping),
-                                    (CreateNode | handle_create_node),
-                                    (RemoveNode | handle_remove_node),
-                                    (GetFileContent | handle_get_file_content),
-                                    (SetFileContent | handle_set_file_content),
-                                    (ListDirectory | handle_list_directory),
-                                    (Subscribe | handle_subscribe),
-                                    (Unsubscribe | handle_unsubscribe)
+                                   [(Ping             | handle_ping),
+                                    (CreateNode       | handle_create_node),
+                                    (RemoveNode       | handle_remove_node),
+                                    (GetFile          | handle_get_file),
+                                    (GetMatchingFiles | handle_get_matching_files),
+                                    (SetFile          | handle_set_file),
+                                    (SetMatchingFiles | handle_set_matching_files),
+                                    (ListDirectory    | handle_list_directory),
+                                    (Subscribe        | handle_subscribe),
+                                    (Unsubscribe      | handle_unsubscribe)
                                    ]);
             return Ok(());
         }

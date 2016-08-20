@@ -10,30 +10,33 @@ struct ServerMessage {
 struct ServerResponse {
     id @0 :UInt64;
     union {
-        error          @1 :ErrorResponse;
+        error            @1 :ErrorResponse;
         # All errors are reported by this sort of messages.
-        ok             @2 :OkResponse;
+        ok               @2 :OkResponse;
         # Generic OK response, shared by all responses that do not contain
         # more specific response data.
 
-        ping           @3 :PingResponse;
-        listDirectory  @4 :ListDirectoryResponse;
-        getFileContent @5 :GetFileContentResponse;
-        subscribe      @6 :SubscribeResponse;
+        ping             @3 :PingResponse;
+        listDirectory    @4 :ListDirectoryResponse;
+        getFile          @5 :GetFileResponse;
+        getMatchingFiles @6 :GetMatchingFilesResponse;
+        subscribe        @7 :SubscribeResponse;
     }
 }
 
 struct ClientRequest {
     id @0 :UInt64;
     union {
-        ping           @1 :PingRequest;
-        createNode     @2 :CreateNodeRequest;
-        removeNode     @3 :RemoveNodeRequest;
-        listDirectory  @4 :ListDirectoryRequest;
-        getFileContent @5 :GetFileContentRequest;
-        setFileContent @6 :SetFileContentRequest;
-        subscribe      @7 :SubscribeRequest;
-        unsubscribe    @8 :UnsubscribeRequest;
+        ping             @1  :PingRequest;
+        createNode       @2  :CreateNodeRequest;
+        removeNode       @3  :RemoveNodeRequest;
+        listDirectory    @4  :ListDirectoryRequest;
+        getFile          @5  :GetFileRequest;
+        getMatchingFiles @6  :GetMatchingFilesRequest;
+        setFile          @7  :SetFileRequest;
+        setMatchingFiles @8  :SetMatchingFilesRequest;
+        subscribe        @9  :SubscribeRequest;
+        unsubscribe      @10 :UnsubscribeRequest;
     }
 }
 
@@ -90,10 +93,17 @@ struct ListDirectoryResponse {
     # are just the names, not complete paths to the children.
 }
 
-struct GetFileContentRequest {
+struct GetFileRequest {
+    path @0 :Text;
+}
+struct GetFileResponse {
+    data @0 :Text;
+}
+
+struct GetMatchingFilesRequest {
     glob @0 :Text;
 }
-struct GetFileContentResponse {
+struct GetMatchingFilesResponse {
     data @0 :List(PathAndData);
 
     struct PathAndData {
@@ -102,7 +112,12 @@ struct GetFileContentResponse {
     }
 }
 
-struct SetFileContentRequest {
+struct SetFileRequest {
+    path @0 :Text;
+    data @1 :Text;
+}
+
+struct SetMatchingFilesRequest {
     glob @0 :Text;
     data @1 :Text;
 }

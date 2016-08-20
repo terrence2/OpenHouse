@@ -147,7 +147,7 @@ class Tree:
 
     @staticmethod
     def _get_concrete_response(response: messages.ServerResponse):
-        for name in ('ok', 'getFileContent', 'listDirectory', 'subscribe', 'ping'):
+        for name in ('ok', 'getFile', 'getMatchingFiles', 'listDirectory', 'subscribe', 'ping'):
             if response.which() == name:
                 return getattr(response, name)
         raise NotImplementedError("unknown response type: {}".format(response.which()))
@@ -192,12 +192,18 @@ class Tree:
     async def list_directory_async(self, path: str) -> asyncio.Future:
         return await self._dispatch_message(listDirectory=messages.ListDirectoryRequest.new_message(path=path))
 
-    async def set_file_content_async(self, glob: str, content: str) -> asyncio.Future:
-        return await self._dispatch_message(setFileContent=messages.SetFileContentRequest.new_message(glob=glob,
-                                                                                                      data=content))
+    async def set_matching_files_async(self, glob: str, content: str) -> asyncio.Future:
+        return await self._dispatch_message(setMatchingFiles=messages.SetMatchingFilesRequest.new_message(glob=glob,
+                                                                                                          data=content))
 
-    async def get_file_content_async(self, glob: str) -> asyncio.Future:
-        return await self._dispatch_message(getFileContent=messages.GetFileContentRequest.new_message(glob=glob))
+    async def get_matching_files_async(self, glob: str) -> asyncio.Future:
+        return await self._dispatch_message(getMatchingFiles=messages.GetMatchingFilesRequest.new_message(glob=glob))
+
+    async def set_file_async(self, path: str, content: str) -> asyncio.Future:
+        return await self._dispatch_message(setFile=messages.SetFileRequest.new_message(path=path, data=content))
+
+    async def get_file_async(self, path: str) -> asyncio.Future:
+        return await self._dispatch_message(getFile=messages.GetFileRequest.new_message(path=path))
 
     # Note that subscribe and unsubscribe do not have async varieties.
     # We do not guarantee message delivery order, so it is possible to
@@ -218,12 +224,21 @@ class Tree:
         result = await future
         return list(result.children)
 
-    async def set_file_content(self, path: str, content: str):
-        future = await self.set_file_content_async(path, content)
+    async def set_file(self, path: str, content: str):
+        future = await self.set_file_async(path, content)
         await future
 
-    async def get_file_content(self, path: str) -> str:
-        future = await self.get_file_content_async(path)
+    async def set_matching_files(self, glob: str, content: str):
+        future = await self.set_matching_files_async(glob, content)
+        await future
+
+    async def get_file(self, path: str) -> str:
+        future = await self.get_file_async(path)
+        result = await future
+        return result.data
+
+    async def get_matching_files(self, glob: str) -> str:
+        future = await self.get_matching_files_async(glob)
         result = await future
         return {x.path: x.data for x in result.data}
 
