@@ -30,6 +30,15 @@ struct SubscriptionSet {
     layout: HashSet<SubscriptionId>
 }
 
+/// Subscriptions are stored nested for efficient add/remove. On events
+/// we flatten them out into connection/sid pairs for sending.
+pub type Subscriber = (Token, SubscriptionId);
+pub type SubscriberVec = Vec<Subscriber>;
+
+/// A single subscription match maps matching paths to all subscribers that
+/// need to be notified with those paths.
+pub type SubscriptionMatch = (Vec<Path>, Vec<Subscriber>);
+pub type SubscriptionMatches = Vec<SubscriptionMatch>;
 
 impl Subscriptions {
     pub fn new() -> Subscriptions { Subscriptions { globs: HashMap::new() } }
@@ -42,14 +51,25 @@ impl Subscriptions {
         assert!(is_new);
     }
 
-    /// Return a vector containing all subscriptions that match the given path.
-    pub fn get_subscriptions_for(&self, path: &Path) -> Vec<(Token, SubscriptionId)> {
+    /// Search the active subscriptions for the given glob and matching paths.
+    /// Returns pairs of path vectors and the subscribers that need notified
+    /// with those paths.
+    pub fn get_matching_subscriptions(&self, _: Option<&Glob>, paths: &[Path])
+        -> SubscriptionMatches
+    {
+        let mut sub_matches: SubscriptionMatches = Vec::new();
         for (glob, subs) in self.globs.iter() {
-            if glob.matches(&path) {
-                return subs.get_subscriptions_for();
+            let mut matching: Vec<Path> = Vec::new();
+            for path in paths {
+                if glob.matches(path) {
+                    matching.push(path.clone())
+                }
+            }
+            if matching.len() > 0 {
+                sub_matches.push((matching, subs.get_subscribers()))
             }
         }
-        return Vec::new();
+        return sub_matches;
     }
 
     /// Returns true if the layout sid was present and removed successfully.
@@ -86,7 +106,7 @@ impl Subscriptions {
 impl GlobSubscriptions {
     fn new() -> GlobSubscriptions { GlobSubscriptions { connections: HashMap::new() } }
 
-    fn get_subscriptions_for(&self) -> Vec<(Token, SubscriptionId)> {
+    fn get_subscribers(&self) -> Vec<(Token, SubscriptionId)> {
         let mut out = Vec::new();
         for (conn, subs) in &self.connections {
             for sid in &subs.layout {

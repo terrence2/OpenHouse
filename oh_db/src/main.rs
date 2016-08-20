@@ -244,18 +244,17 @@ fn run_server(address: &str, port: u16,
         // close the child connections, but do not report failures to the caller.
         fn notify_subscriptions(&mut self, path: &Path, kind: EventKind, context: &str)
         {
-            for (token, sid) in self.subscriptions.get_subscriptions_for(path) {
-                // If this connection does not exist, then something is way off the rails
-                // and we need to panic.
-                let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_change(&sid, path, kind, context).ok();
-            }
+            let paths: [Path; 1] = [path.clone()];
+            self.notify_subscriptions_glob(&paths, kind, context);
         }
         fn notify_subscriptions_glob(&mut self, paths: &[Path], kind: EventKind, context: &str)
         {
-            // FIXME: aggregate subscription notifications.
-            for path in paths {
-                self.notify_subscriptions(path, kind, context);
+            let matching = self.subscriptions.get_matching_subscriptions(None, paths);
+            for (matching_paths, matching_conns) in  matching {
+                for (token, sid) in matching_conns {
+                    let mut conn = self.connections.get_mut(&token).unwrap();
+                    conn.on_change(&sid, &matching_paths, kind, context).ok();
+                }
             }
         }
     }
@@ -431,7 +430,6 @@ fn run_server(address: &str, port: u16,
                 let db = &mut self.env.borrow_mut().db;
                 let matches = try!(db.find_matching_files(&glob));
                 for (path, file) in matches {
-                    info!("Matching file: {}", path);
                     file.set_data(&data);
                     paths.push(path);
                 }
@@ -469,7 +467,8 @@ fn run_server(address: &str, port: u16,
             return Ok(());
         }
 
-        fn on_change(&mut self, sid: &SubscriptionId, path: &Path, kind: EventKind, context: &str)
+        fn on_change(&mut self, sid: &SubscriptionId, paths: &[Path], kind: EventKind,
+                     context: &str)
             -> ws::Result<()>
         {
             let mut builder = ::capnp::message::Builder::new_default();
@@ -479,9 +478,10 @@ fn run_server(address: &str, port: u16,
                 event.set_subscription_id(sid.to_u64());
                 event.set_kind(kind);
                 event.set_context(context);
-                let mut path_list = event.init_paths(1);
-                path_list.set(0, &path.to_str());
-                //event.set_path(&path.to_string_lossy().into_owned());
+                let mut path_list = event.init_paths(paths.len() as u32);
+                for (i, path) in paths.iter().enumerate() {
+                    path_list.set(i as u32, &path.to_str());
+                }
             }
             let mut buf = Vec::new();
             try!(capnp::serialize::write_message(&mut buf, &builder));

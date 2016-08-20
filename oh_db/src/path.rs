@@ -288,7 +288,9 @@ impl Glob {
                     while glob_next.matches(path_part) == MatchResult::NoMatch {
                         path_part = match path_parts.next() {
                             Some(p) => p,
-                            None => return true // ** matches everything.
+                            // If the last path component did not match the
+                            // *next* glob component, then we failed to match.
+                            None => return false
                         }
                     }
                 }
@@ -597,7 +599,7 @@ mod tests {
                                       ["/Xab", "/abX", "/XaXb", "/aXbX"]),
         (test_match_ss, "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
         (test_match_ss_start, "/**/foo", ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
-                                         ["/foo/X", "/X/foo/X"]),
+                                         ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"]),
         (test_match_ss_end, "/foo/**", ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
                                          ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]),
         (test_match_ss_middle, "/foo/**/bar", ["/foo/bar", "/foo/X/bar",

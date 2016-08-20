@@ -260,7 +260,7 @@ async def test_subscribe_glob_filter():
             async def on_changed(paths: [str], event: db.EventKind, context: str):
                 nonlocal count
                 assert expect is not None
-                assert expect == (count, list(paths), event, context)
+                assert expect == (count, sorted(list(paths)), event, context)
                 count += 1
 
             for name in ['a', 'b', 'c', 'aa']:
@@ -276,6 +276,40 @@ async def test_subscribe_glob_filter():
             expect = (2, ["/c"], db.EventKind.changed, "baz")
             await tree.set_file("/c", "baz")
             await tree.set_file("/aa", "baz")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_glob_multi():
+    """
+    Ensure that globs return all matching path events in a single message.
+    """
+    with run_server():
+        async with make_connection() as tree:
+            expect = None
+            count = 0
+            async def on_changed(paths: [str], event: db.EventKind, context: str):
+                nonlocal count
+                assert expect is not None
+                assert expect == (count, sorted(list(paths)), event, context)
+                count += 1
+
+            for a in ['a', 'b', 'c']:
+                await tree.create_directory("/", a)
+                for b in ['a', 'b', 'c']:
+                    await tree.create_directory("/{}".format(a), b)
+                    for c in ['foo', 'bar', 'baz']:
+                        await tree.create_file("/{}/{}".format(a, b), c)
+            await tree.subscribe("/a/**/foo", on_changed)
+
+            expect = (0, ["/a/a/foo"], db.EventKind.changed, "a")
+            await tree.set_file("/a/a/foo", "a")
+            expect = (1, ["/a/a/foo"], db.EventKind.changed, "b")
+            await tree.set_matching_files("/a/a/*", "b")
+            await tree.set_matching_files("/**/bar", "c")
+            expect = (2, ["/a/a/foo", "/a/b/foo", "/a/c/foo"], db.EventKind.changed, "c")
+            await tree.set_matching_files("/**/foo", "c")
+
+# test_subscribe_glob_intersecting
 
 
 @pytest.mark.asyncio
