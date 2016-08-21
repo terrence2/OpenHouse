@@ -73,22 +73,28 @@
 #    |                                                                                 |                |
 #    +-------------------------------------@@@@@@@@@@@@--------------------------------+----------------+
 
-hue-bridge:
-  address: hue-bridge
-  username: MasterControlProgram
+global:
+  hardware:
+    hue-bridge:
+      address: hue-bridge
+      username: MasterControlProgram
+      transition_time: 10
 
-rooms:
+  permissions:
+    allow: /**/switches/*
+
+room:
   bedroom:
     geometry: {x: 12ft, y: 0ft, w: 12ft, l: 10ft}
     closets: [{x: -2ft, y: 0ft, w: 2ft, l: 5ft}]
-    lights:
-      bedroom-bookshelf0: {type: hue, x: 10ft, y: 1ft}
-      bedroom-bookshelf1: {type: hue, x:  4ft, y: 8ft}
-      bedroom-dresser:    {type: hue, x: 10ft, y: 2ft}
-      bedroom-tree0:      {type: hue, x:  1ft, y: 2ft}
-      bedroom-tree1:      {type: hue, x:  1ft, y: 1ft}
-      bedroom-tree2:      {type: hue, x:  2ft, y: 1ft}
-      bedroom-ceiling:    {type: hue, x:  6ft, y: 6ft}
+    hue-light:
+      bedroom-bookshelf0: {color: \#FF00FF, x: 10ft, y: 1ft}
+      bedroom-bookshelf1: {color: \#FF00FF, x:  4ft, y: 8ft}
+      bedroom-dresser:    {color: \#FF00FF, x: 10ft, y: 2ft}
+      bedroom-tree0:      {color: \#FF00FF, x:  1ft, y: 2ft}
+      bedroom-tree1:      {color: \#FF00FF, x:  1ft, y: 1ft}
+      bedroom-tree2:      {color: \#FF00FF, x:  2ft, y: 1ft}
+      bedroom-ceiling:    {color: \#FF00FF, x:  6ft, y: 6ft}
     switches:
       bedroom-lightswitch1: {type: nodemcu, design: normal-on, x: 1ft, y: 10ft6in}
       bedroom-lightswitch2: {type: nodemcu, design: moonlight, x: 1ft6in, y: 10ft6in}
@@ -96,60 +102,64 @@ rooms:
     buttons:
       bedroom-lightbutton1: {type: nodemcu, scene: evening, x: 2ft6in, y: 10ft6in}
       bedroom-lightbutton2: {type: nodemcu, scene: sleep, x: 2ft6in, y: 10ft6in}
+    radio-button:
+      bedroom-state: {allow: motion|on|off}
+
 
   office:
     geometry: {x:  0ft, y: 0ft, w: 10ft, l: 13ft}
     closets: [{x: 10ft, y: 5ft, w:  2ft, l:  5ft}]
-    lights:
-      office-ceiling1: {type: hue, x: 5ft, y: 6ft}
-      office-ceiling2: {type: hue, x: 4ft, y: 7ft}
-    motion-detectors:
-      m-office-desk1: {type: wemo, x:  3ft, y:  6in}
-      m-office-desk2: {type: wemo, x:  9ft, y:  5ft}
-      m-office-south: {type: wemo, x:  0ft, y: 10ft}
-      m-office-east:  {type: wemo, x: 10ft, y: 12ft}
+    hue-light:
+      office-ceiling1: {color: \#FF00FF, x: 5ft, y: 6ft}
+      office-ceiling2: {color: \#FF00FF, x: 4ft, y: 7ft}
+    wemo-motion-detector:
+      m-office-desk1: {x:  3ft, y:  6in}
+      m-office-desk2: {x:  9ft, y:  5ft}
+      m-office-south: {x:  0ft, y: 10ft}
+      m-office-east:  {x: 10ft, y: 12ft}
 
   hall:
     geometry: {x: 10ft, y: 10ft, w: 7ft, l: 6ft, noborder: true}
     closets: [{x:  6ft, y:  3ft, w: 1ft, l: 3ft}]
-    lights:
-      hall-ceiling0: {type: hue, x: 4ft, y: 2ft}
-      hall-ceiling1: {type: hue, x: 5ft, y: 3ft}
+    hue-light:
+      hall-ceiling0: {color: \#FF00FF, x: 4ft, y: 2ft}
+      hall-ceiling1: {color: \#FF00FF, x: 5ft, y: 3ft}
 
   bathroom:
     geometry: {x: 17ft, y: 10ft, w: 7ft, l: 6ft}
 
   kitchen:
     geometry: {x: 13ft, y: 16ft, w: 11ft, l: 8ft}
-    lights:
-      kitchen-sink:     {type: hue, x: 9ft, y: 1ft}
-      kitchen-ceiling0: {type: hue, x: 2ft, y: 6ft}
-      kitchen-ceiling1: {type: hue, x: 3ft, y: 5ft}
-      kitchen-ceiling2: {type: hue, x: 4ft, y: 4ft}
-      kitchen-ceiling3: {type: hue, x: 5ft, y: 3ft}
-      kitchen-ceiling4: {type: hue, x: 6ft, y: 2ft}
-    motion-detectors:
-      m-kitchen-sink: {type: wemo, x: 11ft, y: 1ft4in}
+    hue-light:
+      kitchen-sink:     {color: \#FF00FF, x: 9ft, y: 1ft}
+      kitchen-ceiling0: {color: \#FF00FF, x: 2ft, y: 6ft}
+      kitchen-ceiling1: {color: \#FF00FF, x: 3ft, y: 5ft}
+      kitchen-ceiling2: {color: \#FF00FF, x: 4ft, y: 4ft}
+      kitchen-ceiling3: {color: \#FF00FF, x: 5ft, y: 3ft}
+      kitchen-ceiling4: {color: \#FF00FF, x: 6ft, y: 2ft}
+    wemo-motion-detector:
+      m-kitchen-sink: {x: 11ft, y: 1ft4in}
 
   utility:
     geometry: {x: 20ft6in, y: 24ft, w: 4ft6in, l: 8ft6in}
-    lights:
-      utility-ceiling: {type: hue, x: 2ft, y: 4ft}
-    motion-detectors:
-      m-utility-north: {type: wemo, x: 4in, y: 1ft6in}
+    hue-light:
+      utility-ceiling: {color: \#FF00FF, x: 2ft, y: 4ft}
+    wemo-motion-detector:
+      m-utility-north: {x: 4in, y: 1ft6in}
 
   livingroom:
     geometry: {x: 0ft, y: 13ft, w: 13ft, l: 19ft9in}
-    lights:
-      livingroom-couch:    {type: hue, x:  1ft, y:  6ft}
-      livingroom-torch:    {type: hue, x:  1ft, y: 10ft}
-      livingroom-tower0:   {type: hue, x: 10ft, y:  3ft}
-      livingroom-tower1:   {type: hue, x: 10ft, y:  2ft}
-      livingroom-tower2:   {type: hue, x: 10ft, y:  1ft}
-      livingroom-curtain1: {type: hue, x: 10ft, y: 15ft}
-      livingroom-curtain2: {type: hue, x: 11ft, y: 16ft}
-      livingroom-curtain3: {type: hue, x: 12ft, y: 17ft}
-      livingroom-console0: {type: livingcolors, x: 12ft, y: 8ft}
+    hue-light:
+      livingroom-couch:    {color: \#FF00FF, x:  1ft, y:  6ft}
+      livingroom-torch:    {color: \#FF00FF, x:  1ft, y: 10ft}
+      livingroom-tower0:   {color: \#FF00FF, x: 10ft, y:  3ft}
+      livingroom-tower1:   {color: \#FF00FF, x: 10ft, y:  2ft}
+      livingroom-tower2:   {color: \#FF00FF, x: 10ft, y:  1ft}
+      livingroom-curtain1: {color: \#FF00FF, x: 10ft, y: 15ft}
+      livingroom-curtain2: {color: \#FF00FF, x: 11ft, y: 16ft}
+      livingroom-curtain3: {color: \#FF00FF, x: 12ft, y: 17ft}
+    hue-livingcolor:
+      livingroom-console0: {color: \#FF00FF, x: 12ft, y: 8ft}
     buttons:
       controller1-button1: {type: nodemcu, scene: evening,  x: 2ft6in, y: 10ft6in}
       controller1-button2: {type: nodemcu, scene: sleep,    x: 2ft6in, y: 10ft6in}
@@ -159,5 +169,6 @@ rooms:
 
   diningroom:
     geometry: {x: 13ft, y: 24ft, w: 7ft6in, l: 8ft6in}
-    diningroom-shelves: {type: hue, x: 6ft, y: 7ft}
-    diningroom-ceiling: {type: hue, x: 3ft, y: 4ft}
+    hue-light:
+      diningroom-shelves: {color: \#FF00FF, x: 6ft, y: 7ft}
+      diningroom-ceiling: {color: \#FF00FF, x: 3ft, y: 4ft}

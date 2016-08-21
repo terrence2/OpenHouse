@@ -1,10 +1,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+from oh_shared.db.tree import Tree, EventKind
 import aiohttp
-import asyncio
 import itertools
-import json
 import logging
 from collections import defaultdict, namedtuple
 from datetime import datetime, timedelta
@@ -18,38 +17,36 @@ LightUpdate = namedtuple('LightUpdate', ['request_time', 'light_id', 'json_data'
 
 
 class Bridge:
-    def __init__(self, addr: str, username: str):
+    def __init__(self, addr: str, username: str, transition_time: int):
         super().__init__()
 
         # Bridge access.
         self.address = addr
         self.username = username
 
-        # Keep a list of lights we have queried info for so we can
-        # report any that are probably unconfigured.
-        self.queried_lights_ = set()
-
-        # TODO: poll for changes to the state set on the bridge and reflect in the HOMe.
-
-        # Keep requests in a window so that we can group requests.
-        self.nagle_window_ = []
-
-        # Set to true while the watching task is running.
-        self.watching = False
-
-        # Set async after creation:
-        self.status_ = {}
-        self.known_groups_ = {}
-        self.temp_group_id_ = itertools.count()
+        # Storing the transition time globally makes things much simpler to manage.
+        # e.g. We'd need to split update groups based on transition time. This should
+        # be fine as non-uniform fades look pretty terrible.
+        self.transition_time = transition_time
 
     @classmethod
-    @asyncio.coroutine
-    def create(cls, addr: str, username: str) -> 'Bridge':
-        bridge = cls(addr, username)
+    async def create(cls, tree: Tree) -> 'Bridge':
+        address = await tree.get_file("/meta/hardware/hue-bridge/address")
+        username = await tree.get_file("/meta/hardware/hue-bridge/username")
+        transition_time = int(await tree.get_file("/meta/hardware/hue-bridge/transition_time"))
+        bridge = cls(address, username, transition_time)
+
+        # Watch for changes to the transition time.
+        def on_transition_time_updated(paths: [str], kind: EventKind, context: str):
+            try:
+                bridge.transition_time = int(context)
+            except ValueError:
+                pass
+        await tree.subscribe("/meta/hardware/hue-bridge/transition_time", on_transition_time_updated)
 
         # Make initial status query.
-        res = yield from aiohttp.request('GET', bridge.url(''))
-        status = yield from res.json()
+        res = await aiohttp.request('GET', bridge.url(''))
+        status = await res.json()
         config = status['config']
         interesting = ['name', 'modelid', 'bridgeid', 'apiversion', 'swversion',
                        'UTC', 'localtime', 'timezone',
@@ -63,6 +60,7 @@ class Bridge:
             log.info("light#{:<2} {:>2} : {:20} : {} : {}".format(i, light_id, props['name'], props['modelid'],
                                                                   props['swversion'], props['uniqueid']))
 
+        """
         # Print any pre-configured groups.
         for i, (group_id, props) in enumerate(status['groups'].items()):
             log.warning("removing pre-existing group {}".format(group_id))
@@ -75,6 +73,7 @@ class Bridge:
             frozenset(status['lights'].keys()): '0'
         }
         # TODO: record any other well-known groups.
+        """
 
         return bridge
 
@@ -94,7 +93,6 @@ class Bridge:
             if light_state['name'] == light_name:
                 return True
         return False
-    '''
 
     def get_id_for_light_named(self, light_name: str) -> str:
         """
@@ -257,4 +255,5 @@ class Bridge:
         for error in errors:
             log.error(error)
         return len(errors) == 0
+    '''
 

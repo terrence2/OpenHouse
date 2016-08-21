@@ -72,7 +72,7 @@ async def slurp_config(tree: Tree, parent_path: str, config: dict):
             await slurp_config(tree, path, value)
         else:
             await tree.create_file(parent_path, key)
-            await tree.set_file_content(path, str(value))
+            await tree.set_file(path, str(value))
 
 
 async def main():
