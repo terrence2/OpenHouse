@@ -9,14 +9,16 @@ OpenHouse is:
 
 Architecture
 ===
+
+Devices are handled by.
 oh_wemo (WeMo Motion Detector)
-  => /room/**/wemo-motion-detector/state == true|false
+  => /room/**/wemo-motion-detector/raw-state == true|false
 oh_motion_filter (Hysteresis)
   <= /room/**/wemo-motion-detector/state
   => /root/**/wemo-motion-detector/motion
   
-                oh_rest (Via-Buttons)
-                  => /root/**/button/*/state
+oh_rest (Via-Buttons)
+  => /root/**/radio-button/*/raw-state
                   
 
 oh_apply

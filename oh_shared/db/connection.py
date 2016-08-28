@@ -15,6 +15,10 @@ class Connection:
         self.key_file = key_file
         self.connection = None
 
+    @classmethod
+    def from_args(cls, args):
+        return cls((args.home_address, args.home_port), args.ca_chain, args.certificate, args.private_key)
+
     async def __aenter__(self):
         self.connection = await Tree.connect(self.address, self.ca_cert_chain,
                                              self.cert_chain, self.key_file)
