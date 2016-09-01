@@ -20,6 +20,15 @@ function startswith(String,Start)
    return string.sub(String,1,string.len(Start))==Start
 end
 
+function send_event(url, status)
+    local headers = 'Content-Type: application/x-www-form-urlencoded\r\n'
+    http.post(url, headers, status, function(status_code, response_body)
+        if status_code < 0 then
+            print("http request failed with: "..status_code)
+        end
+    end)
+end
+
 
 -------------------------------------------------------------------------------
 -- LED
@@ -49,8 +58,11 @@ wifi.sta.connect()
 
 
 -------------------------------------------------------------------------------
--- Switches
-function create_switch(pin, handler)
+-- Switches and Buttons
+gAPITarget = rtrim(read_file("api-target.url"))
+print("Using API Target URL: " .. gAPITarget)
+
+function listen_debounced_pin(pin, handler)
     gpio.mode(pin, gpio.INT, gpio.PULLUP)
 
     local last_debounce_level = gpio.LOW
@@ -71,6 +83,8 @@ function create_switch(pin, handler)
         last_debounce_level = level
         tmr.start(timer_index)
     end)
+
+    --print("Listening with debounce to pin " .. pin)
 end
 
 function gpio2str(level)
@@ -80,20 +94,21 @@ function gpio2str(level)
     return "true"
 end
 
-function send_event(url, status)
-    local headers = 'Content-Type: application/x-www-form-urlencoded\r\n'
-    http.post(url, headers, status, function(status_code, response_body)
-        if status_code < 0 then
-            print("http request failed with: "..status_code)
-        end
+function create_openhouse_switch(pin_number, target_url)
+    -- Create a new activation record so that target_url is stable despite the loop.
+    listen_debounced_pin(pin_number, function(level)
+        --print("would send event for pin " .. pin_number .. " value " .. gpio2str(level))
+        send_event(target_url, gpio2str(level))
     end)
 end
 
-function create_openhouse_switch(pin_number, target_url)
-    -- Create a new activation record so that target_url is stable despite the loop.
-    create_switch(pin_number, function(level)
-        --print("would send event for pin " .. pin_number .. " value " .. gpio2str(level))
-        send_event(target_url, gpio2str(level))
+function create_openhouse_button(pin_number, event_name)
+    -- Create a new activation record so that event_name is stable despite the loop.
+    listen_debounced_pin(pin_number, function(level)
+        if level == gpio.LOW then
+            --print("would send event for pin " .. pin_number .. " value button-" .. pin_number)
+            send_event(gAPITarget, event_name)
+        end
     end)
 end
 
@@ -101,10 +116,18 @@ function load_devices()
     local all_files = file.list();
     for filename, size in pairs(all_files) do
       if startswith(filename, "switch.") then
+          print("Adding switch from file: " .. filename)
           local ending = string.sub(filename, string.len("switch.") + 1, -1)
           local pin_number = tonumber(ending)
           local target_url = rtrim(read_file(filename))
           create_openhouse_switch(pin_number, target_url)
+      end
+      if startswith(filename, "button.") then
+          print("Adding button from file: " .. filename)
+          local ending = string.sub(filename, string.len("button.") + 1, -1)
+          local pin_number = tonumber(ending)
+          local event_name = rtrim(read_file(filename))
+          create_openhouse_button(pin_number, event_name)
       end
     end
 end
