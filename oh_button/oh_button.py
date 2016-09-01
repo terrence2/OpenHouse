@@ -4,14 +4,10 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from aiohttp import web
 from pathlib import PurePosixPath as Path
-from pprint import pformat
-from oh_shared.args import add_common_args
-from oh_shared.db import Tree, NotDirectory, PathError, TreeError
-from oh_shared.home import Home, NodeData
+from oh_shared.args import make_parser
+from oh_shared.db import Tree, TreeError
 from oh_shared.log import enable_logging
-import argparse
 import asyncio
-import json
 import logging
 import socket
 import sys
@@ -72,9 +68,7 @@ def make_handler(tree: Tree, ip_map: {str: str} = {}):
 
 
 def main():
-    desc = 'A gateway for accepting button events into OpenHouse.'
-    parser = argparse.ArgumentParser(description=desc)
-    add_common_args(parser)
+    parser = make_parser('A gateway for accepting button events into OpenHouse.')
     group = parser.add_argument_group("Where to listen for connections.")
     group.add_argument('-a', '--address', default='0.0.0.0',
                        help="The address to listen for REST on.")

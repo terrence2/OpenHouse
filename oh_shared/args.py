@@ -28,3 +28,9 @@ def parse_default_args(description: str) -> object:
     parser = argparse.ArgumentParser(description=description)
     add_common_args(parser)
     return parser.parse_args()
+
+
+def make_parser(description: str) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=description)
+    add_common_args(parser)
+    return parser

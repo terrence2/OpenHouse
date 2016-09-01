@@ -83,6 +83,7 @@ class Tree:
         self.message_id = itertools.count(2)
 
         self.listener_task = asyncio.ensure_future(self._listener())
+        self.subscription_tasks = []
 
     async def close(self):
         assert len(self.awaiting_response) == 0
@@ -129,13 +130,22 @@ class Tree:
                 log.critical("other end closed connection!")
                 return
 
+            # Process the message.
             server_message = messages.ServerMessage.from_bytes(raw)
             if server_message.which() == 'response':
                 self._handle_response_message(server_message.response)
             elif server_message.which() == 'event':
-                await self._handle_subscription_message(server_message.event)
+                task = asyncio.ensure_future(self._handle_subscription_message(server_message.event))
+                self.subscription_tasks.append(task)
             else:
                 assert False, "unknown message type received"
+
+            # Finish any outstanding subscription_tasks that are ready.
+            for task in self.subscription_tasks:
+                if task.done():
+                    await task
+                self.subscription_tasks.remove(task)
+
 
     async def _dispatch_message(self, **kwargs) -> asyncio.Future:
         message_id = next(self.message_id)
@@ -242,13 +252,13 @@ class Tree:
         result = await future
         return {x.path: x.data for x in result.data}
 
-    async def subscribe(self, glob: str, cb: callable) -> asyncio.Future:
+    async def subscribe(self, glob: str, cb: callable) -> int:
         future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(glob=glob))
         result = await future
         self.subscriptions[result.subscriptionId] = cb
         return result.subscriptionId
 
-    async def unsubscribe(self, sid: int) -> asyncio.Future:
+    async def unsubscribe(self, sid: int):
         future = await self._dispatch_message(unsubscribe=messages.UnsubscribeRequest.new_message(subscriptionId=sid))
         await future
         del self.subscriptions[sid]

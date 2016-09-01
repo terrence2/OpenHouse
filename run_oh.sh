@@ -38,8 +38,47 @@ pid_db=$!
     -k CA/intermediate/private/oh_populate.key.pem \
     --config $1
 
-#{ node ./oh_home/build/main.js ./examples/eyrie.html -l info -L $LOGDIR/oh_home.log -p $PORT | bunyan; } &
-#pid_home=$!
+./oh_color/oh_color.py \
+    -l INFO \
+    -L $LOGDIR/oh_color.log \
+    -H 127.0.0.1 \
+    -P $PORT \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_color.cert.pem \
+    -k CA/intermediate/private/oh_color.key.pem &
+pid_color=$!
+
+./oh_formula/oh_formula.py \
+    -l INFO \
+    -L $LOGDIR/oh_formula.log \
+    -H 127.0.0.1 \
+    -P $PORT \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_formula.cert.pem \
+    -k CA/intermediate/private/oh_formula.key.pem &
+pid_formula=$!
+
+./oh_button/oh_button.py \
+    -l INFO \
+    -L $LOGDIR/oh_button.log \
+    -H 127.0.0.1 \
+    -P $PORT \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_button.cert.pem \
+    -k CA/intermediate/private/oh_button.key.pem &
+pid_button=$!
+
+# Note that this is for debugging only.
+./oh_rest/oh_rest.py \
+    -l INFO \
+    -L $LOGDIR/oh_rest.log \
+    -H 127.0.0.1 \
+    -P $PORT \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_rest.cert.pem \
+    -k CA/intermediate/private/oh_rest.key.pem \
+    -p 8081 &
+pid_rest=$!
 
 #./oh_hue/oh_hue.py -L $LOGDIR/oh_hue.log -P $PORT &
 #pid_hue=$!
@@ -62,14 +101,14 @@ pid_db=$!
 #./oh_alarm/oh_alarm.py -l INFO -L $LOGDIR/oh_alarm.log -P $PORT &
 #pid_alarm=$!
 
-#./oh_rest/oh_rest.py -l INFO -L $LOGDIR/oh_rest.log -P $PORT &
-#pid_rest=$!
-
 #{ pushd oh_web && ./oh_web_sabot.py -L ../$LOGDIR/oh_web.log -p 8080 -P $PORT; popd; } &
 #pid_web=$!
 
 
 echo "pid db:             "$pid_db
+echo "pid button:         "$pid_button
+echo "pid formula:        "$pid_formula
+echo "pid color:          "$pid_color
 #echo "pid wemo:           "$pid_wemo
 #echo "pid motion filter:  "$pid_motion_filter
 #echo "pid infer activity: "$pid_infer_activity
@@ -77,10 +116,10 @@ echo "pid db:             "$pid_db
 #echo "pid apply sensor:   "$pid_apply_sensor
 #echo "pid hue:            "$pid_hue
 #echo "pid alarm:          "$pid_alarm
-#echo "pid rest:           "$pid_rest
+echo "pid rest:           "$pid_rest
 #echo "pid web:            "$pid_web
 #wait $pid_web
-#wait $pid_rest
+wait $pid_rest
 #wait $pid_alarm
 #wait $pid_hue
 #wait $pid_apply_sensor
@@ -88,5 +127,8 @@ echo "pid db:             "$pid_db
 #wait $pid_infer_activity
 #wait $pid_motion_filter
 #wait $pid_wemo
+wait $pid_color
+wait $pid_formula
+wait $pid_button
 wait $pid_db
 

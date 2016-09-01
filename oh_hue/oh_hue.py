@@ -8,26 +8,16 @@ from hue.bridge import Bridge
 from hue.light import Light
 from oh_shared.args import parse_default_args
 from oh_shared.log import enable_logging
-from oh_shared.db import Connection, EventKind
+from oh_shared.db import Connection, EventKind, Tree
 from pathlib import PurePosixPath
 
 log = logging.getLogger('oh_hue')
 
 
-"""
-class BridgeNotFound(Exception):
-    def __init__(self, light_name):
-        super().__init__()
-        self.light_name = light_name
-
-
-def find_bridge_owning_light(bridges: [Bridge], light_node: NodeData) -> (Bridge, str):
-    name = light_node.attrs['name']
-    for bridge in bridges:
-        if bridge.owns_light_named(name):
-            return bridge, bridge.get_id_for_light_named(name)
-    raise BridgeNotFound(name)
-"""
+async def make_connection(args):
+    tree = await Tree.connect((args.home_address, args.home_port),
+                              args.ca_chain, args.certificate, args.private_key)
+    return tree
 
 
 def names_from_color_paths(paths: [str]):
@@ -38,23 +28,18 @@ async def main():
     args = parse_default_args('Map light style changes to hue commands.')
     enable_logging(args.log_target, args.log_level)
 
-    async with Connection((args.home_address, args.home_port),
-                          args.ca_chain, args.certificate, args.private_key) as tree:
-        # Create the bridge.
-        bridge = await Bridge.create(tree)
+    tree = await make_connection(args)
 
-        # Subscribe to all light changes.
-        async def on_color_changed(paths: [str], event: EventKind, context: str):
-            names = names_from_color_paths(paths)
-            bridge.set_lights_to_color(names, context)
-        await tree.subscribe("/**/hue-light/*/color", on_color_changed)
+    # Create the bridge.
+    bridge = await Bridge.create(tree)
 
-        # Continue running until we get a KeyboardInterrupt.
-        while True:
-            try:
-                asyncio.sleep(600.0)
-            except KeyboardInterrupt:
-                return
+    # Subscribe to all light changes.
+    async def on_color_changed(paths: [str], _: EventKind, context: str):
+        names = names_from_color_paths(paths)
+        log.info("changed color of {} to {}".format(names, context))
+        await bridge.set_lights_to_color(names, context)
+    await tree.subscribe("/room/*/hue-*/*/color", on_color_changed)
+
 
 
 
@@ -76,12 +61,6 @@ async def main():
         bridge.show_unqueried_lights()
     """
 
-
 if __name__ == '__main__':
-    asyncio.get_event_loop().run_until_complete(main())
-    """
-    try:
-        asyncio.get_event_loop().run_forever()
-    except KeyboardInterrupt:
-        pass
-    """
+    tree = asyncio.get_event_loop().run_until_complete(main())
+    asyncio.get_event_loop().run_forever()

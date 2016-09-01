@@ -169,16 +169,16 @@ room:
       value: default
       formula:
         inputs:
-          bedroom: /room/livingroom/color/value
+          bedroom: /room/bedroom/color/value
           livingroom: /room/livingroom/color/value
           kitchen: /room/kitchen/color/value
           office: /room/office/color/value
         compute: |
-          if bedroom == 'all-off' or livingroom == 'all-off':
-              return 'all-off'
-          for input in inputs:
-              if input == 'all-on':
-                  return 'all-on'
+          if bedroom == 'off' or livingroom == 'off':
+              return 'off'
+          for input in (bedroom, livingroom, kitchen, office):
+              if input == 'on':
+                  return 'on'
           return 'default'
     hue-light:
       hall-ceiling0: {color: none, x: 4ft, y: 2ft}
@@ -217,6 +217,9 @@ room:
 
   livingroom:
     geometry: {x: 0ft, y: 13ft, w: 13ft, l: 19ft9in}
+    color:
+      value: default
+      formula: {same-as: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
     hue-light:
       livingroom-couch:    {color: none, x:  1ft, y:  6ft}
       livingroom-torch:    {color: none, x:  1ft, y: 10ft}
@@ -232,8 +235,8 @@ room:
       controller1-button1: {type: nodemcu, scene: evening,  x: 2ft6in, y: 10ft6in}
       controller1-button2: {type: nodemcu, scene: sleep,    x: 2ft6in, y: 10ft6in}
       controller1-button3: {type: nodemcu, design: hello,   x: 1ft,    y: 10ft6in}
-      controller1-button4: {type: nodemcu, design: all-on,  x: 1ft,    y: 10ft6in}
-      controller1-button5: {type: nodemcu, design: all-off, x: 1ft,    y: 10ft6in}
+      controller1-button4: {type: nodemcu, design: 'on',  x: 1ft,    y: 10ft6in}
+      controller1-button5: {type: nodemcu, design: 'off', x: 1ft,    y: 10ft6in}
     radio-button:
       livingroom-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
 

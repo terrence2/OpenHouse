@@ -349,5 +349,21 @@ mod tests {
        ,(test_match_star, "/*",
          ["/d"], ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a", "/d/b", "/d/c"],
          ["/a", "/b", "/c", "/aa", "/bb", "/cc"])
+       ,(test_match_complex, "/room/*/hue-*/*/color",
+         ["/room", "/room/a", "/room/b",
+          "/room/a/hue-light", "/room/a/hue-livingcolor",
+          "/room/b/hue-light", "/room/b/hue-livingcolor",
+          "/room/a/hue-light/a-desk", "/room/a/hue-light/a-table",
+          "/room/a/hue-livingcolor/a-desk", "/room/a/hue-livingcolor/a-table",
+          "/room/b/hue-light/b-desk", "/room/b/hue-light/b-table",
+          "/room/b/hue-livingcolor/b-desk", "/room/b/hue-livingcolor/b-table"],
+         ["/room/a/hue-light/a-desk/color", "/room/a/hue-light/a-table/color",
+          "/room/a/hue-livingcolor/a-desk/color", "/room/a/hue-livingcolor/a-table/color",
+          "/room/b/hue-light/b-desk/color", "/room/b/hue-light/b-table/color",
+          "/room/b/hue-livingcolor/b-desk/color", "/room/b/hue-livingcolor/b-table/color"],
+         ["/room/a/hue-light/a-desk/color", "/room/a/hue-light/a-table/color",
+          "/room/a/hue-livingcolor/a-desk/color", "/room/a/hue-livingcolor/a-table/color",
+          "/room/b/hue-light/b-desk/color", "/room/b/hue-light/b-table/color",
+          "/room/b/hue-livingcolor/b-desk/color", "/room/b/hue-livingcolor/b-table/color"])
     ]);
 }

@@ -2,11 +2,10 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from oh_shared.args import add_common_args
+from oh_shared.args import make_parser
 from oh_shared.db import Connection, Tree
 from oh_shared.log import enable_logging
 from pathlib import Path
-import argparse
 import asyncio
 import logging
 import yaml
@@ -31,8 +30,7 @@ async def slurp_config(tree: Tree, parent_path: str, config: dict):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Inject configuration into a pristine database.")
-    add_common_args(parser)
+    parser = make_parser("Inject configuration into a pristine database.")
     parser.add_argument("--config", type=str, metavar="FILE",
                         help="The configuration to load.")
     args = parser.parse_args()
@@ -49,7 +47,6 @@ async def main():
             assert args.config.endswith("yaml")
             config = yaml.load(fp)
             await slurp_config(tree, "/", config)
-
 
 
 if __name__ == '__main__':

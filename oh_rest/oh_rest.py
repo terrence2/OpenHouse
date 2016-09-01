@@ -59,7 +59,7 @@ def main():
     group = parser.add_argument_group("REST specific args")
     group.add_argument('-a', '--address', default='0.0.0.0',
                        help="The address to listen for REST on.")
-    group.add_argument('-p', '--port', default=8090, type=int,
+    group.add_argument('-p', '--port', default=8080, type=int,
                        help="The port to listen for REST on.")
     args = parser.parse_args()
 
