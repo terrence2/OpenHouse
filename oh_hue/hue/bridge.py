@@ -262,7 +262,7 @@ class Bridge:
         self.show_response_errors(content)
 
         # If we did not toggle the light state, wait 100ms, otherwise double.
-        min_wait = 0.2 if 'on' in json_data else 0.1
+        min_wait = 0.2 if 'on' in light_state else 0.1
         wait_timeout = max(self.transition_time, min_wait)
         await asyncio.sleep(wait_timeout)
 

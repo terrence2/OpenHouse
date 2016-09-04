@@ -38,6 +38,16 @@ pid_db=$!
     -k CA/intermediate/private/oh_populate.key.pem \
     --config $1
 
+./oh_hue/oh_hue.py \
+    -l INFO \
+    -L $LOGDIR/oh_hue.log \
+    -H 127.0.0.1 \
+    -P $PORT \
+    -C CA/intermediate/certs/chain.cert.pem \
+    -c CA/intermediate/certs/oh_hue.cert.pem \
+    -k CA/intermediate/private/oh_hue.key.pem &
+pid_hue=$!
+
 ./oh_color/oh_color.py \
     -l INFO \
     -L $LOGDIR/oh_color.log \

@@ -213,9 +213,8 @@ room:
   utility:
     geometry: {x: 20ft6in, y: 24ft, w: 4ft6in, l: 8ft6in}
     color:
-      inputs: {kitchen_color: /room/kitchen/color/value}
-      formula: return kitchen_color
       value: default
+      formula: {same-as: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
     hue-light:
       utility-ceiling: {color: none, x: 2ft, y: 4ft}
     wemo-motion-detector:
@@ -249,9 +248,8 @@ room:
   diningroom:
     geometry: {x: 13ft, y: 24ft, w: 7ft6in, l: 8ft6in}
     color:
-      inputs: {livingroom_color: /room/livingroom/color/value}
-      formula: return livingroom_color
       value: default
+      formula: {same-as: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
     hue-light:
       diningroom-shelves: {color: none, x: 6ft, y: 7ft}
       diningroom-ceiling: {color: none, x: 3ft, y: 4ft}
