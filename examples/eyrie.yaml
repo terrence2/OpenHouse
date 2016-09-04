@@ -77,7 +77,7 @@ global:
   hue-bridge:
     address: hue-bridge
     username: MasterControlProgram
-    transition_time: 10
+    transition_time: 0.5
 
   # These get adjusted on the fly by oh_seasonal based on the given parameters.
   palette:
@@ -119,6 +119,12 @@ global:
           summer: bhs(255, 47000, 255)
           fall:   bhs(255, 47000, 255)
           winter: bhs(255, 47000, 255)
+
+    test:
+      hue-light:
+        color: rgb(255, 0, 255)
+      hue-livingcolor:
+        color: rgb(255, 0, 255)
 
 room:
   bedroom:
