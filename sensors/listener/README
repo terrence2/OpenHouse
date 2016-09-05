@@ -1,8 +1,0 @@
-Listen for noise, grok it for commands, then dispatch commands to mcp.
-
-Updating the vocabulary:
-1) The list of knownish commands is kept in corpus.txt
-2) Add commands and upload to:
-   http://www.speech.cs.cmu.edu/tools/lmtool-new.html
-3) Make a directory called corpus-N, copy the tarball there and unpack it.
-4) In main.py, update the prefix with N and add new commands to the commands list.

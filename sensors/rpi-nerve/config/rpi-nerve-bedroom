@@ -1,5 +1,0 @@
-export DHT_PIN=4
-export DHT_TYPE=AM2302
-export MOTION_PIN=23
-export LED_PIN=17
-
