@@ -9,7 +9,7 @@ import json
 import logging
 from collections import namedtuple
 from pathlib import PurePosixPath as Path
-from datetime import datetime, timedelta
+from pprint import pformat
 
 log = logging.getLogger('oh_hue.bridge')
 
@@ -64,6 +64,7 @@ class Bridge:
         # Make initial status query.
         res = await aiohttp.request('GET', self.url(''))
         status = await res.json()
+        log.debug("Hue Bridge Status Blob:\n{}".format(pformat(status)))
         config = status['config']
         interesting = ('name', 'modelid', 'bridgeid', 'apiversion', 'swversion',
                        'UTC', 'localtime', 'timezone',
