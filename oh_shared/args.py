@@ -12,9 +12,9 @@ def add_common_args(parser: argparse.ArgumentParser):
                        help="The logging level. (default DEBUG)")
     group.add_argument('--log-target', '-L', default='events.log',
                        help="The logging target. (default events.log)")
-    group.add_argument('--home-address', '-H', default=internal_ip, type=str,
+    group.add_argument('--db-address', '-A', default=internal_ip, type=str,
                        help="The HOMe daemon's ipv4 address. (default {}".format(internal_ip))
-    group.add_argument('--home-port', '-P', default=8887, type=int,
+    group.add_argument('--db-port', '-P', default=8887, type=int,
                        help="The HOMe daemon's ipv4 port.")
     group.add_argument('--ca-chain', '-C', type=str,
                        help="The private key of this daemon.")

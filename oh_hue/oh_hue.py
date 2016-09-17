@@ -14,7 +14,7 @@ log = logging.getLogger('oh_hue')
 
 
 async def make_connection(args):
-    tree = await Tree.connect((args.home_address, args.home_port),
+    tree = await Tree.connect((args.db_address, args.db_port),
                               args.ca_chain, args.certificate, args.private_key)
     return tree
 

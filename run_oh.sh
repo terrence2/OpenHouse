@@ -11,7 +11,7 @@ LOGDIR="log/$LOG_TIME"
 mkdir -p $LOGDIR
 pushd log; rm -f latest; ln -s $LOG_TIME latest; popd
 
-PORT=8184
+PORT=8185
 
 # Ensure that any subcommands we need are built.
 pushd oh_db; cargo build --release; popd
@@ -31,7 +31,7 @@ pid_db=$!
 ./oh_populate/oh_populate.py \
     -l INFO \
     -L $LOGDIR/oh_populate.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_populate.cert.pem \
@@ -41,7 +41,7 @@ pid_db=$!
 ./oh_hue/oh_hue.py \
     -l INFO \
     -L $LOGDIR/oh_hue.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_hue.cert.pem \
@@ -51,7 +51,7 @@ pid_hue=$!
 ./oh_color/oh_color.py \
     -l INFO \
     -L $LOGDIR/oh_color.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_color.cert.pem \
@@ -61,7 +61,7 @@ pid_color=$!
 ./oh_formula/oh_formula.py \
     -l INFO \
     -L $LOGDIR/oh_formula.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_formula.cert.pem \
@@ -71,7 +71,7 @@ pid_formula=$!
 ./oh_button/oh_button.py \
     -l INFO \
     -L $LOGDIR/oh_button.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_button.cert.pem \
@@ -82,7 +82,7 @@ pid_button=$!
 ./oh_rest/oh_rest.py \
     -l INFO \
     -L $LOGDIR/oh_rest.log \
-    -H 127.0.0.1 \
+    -A 127.0.0.1 \
     -P $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
     -c CA/intermediate/certs/oh_rest.cert.pem \
