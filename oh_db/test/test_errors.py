@@ -15,10 +15,10 @@ EmptyComponentPaths = {
     db.EmptyComponent: ("//", "/foo/", "/foo//bar"),
 }
 InvalidChars = {
-    db.InvalidCharacter: "/\\:,![]{}",
+    db.InvalidCharacter: "/\\:![]",
     db.InvalidControlCharacter: "\n\v\t\r",
     db.InvalidWhitespaceCharacter: " \u00A0",
-    db.InvalidGlobCharacter: "?*",
+    db.InvalidGlobCharacter: "?*{},",
 }
 
 

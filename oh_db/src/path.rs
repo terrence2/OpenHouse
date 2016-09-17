@@ -3,15 +3,17 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use std::error::Error;
 use std::fmt;
+use std::str;
 
 make_error!(PathError; {
-    NonAbsolutePath => String,
     Dotfile => String,
     EmptyComponent => String,
     InvalidCharacter => String,
+    InvalidControlCharacter => String,
     InvalidGlobCharacter => String,
     InvalidWhitespaceCharacter => String,
-    InvalidControlCharacter => String,
+    MismatchedBraces => String,
+    NonAbsolutePath => String,
     UnreachablePattern => String
 });
 pub type PathResult<T> = Result<T, PathError>;
@@ -28,7 +30,7 @@ pub type PathResult<T> = Result<T, PathError>;
 ///     - any characters special to yaml
 ///       \ : ,
 ///     - any globbing characters:
-///       ? * [ ] !
+///       ? * [ ] { } !
 ///
 /// Globs are just like paths, except that they relax the last check and allow
 /// glob characters. Both paths and globs can be constructed using a PathBuilder.
@@ -41,19 +43,19 @@ fn is_invalid_character(c: char) -> bool {
     c == '!' || // Reserved for glob usage
     c == '[' || // "
     c == ']' || // "
-    c == '{' || // "
-    c == '}' || // "
     c == '/' || // Should be removed already by .split('/')
     c == '\\'|| // Confusing and restricted in windows paths regardless.
     c == ':' || // "
-    c == ',' || // Confusable in yaml or shell contexts, so disallowed.
     c == '"' || // "
     c == '\''   // "
 }
 
 fn is_glob_character(c: char) -> bool {
     c == '?' ||
-    c == '*'
+    c == '*' ||
+    c == '{' ||
+    c == '}' ||
+    c == ','
 }
 
 impl PathBuilder {
@@ -316,11 +318,11 @@ enum GlobToken {
     AnyChar, // ?
     AnySequence, // *
     AnyRecursiveSequence, // **
+    AnyOf(Vec<String>), // {}
 
     // TODO: decide whether we want to bother supporting these.
     //AnyWithin(Vec<char>), // []
-    //AnyExcept(Vec<char>) // [!]
-    //AnyOf(Vec<String>) // {}
+    //AnyExcept(Vec<char>), // [!]
 }
 
 // A single path component of a glob.
@@ -338,6 +340,7 @@ pub enum MatchResult {
 }
 
 impl GlobComponent {
+    /// Take a path component as string and build a glob component.
     fn new(part: &str) -> PathResult<GlobComponent> {
         // ** Can only be a whole path component, so we can check for it up front.
         let mut tokens = Vec::new();
@@ -368,6 +371,35 @@ impl GlobComponent {
                     tokens.push(GlobToken::AnySequence);
                     i += 1;
                 }
+                '}' => {
+                    return Err(PathError::MismatchedBraces(
+                               "found closing { without an opening".to_owned()));
+                }
+                '{' => {
+                    // Search for the closing }.
+                    i += 1;
+                    let start = i;
+                    while i < chars.len() && chars[i] != '}' {
+                        if chars[i] == '{' {
+                            return Err(PathError::MismatchedBraces(
+                                       "found second { before closing }".to_owned()));
+                        }
+                        i += 1;
+                    }
+                    if i >= chars.len() {
+                        return Err(PathError::MismatchedBraces(
+                                   "string ends before matching } was found".to_owned()));
+                    }
+                    // Split into options for matching.
+                    let inner: String = chars[start..i].to_owned().into_iter().collect();
+                    if inner.len() == 0 {
+                        return Err(PathError::MismatchedBraces(
+                                   "the braced content is empty".to_owned()));
+                    }
+                    let parts: Vec<String> = inner.split(',').map(|p| p.to_owned()).collect();
+                    tokens.push(GlobToken::AnyOf(parts));
+                    i += 1;
+                }
                 c => {
                     tokens.push(GlobToken::Char(c));
                     i += 1;
@@ -379,6 +411,7 @@ impl GlobComponent {
 
     /// Returns whether the token matches and whether the match is recursive.
     pub fn matches(&self, name: &str) -> MatchResult {
+        println!("Matching: {}", name);
         let mut part = name.chars();
         let mut tokens = self.tokens.iter();
         'head: loop {
@@ -398,6 +431,19 @@ impl GlobComponent {
                         // Out of chars in the string to match against.
                         return MatchResult::NoMatch;
                     }
+                },
+                GlobToken::AnyOf(ref options) => {
+                    // Grab the rest of the token and use startswith against each option.
+                    let remainder = part.as_str().to_owned();
+                    for option in options {
+                        if remainder.starts_with(option) {
+                            for _ in 0..option.len() {
+                                part.next();
+                            }
+                            continue 'head;
+                        }
+                    }
+                    return MatchResult::NoMatch;
                 },
                 GlobToken::Char(token_char) => {
                     if let Some(c) = part.next() {
@@ -512,12 +558,9 @@ mod tests {
         ("InvalidControlCharacter", test_whitespace_carriage_return, "/foo/a\rb/baz"),
         ("InvalidCharacter", test_invalid_backslash, "/foo/a\\b/baz"),
         ("InvalidCharacter", test_invalid_colon, "/foo/a:b/baz"),
-        ("InvalidCharacter", test_invalid_comma, "/foo/a,b/baz"),
         ("InvalidCharacter", test_invalid_open_bracket, "/foo/a[b/baz"),
         ("InvalidCharacter", test_invalid_close_bracket, "/foo/a]b/baz"),
         ("InvalidCharacter", test_invalid_exclamation, "/foo/a!b/baz"),
-        ("InvalidCharacter", test_invalid_open_brace, "/foo/a{b/baz"),
-        ("InvalidCharacter", test_invalid_close_brace, "/foo/a}b/baz"),
         ("InvalidGlobCharacter", test_invalid_star, "/foo/a*b/baz"),
         ("InvalidGlobCharacter", test_invalid_question, "/foo/a?b/baz")
     ]);
@@ -550,7 +593,12 @@ mod tests {
         ("InvalidGlobCharacter", test_invalid_multistar3, "/a/***/b"),
         ("InvalidGlobCharacter", test_invalid_multistar4, "/a/****/b"),
         ("InvalidGlobCharacter", test_invalid_backtracking1, "/a/foo*?/b"),
-        ("InvalidGlobCharacter", test_invalid_backtracking2, "/a/*?foo/b")
+        ("InvalidGlobCharacter", test_invalid_backtracking2, "/a/*?foo/b"),
+        ("MismatchedBraces", test_mismatched_empty_braces, "/foo/{}/baz"),
+        ("MismatchedBraces", test_mismatched_no_closing, "/a/{foo,bar,baz"),
+        ("MismatchedBraces", test_mismatched_no_opening1, "/a/foo,bar,baz}"),
+        ("MismatchedBraces", test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
+        ("MismatchedBraces", test_mismatched_no_recursion, "/a/{{}")
     ]);
 
     // Generic glob construction test to make sure that sane combinations don't crash.
@@ -587,24 +635,47 @@ mod tests {
         }
     }
     make_glob_match_tests!([
-        (test_match_exact, "/foo", ["/foo"], ["/Xfoo", "/fooX", "/FOO"]),
-        (test_match_q_start, "/?a", ["/Xa"], ["/ab", "/Xaa"]),
-        (test_match_q_end, "/a?", ["/aX", "/a."], ["/Xa", "/aXX", "/AX"]),
-        (test_match_q_middle, "/a?b", ["/aXb", "/a.b"], ["/XaXb", "/aXXb", "/aXbX"]),
-        (test_match_s_start, "/*a", ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
-                                    ["/aX", "/XXaX"]),
-        (test_match_s_end, "/a*", ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
-                                  ["/Xa", "/XaXXXXX", "/XaABCDEF"]),
-        (test_match_s_middle, "/a*b", ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
-                                      ["/Xab", "/abX", "/XaXb", "/aXbX"]),
-        (test_match_ss, "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
-        (test_match_ss_start, "/**/foo", ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
-                                         ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"]),
-        (test_match_ss_end, "/foo/**", ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
-                                         ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]),
-        (test_match_ss_middle, "/foo/**/bar", ["/foo/bar", "/foo/X/bar",
-                                               "/foo/X/Y/bar", "/foo/X/Y/Z/bar"],
-                                              ["/X/foo/bar", "/foo/bar/X",
-                                               "/X/foo/X/Y/bar", "/foo/X/Y/bar/Z"])
+        (test_exact,    "/foo", ["/foo"], ["/Xfoo", "/fooX", "/FOO"]),
+        (test_q_start,  "/?a", ["/Xa"], ["/ab", "/Xaa"]),
+        (test_q_end,    "/a?", ["/aX", "/a."], ["/Xa", "/aXX", "/AX"]),
+        (test_q_middle, "/a?b", ["/aXb", "/a.b"], ["/XaXb", "/aXXb", "/aXbX"]),
+        (test_s_start,  "/*a", ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
+                               ["/aX", "/XXaX"]),
+        (test_s_end,    "/a*", ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
+                               ["/Xa", "/XaXXXXX", "/XaABCDEF"]),
+        (test_s_middle, "/a*b", ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
+                                ["/Xab", "/abX", "/XaXb", "/aXbX"]),
+        (test_ss,       "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
+        (test_ss_start, "/**/foo", ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
+                                   ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"]),
+        (test_ss_end,   "/foo/**", ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
+                                   ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]),
+        (test_ss_middle,"/foo/**/bar", ["/foo/bar", "/foo/X/bar",
+                                        "/foo/X/Y/bar", "/foo/X/Y/Z/bar"],
+                                       ["/X/foo/bar", "/foo/bar/X",
+                                        "/X/foo/X/Y/bar", "/foo/X/Y/bar/Z"]),
+        (test_any_seq0, "/foo/{a,b}/bar", ["/foo/a/bar", "/foo/b/bar"],
+                                          ["/foo/Xa/bar", "/foo/Xb/bar",
+                                           "/foo/aX/bar", "/foo/bX/bar",
+                                           "/foo/X/bar", "/foo/aa/bar", "/foo/bb/bar",
+                                           "/foo/ab/bar", "/foo/ba/bar",
+                                           "/a/bar", "/b/bar",
+                                           "/foo/a", "/foo/b"]),
+        (test_any_seq1, "/foo/X{a,b}/bar", ["/foo/Xa/bar", "/foo/Xb/bar"],
+                                           ["/foo/a/bar", "/foo/b/bar",
+                                            "/foo/aX/bar", "/foo/bX/bar",
+                                            "/foo/X/bar", "/foo/XX/bar",
+                                            "/foo/Xaa/bar", "/foo/Xbb/bar",
+                                            "/foo/Xab/bar", "/foo/Xba/bar",
+                                            "/Xa/bar", "/Xb/bar",
+                                            "/foo/Xa", "/bar/Xb"]),
+        (test_any_seq2, "/foo/{a,b}X/bar", ["/foo/aX/bar", "/foo/bX/bar"],
+                                           ["/foo/a/bar", "/foo/b/bar",
+                                            "/foo/Xa/bar", "/foo/Xb/bar",
+                                            "/foo/X/bar", "/foo/XX/bar",
+                                            "/foo/aaX/bar", "/foo/bbX/bar",
+                                            "/foo/abX/bar", "/foo/baX/bar",
+                                            "/Xa/bar", "/Xb/bar",
+                                            "/foo/Xa", "/bar/Xb"])
     ]);
 }
