@@ -7,32 +7,36 @@ OpenHouse is:
 * Extremely flexible and adaptable -- everything is a communicating daemon, so adding new
   functionality is easy to do without bricking your house.
 
-Architecture
+
+Planning
 ===
 
-oh_wemo (WeMo Motion Detector)
-  Listens for WeMo motion and button events and updates:
-      => /room/**/wemo-motion-detector/raw-state == true|false
-oh_motion_filter (Hysteresis)
-  Listens for changes to WeMo motion-detector states and adds
-  hysteresis give a better proxy for presence.
-      <= /room/**/wemo-motion-detector/state
-      => /root/**/wemo-motion-detector/motion
-  
-oh_button
-  Listens for HTTP requests from buttons and maps that to state
-  changes in the appropriate path.
-  => /root/**/radio-button/**/state
- 
-oh_formula
-  Apply formulas. For example, listening for button states and setting
-  a room's color appropriately.
+Button press in the bedroom ->
+REST request to oh_button with <value> ->
+oh_button modifies /room/bedroom/radio-button/bedroom-lightswitch.eyrie/state to <value> ->
+oh_db applies computed formulas that depend on /^/state, which is /room/bedroom/color ->
+    /room/bedroom/color becomes <value>
+    oh_db applies computed formulas that depend on /^/color => /room/hall/color
+        /room/hall/color becomes <value>
+        return [/room/hall/color]
+    return [/room/hall/color, /room/bedroom/color]
+return [/.../state, /room/hall/color, /room/bedroom/color]
+oh_db emits subscription events for everything modified in one go
+oh_color receives color change on /room/bedroom/color and /room/hall/color
+  in one message
+oh_color loops over each key, extracting the room name and builds:
+     /room/{bedroom,hall}
+oh_color loops over each constant color by light kind and emits
+     /room/{bedroom,hall}/hue-light/*/color <- <color-from-palette>
+     /room/{bedroom,hall}/hue-livingcolor/*/color <- <color-from-palette>
+oh_hue gets a single message with all lights that need to change at once
 
-oh_color
-  Listen for color changes in a room and to a color and set the *light
-  states appropriately.
-
-oh_hue
-  <= /root/**/hue-light/*/color
-  => ##controls lights##
-
+====
+Need to implement:
+  * computed files (as above) so that we can aggregate changes in as
+    few messages as possible, avoiding the second round trip to the
+    formula controller and more importantly, letting us batch the subscription
+    events bound for oh_color into a single message.
+  * glob matching for sets of strings so that oh_color can send hue light
+    updates to multiple, specific rooms in one message.
+  * win!
