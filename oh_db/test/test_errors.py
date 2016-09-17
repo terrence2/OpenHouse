@@ -6,7 +6,7 @@ import oh_shared.db as db
 import pytest
 
 
-NodeTypes = (db.NodeType.directory, db.NodeType.file)
+NodeTypes = ('file', 'directory')
 
 InvalidNames = {
     db.Dotfile: (".", "..", ".foo"),
@@ -21,39 +21,47 @@ InvalidChars = {
     db.InvalidGlobCharacter: "?*",
 }
 
+
+async def create_node(tree, ty, path, name):
+    if ty == 'file':
+        return await tree.create_file(path, name)
+    assert ty == 'directory'
+    return await tree.create_directory(path, name)
+
+
 @pytest.mark.asyncio
 async def test_create_errors():
     with run_server():
         async with make_connection() as tree:
-            await tree.create_node(db.NodeType.directory, "/", "dir")
-            await tree.create_node(db.NodeType.file, "/", "file")
+            await tree.create_directory("/", "dir")
+            await tree.create_file("/", "file")
 
             for path in ("/", "/dir"):
                 for ty in NodeTypes:
                     for exc_type, chars in InvalidChars.items():
                         for c in chars:
                             with pytest.raises(exc_type):
-                                await tree.create_node(ty, path, "a" + c + "b")
+                                await create_node(tree, ty, path, "a" + c + "b")
                             if c != '/':
                                 with pytest.raises(exc_type):
-                                    await tree.create_node(ty, "/a" + c + "b", "foo")
+                                    await create_node(tree, ty, "/a" + c + "b", "foo")
                     for exc_type, names in InvalidNames.items():
                         for name in names:
                             with pytest.raises(exc_type):
-                                await tree.create_node(ty, path, name)
+                                await create_node(tree, ty, path, name)
                             with pytest.raises(exc_type):
-                                await tree.create_node(ty, "/" + name, "foo")
+                                await create_node(tree, ty, "/" + name, "foo")
                     for exc_type, names in EmptyComponentPaths.items():
                         for name in names:
                             with pytest.raises(exc_type):
-                                await tree.create_node(ty, name, "foo")
+                                await create_node(tree, ty, name, "foo")
 
                 with pytest.raises(db.NoSuchNode):
-                    await tree.create_node(ty, "/b", "a")
+                    await create_node(tree, ty, "/b", "a")
                 with pytest.raises(db.NodeAlreadyExists):
-                    await tree.create_node(ty, "/", "dir")
+                    await create_node(tree, ty, "/", "dir")
                 with pytest.raises(db.NotDirectory):
-                    await tree.create_node(ty, "/file", 'foo')
+                    await create_node(tree, ty, "/file", 'foo')
 
 
 @pytest.mark.asyncio
@@ -81,8 +89,8 @@ async def test_remove_errors():
             with pytest.raises(db.NoSuchNode):
                 await tree.remove_node("/", "a")
 
-            await tree.create_node(db.NodeType.directory, "/", "a")
-            await tree.create_node(db.NodeType.directory, "/a", "b")
+            await tree.create_directory("/", "a")
+            await tree.create_directory("/a", "b")
             with pytest.raises(db.DirectoryNotEmpty):
                 await tree.remove_node("/", "a")
             await tree.remove_node("/a", "b")

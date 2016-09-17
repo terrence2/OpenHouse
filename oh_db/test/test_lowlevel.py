@@ -27,9 +27,12 @@ async def test_tree_async():
             futures = []
             children = "abcdefghijklmnopqrstuvwxyz"
             for i, a in enumerate(children):
-                ty = db.NodeType.directory if i % 2 == 0 else db.NodeType.file
-                futures.append(await tree.create_node_async(ty, "/", a))
-                if i % 2 == 1:
+                if i % 2 == 0:
+                    futures.append(await tree.create_directory_async("/", a))
+                else:
+                    # Note that this is safe because we're using TCP under the hood. If we ever do anything non-serial,
+                    # this test will need to change pretty dramatically.
+                    futures.append(await tree.create_file_async("/", a))
                     futures.append(await tree.set_file_async("/" + a, a))
             await asyncio.gather(*futures)
 
@@ -147,8 +150,8 @@ async def test_subscribe_same_client_data():
                 notify2.set_result(...)
 
             # Create and subscribe to data node.
-            await tree.create_node(db.NodeType.file, "/", "a")
-            await tree.create_node(db.NodeType.file, "/", "b")
+            await tree.create_file("/", "a")
+            await tree.create_file("/", "b")
             subid1 = await tree.subscribe("/a", on_child_changed1)
             subid2 = await tree.subscribe("/a", on_child_changed2)
 

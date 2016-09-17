@@ -28,15 +28,16 @@ struct ClientRequest {
     id @0 :UInt64;
     union {
         ping             @1  :PingRequest;
-        createNode       @2  :CreateNodeRequest;
-        removeNode       @3  :RemoveNodeRequest;
-        listDirectory    @4  :ListDirectoryRequest;
-        getFile          @5  :GetFileRequest;
-        getMatchingFiles @6  :GetMatchingFilesRequest;
-        setFile          @7  :SetFileRequest;
-        setMatchingFiles @8  :SetMatchingFilesRequest;
-        subscribe        @9  :SubscribeRequest;
-        unsubscribe      @10 :UnsubscribeRequest;
+        createFile       @2  :CreateFileRequest;
+        createDirectory  @3  :CreateDirectoryRequest;
+        removeNode       @4  :RemoveNodeRequest;
+        listDirectory    @5  :ListDirectoryRequest;
+        getFile          @6  :GetFileRequest;
+        getMatchingFiles @7  :GetMatchingFilesRequest;
+        setFile          @8  :SetFileRequest;
+        setMatchingFiles @9  :SetMatchingFilesRequest;
+        subscribe        @10 :SubscribeRequest;
+        unsubscribe      @11 :UnsubscribeRequest;
     }
 }
 
@@ -62,23 +63,21 @@ struct OkResponse {
     # Responses that require more data are specified below their request.
 }
 
-struct CreateNodeRequest {
+struct CreateFileRequest {
+    # The parentPath must already exist and have type directory.  The name must
+    # not contain /,#,*, or other restricted characters.
     parentPath @0 :Text;
-    # The parent must already exist and have type directory.
-    nodeType @1 :NodeType;
-    name @2 :Text;
-    # Must not contain /,#,*, or other restricted characters.
-
-    enum NodeType {
-        file @0;
-        directory @1;
-    }
+    name @1 :Text;
+}
+struct CreateDirectoryRequest {
+    parentPath @0 :Text;
+    name @1 :Text;
 }
 
 struct RemoveNodeRequest {
+    # The parentPath must exist and have type directory. A node named |name|
+    # must exist in the parentPath's directory.
     parentPath @0 :Text;
-    # FIXME: make this multivariate
-    # The parent must already exist, have type directory, and contain |name|.
     name @1 :Text;
 }
 

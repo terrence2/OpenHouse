@@ -1,7 +1,6 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-import attr
 import asyncio
 import capnp
 import itertools
@@ -17,7 +16,6 @@ messages = capnp.load('oh_shared/db/messages.capnp')
 
 
 # Re-export some deeply nested enums so that users don't have to worry about message structural details.
-NodeType = messages.CreateNodeRequest.NodeType
 EventKind = messages.EventKind
 
 
@@ -190,10 +188,13 @@ class Tree:
         return exc_class(error.name, error.context)
 
     # ########## LowLevel Async ##########
-    async def create_node_async(self, node_type: str, parent_path: str, name: str):
-        return await self._dispatch_message(createNode=messages.CreateNodeRequest.new_message(parentPath=parent_path,
-                                                                                              nodeType=node_type,
+    async def create_file_async(self, parent_path: str, name: str):
+        return await self._dispatch_message(createFile=messages.CreateFileRequest.new_message(parentPath=parent_path,
                                                                                               name=name))
+
+    async def create_directory_async(self, parent_path: str, name: str):
+        return await self._dispatch_message(createDirectory=messages.CreateDirectoryRequest.new_message(
+            parentPath=parent_path, name=name))
 
     async def remove_node_async(self, parent_path: str, name: str) -> asyncio.Future:
         return await self._dispatch_message(removeNode=messages.RemoveNodeRequest.new_message(parentPath=parent_path,
@@ -221,8 +222,12 @@ class Tree:
     # registered on this side of the channel.
 
     # ########## LowLevel Sync ##########
-    async def create_node(self, node_type: str, parent_path: str, name: str):
-        future = await self.create_node_async(node_type, parent_path, name)
+    async def create_file(self, parent_path: str, name: str):
+        future = await self.create_file_async(parent_path, name)
+        await future
+
+    async def create_directory(self, parent_path: str, name: str):
+        future = await self.create_directory_async(parent_path, name)
         await future
 
     async def remove_node(self, parent_path: str, name: str):
@@ -262,10 +267,3 @@ class Tree:
         future = await self._dispatch_message(unsubscribe=messages.UnsubscribeRequest.new_message(subscriptionId=sid))
         await future
         del self.subscriptions[sid]
-
-    # ########## High Level Interface ##########
-    async def create_directory(self, parent_path: str, name: str):
-        await self.create_node(NodeType.directory, parent_path, name)
-
-    async def create_file(self, parent_path: str, name: str):
-        await self.create_node(NodeType.file, parent_path, name)

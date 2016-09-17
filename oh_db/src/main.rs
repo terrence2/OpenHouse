@@ -115,15 +115,6 @@ macro_rules! close_on_failure {
     };
 }
 
-impl fmt::Display for create_node_request::NodeType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            create_node_request::NodeType::File => write!(f, "NodeType::File"),
-            create_node_request::NodeType::Directory => write!(f, "NodeType::Directory")
-        }
-    }
-}
-
 macro_rules! handle_client_request {
     (
         $kind:expr, $id:ident, $conn:expr, [ $( ($a:ident | $b:ident) ),* ]
@@ -293,27 +284,41 @@ fn run_server(address: &str, port: u16,
             return Ok(());
         }
 
-        fn handle_create_node(&mut self, msg: &create_node_request::Reader,
+        fn handle_create_file(&mut self, msg: &create_file_request::Reader,
                               response: server_response::Builder)
             -> Result<(), Box<Error>>
         {
             let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
                                    .finish_path());
             let name = try!(msg.get_name());
-            let node_type = try!(msg.get_node_type());
-            info!("handling CreateNode -> parent: {},  name: {}, type: {}",
-                  parent_path, name, node_type);
+            info!("handling CreateFile -> parent: {},  name: {}", parent_path, name);
             {
                 let mut env = self.env.borrow_mut();
                 {
                     let db = &mut env.db;
                     let parent = try!(db.lookup_directory(&parent_path));
-                    if node_type == create_node_request::NodeType::Directory {
-                        try!(parent.add_directory(&name));
-                    } else {
-                        debug_assert!(node_type == create_node_request::NodeType::File);
-                        try!(parent.add_file(&name));
-                    }
+                    try!(parent.add_file(&name));
+                }
+                env.notify_subscriptions(&parent_path, EventKind::Created, name);
+            }
+            response.init_ok();
+            return Ok(());
+        }
+
+        fn handle_create_directory(&mut self, msg: &create_directory_request::Reader,
+                                   response: server_response::Builder)
+            -> Result<(), Box<Error>>
+        {
+            let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
+                                   .finish_path());
+            let name = try!(msg.get_name());
+            info!("handling Createdirectory -> parent: {},  name: {}", parent_path, name);
+            {
+                let mut env = self.env.borrow_mut();
+                {
+                    let db = &mut env.db;
+                    let parent = try!(db.lookup_directory(&parent_path));
+                    try!(parent.add_directory(&name));
                 }
                 env.notify_subscriptions(&parent_path, EventKind::Created, name);
             }
@@ -505,7 +510,8 @@ fn run_server(address: &str, port: u16,
             let message_id = MessageId::from_u64(message.get_id());
             handle_client_request!(message.which(), message_id, self,
                                    [(Ping             | handle_ping),
-                                    (CreateNode       | handle_create_node),
+                                    (CreateFile       | handle_create_file),
+                                    (CreateDirectory  | handle_create_directory),
                                     (RemoveNode       | handle_remove_node),
                                     (GetFile          | handle_get_file),
                                     (GetMatchingFiles | handle_get_matching_files),
