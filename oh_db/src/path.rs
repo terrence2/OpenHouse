@@ -411,7 +411,6 @@ impl GlobComponent {
 
     /// Returns whether the token matches and whether the match is recursive.
     pub fn matches(&self, name: &str) -> MatchResult {
-        println!("Matching: {}", name);
         let mut part = name.chars();
         let mut tokens = self.tokens.iter();
         'head: loop {
@@ -437,6 +436,7 @@ impl GlobComponent {
                     let remainder = part.as_str().to_owned();
                     for option in options {
                         if remainder.starts_with(option) {
+                            // Consume the part of |part| that was matching.
                             for _ in 0..option.len() {
                                 part.next();
                             }
