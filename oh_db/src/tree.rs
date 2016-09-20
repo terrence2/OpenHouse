@@ -16,12 +16,25 @@ make_error!(TreeError; {
 pub type TreeResult<T> = Result<T, Box<Error>>;
 
 
+/// A node is either a file or a directory.
+#[derive(Debug)]
+enum Node {
+    Directory(DirectoryData),
+    File(FileData)
+}
+
+/// A file contains a string. It implements get_data and set_data.
+#[derive(Debug)]
+pub struct FileData {
+    data: String
+}
+
 /// A directory contains a list of children.
-type ChildMap = HashMap<String, Node>;
 #[derive(Debug)]
 pub struct DirectoryData {
-    children: ChildMap
+    children: HashMap<String, Node>
 }
+
 impl DirectoryData {
     fn new() -> Self {
         DirectoryData { children: HashMap::new() }
@@ -172,29 +185,10 @@ impl DirectoryData {
 }
 
 /// A file contains some data.
-#[derive(Debug)]
-pub struct FileData {
-    data: String
-}
 impl FileData {
-    fn new() -> FileData {
-        FileData { data: "".to_owned() }
-    }
-
-    pub fn set_data(&mut self, new_data: &str) {
-        self.data = new_data.to_owned();
-    }
-
-    pub fn get_data(&self) -> String {
-        self.data.clone()
-    }
-}
-
-/// A node is either a file or a directory.
-#[derive(Debug)]
-enum Node {
-    Directory(DirectoryData),
-    File(FileData)
+    fn new() -> FileData { FileData { data: "".to_owned() } }
+    pub fn set_data(&mut self, new_data: &str) { self.data = new_data.to_owned(); }
+    pub fn ref_data(&self) -> &str { &self.data }
 }
 
 /// A tree of Node.

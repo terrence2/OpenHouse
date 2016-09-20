@@ -372,14 +372,12 @@ fn run_server(address: &str, port: u16,
         {
             let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
             info!("handling GetFile -> path: {}", path);
-            let out;
+            let mut cat_response = response.init_get_file();
             {
                 let db = &mut self.env.borrow_mut().db;
                 let file = try!(db.lookup_file(&path));
-                out = file.get_data();
+                cat_response.set_data(file.ref_data());
             }
-            let mut cat_response = response.init_get_file();
-            cat_response.set_data(&out);
             return Ok(());
         }
 
@@ -389,19 +387,15 @@ fn run_server(address: &str, port: u16,
         {
             let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
             info!("handling GetMatchingFiles -> glob: {}", glob);
-            let mut out = Vec::new();
+            let cat_response = response.init_get_matching_files();
             {
                 let db = &mut self.env.borrow_mut().db;
                 let matches = try!(db.find_matching_files(&glob));
-                for (path, file) in matches {
-                    out.push((path, file.get_data()));
+                let mut cat_data = cat_response.init_data(matches.len() as u32);
+                for (i, &(ref path, &mut ref file)) in matches.iter().enumerate() {
+                    cat_data.borrow().get(i as u32).set_path(&path.to_str());
+                    cat_data.borrow().get(i as u32).set_data(file.ref_data());
                 }
-            }
-            let cat_response = response.init_get_matching_files();
-            let mut cat_data = cat_response.init_data(out.len() as u32);
-            for (i, &(ref path, ref data)) in out.iter().enumerate() {
-                cat_data.borrow().get(i as u32).set_path(&path.to_str());
-                cat_data.borrow().get(i as u32).set_data(data);
             }
             return Ok(());
         }
