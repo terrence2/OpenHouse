@@ -392,9 +392,9 @@ fn run_server(address: &str, port: u16,
                 let db = &mut self.env.borrow_mut().db;
                 let matches = try!(db.find_matching_files(&glob));
                 let mut cat_data = cat_response.init_data(matches.len() as u32);
-                for (i, &(ref path, &mut ref file)) in matches.iter().enumerate() {
-                    cat_data.borrow().get(i as u32).set_path(&path.to_str());
-                    cat_data.borrow().get(i as u32).set_data(file.ref_data());
+                for (i, &ref match_pair) in matches.iter().enumerate() {
+                    cat_data.borrow().get(i as u32).set_path(&match_pair.0.to_str());
+                    cat_data.borrow().get(i as u32).set_data(match_pair.1.ref_data());
                 }
             }
             return Ok(());

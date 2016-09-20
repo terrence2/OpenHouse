@@ -23,6 +23,11 @@ enum Node {
     File(FileData)
 }
 
+pub trait DataHolder {
+    fn set_data(&mut self, new_data: &str);
+    fn ref_data(&self) -> &str;
+}
+
 /// A file contains a string. It implements get_data and set_data.
 #[derive(Debug)]
 pub struct FileData {
@@ -60,7 +65,7 @@ impl DirectoryData {
     }
 
     fn lookup_file_recursive(&mut self, parts: &mut PathIter)
-        -> TreeResult<&mut FileData>
+        -> TreeResult<&mut DataHolder>
     {
         // Look up the next name, path or directory. If we ran out of
         // components before finding a file, then the path exists but does not
@@ -81,7 +86,7 @@ impl DirectoryData {
                 if parts.next().is_some() {
                     Err(Box::new(TreeError::NotDirectory(name.to_owned())))
                 } else {
-                    Ok(f)
+                    Ok(f as &mut DataHolder)
                 }
             }
         }
@@ -93,9 +98,9 @@ impl DirectoryData {
     ///
     /// TODO: think of reasonable caching strategies.
     pub fn find_matching_files_recursive(&mut self, own_path: &Path, glob: &Glob)
-        -> TreeResult<Vec<(Path, &mut FileData)>>
+        -> TreeResult<Vec<(Path, &mut DataHolder)>>
     {
-        let mut acc: Vec<(Path, &mut FileData)> = Vec::new();
+        let mut acc: Vec<(Path, &mut DataHolder)> = Vec::new();
         for (child_name, child_node) in &mut self.children {
             let child_path = try!(own_path.slash(child_name));
             match child_node {
@@ -105,7 +110,7 @@ impl DirectoryData {
                 }
                 &mut Node::File(ref mut f) => {
                     if glob.matches(&child_path) {
-                        acc.push((child_path, f));
+                        acc.push((child_path, f as &mut DataHolder));
                     }
                 }
             }
@@ -187,8 +192,11 @@ impl DirectoryData {
 /// A file contains some data.
 impl FileData {
     fn new() -> FileData { FileData { data: "".to_owned() } }
-    pub fn set_data(&mut self, new_data: &str) { self.data = new_data.to_owned(); }
-    pub fn ref_data(&self) -> &str { &self.data }
+}
+
+impl DataHolder for FileData {
+    fn set_data(&mut self, new_data: &str) { self.data = new_data.to_owned(); }
+    fn ref_data(&self) -> &str { &self.data }
 }
 
 /// A tree of Node.
@@ -212,7 +220,7 @@ impl Tree {
 
     /// Returns the file at the given directory or an error.
     pub fn lookup_file(&mut self, path: &Path)
-        -> TreeResult<&mut FileData>
+        -> TreeResult<&mut DataHolder>
     {
         return self.root.lookup_file_recursive(&mut path.iter());
     }
@@ -220,7 +228,7 @@ impl Tree {
     /// Returns pairs of (path, file) that match the given glob.
     /// TODO: do we still need the lifetime params?
     pub fn find_matching_files<'a>(&'a mut self, glob: &'a Glob)
-        -> TreeResult<Vec<(Path, &mut FileData)>>
+        -> TreeResult<Vec<(Path, &mut DataHolder)>>
     {
         let mut path = try!(try!(PathBuilder::new("/")).finish_path());
         return self.root.find_matching_files_recursive(&mut path, glob);
