@@ -8,10 +8,10 @@ use std::fmt;
 use ws::util::Token;
 use ::SubscriptionId;
 
-make_error!(SubscriptionError; {
-    NoSuchSubscription => SubscriptionId
-});
-pub type SubscriptionResult<T> = Result<T, SubscriptionError>;
+make_error_system!(
+    SubscriptionErrorKind => SubscriptionError => SubscriptionResult {
+        NoSuchSubscription
+    });
 
 /// The collection of observed patterns and who to notify when a path
 /// matching one of the patterns changes.
@@ -83,7 +83,7 @@ impl Subscriptions {
                 }
             }
         }
-        return Err(SubscriptionError::NoSuchSubscription(*sid));
+        return Err(SubscriptionError::NoSuchSubscription(&format!("{}", *sid)));
     }
 
     /// Remove all uses of the given connection and all subscriptions therein.

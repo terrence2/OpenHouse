@@ -5,18 +5,19 @@ use std::error::Error;
 use std::fmt;
 use std::str;
 
-make_error!(PathError; {
-    Dotfile => String,
-    EmptyComponent => String,
-    InvalidCharacter => String,
-    InvalidControlCharacter => String,
-    InvalidGlobCharacter => String,
-    InvalidWhitespaceCharacter => String,
-    MismatchedBraces => String,
-    NonAbsolutePath => String,
-    UnreachablePattern => String
-});
-pub type PathResult<T> = Result<T, PathError>;
+make_error_system!(
+    PathErrorKind => PathError => PathResult {
+        Dotfile,
+        EmptyComponent,
+        InvalidCharacter,
+        InvalidControlCharacter,
+        InvalidGlobCharacter,
+        InvalidWhitespaceCharacter,
+        MismatchedBraces,
+        NonAbsolutePath,
+        UnreachablePattern
+    });
+
 
 /// OpenHouse paths have somewhat stricter rules than a typical filesystem. The
 /// rules are:
@@ -63,7 +64,7 @@ impl PathBuilder {
     /// if it cannot be a path or glob.
     pub fn new(raw: &str) -> PathResult<PathBuilder> {
         if !raw.starts_with('/') {
-            return Err(PathError::NonAbsolutePath(raw.to_owned()));
+            return Err(PathError::NonAbsolutePath(raw));
         }
 
         // Split produces two empty strings for "/", so just handle it separately
@@ -94,21 +95,21 @@ impl PathBuilder {
     fn validate_path_or_glob_component(part: &str) -> PathResult<bool> {
         let mut contains_glob_chars = false;
         if part.len() == 0 {
-            return Err(PathError::EmptyComponent("".to_owned()));
+            return Err(PathError::EmptyComponent(""));
         }
         if part.starts_with(".") {
-            return Err(PathError::Dotfile(part.to_owned()));
+            return Err(PathError::Dotfile(part));
         }
         for c in part.chars() {
             if is_invalid_character(c) {
                 return Err(PathError::InvalidCharacter(
-                           part.to_owned() + " character: " + &c.to_string()));
+                           &(part.to_owned() + " character: " + &c.to_string())));
             }
             if c.is_control() {
-                return Err(PathError::InvalidControlCharacter(part.to_owned()));
+                return Err(PathError::InvalidControlCharacter(part));
             }
             if c.is_whitespace() {
-                return Err(PathError::InvalidWhitespaceCharacter(part.to_owned()));
+                return Err(PathError::InvalidWhitespaceCharacter(part));
             }
 
             if is_glob_character(c) {
@@ -122,7 +123,7 @@ impl PathBuilder {
     /// error if the part contains invalid characters, including glob characters.
     pub fn validate_path_component(part: &str) -> PathResult<()> {
         if try!(PathBuilder::validate_path_or_glob_component(part)) {
-            return Err(PathError::InvalidGlobCharacter(part.to_owned()));
+            return Err(PathError::InvalidGlobCharacter(part));
         }
         return Ok(());
     }
@@ -131,8 +132,7 @@ impl PathBuilder {
     /// an error.
     pub fn finish_path(self) -> PathResult<Path> {
         if self.contains_glob_chars {
-            return Err(PathError::InvalidGlobCharacter(
-                       "unexpected glob character".to_owned()));
+            return Err(PathError::InvalidGlobCharacter("unexpected glob character"));
         }
         return Ok(Path {parts: self.parts});
     }
@@ -154,7 +154,7 @@ impl PathBuilder {
                 if a.tokens[0] == GlobToken::AnyRecursiveSequence &&
                    b.tokens[0] == GlobToken::AnyRecursiveSequence
                 {
-                    return Err(PathError::UnreachablePattern("**".to_owned()));
+                    return Err(PathError::UnreachablePattern("**"));
                 }
             }
         }
@@ -186,7 +186,7 @@ impl Path {
     #[cfg(test)]
     pub fn parent(&self) -> PathResult<Path> {
         if self.parts.len() == 0 {
-            return Err(PathError::EmptyComponent("already at top".to_owned()));
+            return Err(PathError::EmptyComponent("already at top"));
         }
         let mut parent_parts: Vec<String> = Vec::new();
         for part in self.parts.iter().take(self.parts.len() - 1) {
@@ -198,7 +198,7 @@ impl Path {
     #[cfg(test)]
     pub fn basename(&self) -> PathResult<String> {
         match self.parts.last() {
-            None => Err(PathError::EmptyComponent("the root has no name".to_owned())),
+            None => Err(PathError::EmptyComponent("the root has no name")),
             Some(p) => Ok(p.clone())
         }
     }
@@ -357,7 +357,7 @@ impl GlobComponent {
                     // Detect *?; this would require backtracking so disallow.
                     if let Some(&GlobToken::AnySequence) = tokens.last() {
                         return Err(PathError::InvalidGlobCharacter(
-                            "detected *?, which would require backtracking".to_owned()));
+                            "detected *?, which would require backtracking"));
                     }
                     tokens.push(GlobToken::AnyChar);
                     i += 1;
@@ -365,15 +365,14 @@ impl GlobComponent {
                 '*' => {
                     // Detect ** not as whole part or, ***, ****, etc.
                     if chars.len() > i + 1 && chars[i + 1] == '*' {
-                        return Err(PathError::InvalidGlobCharacter(
-                                   "detected **".to_owned()));
+                        return Err(PathError::InvalidGlobCharacter("detected **"));
                     }
                     tokens.push(GlobToken::AnySequence);
                     i += 1;
                 }
                 '}' => {
                     return Err(PathError::MismatchedBraces(
-                               "found closing { without an opening".to_owned()));
+                               "found closing { without an opening"));
                 }
                 '{' => {
                     // Search for the closing }.
@@ -382,19 +381,19 @@ impl GlobComponent {
                     while i < chars.len() && chars[i] != '}' {
                         if chars[i] == '{' {
                             return Err(PathError::MismatchedBraces(
-                                       "found second { before closing }".to_owned()));
+                                       "found second { before closing }"));
                         }
                         i += 1;
                     }
                     if i >= chars.len() {
                         return Err(PathError::MismatchedBraces(
-                                   "string ends before matching } was found".to_owned()));
+                                   "string ends before matching } was found"));
                     }
                     // Split into options for matching.
                     let inner: String = chars[start..i].to_owned().into_iter().collect();
                     if inner.len() == 0 {
                         return Err(PathError::MismatchedBraces(
-                                   "the braced content is empty".to_owned()));
+                                   "the braced content is empty"));
                     }
                     let parts: Vec<String> = inner.split(',').map(|p| p.to_owned()).collect();
                     tokens.push(GlobToken::AnyOf(parts));

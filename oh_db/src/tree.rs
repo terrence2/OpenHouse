@@ -6,14 +6,14 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-make_error!(TreeError; {
-    DirectoryNotEmpty => String,
-    NoSuchNode => String,
-    NodeAlreadyExists => String,
-    NotDirectory => String,
-    NotFile => String
-});
-pub type TreeResult<T> = Result<T, Box<Error>>;
+make_error_system!(
+    TreeErrorKind => TreeError => TreeResult {
+        DirectoryNotEmpty,
+        NoSuchNode,
+        NodeAlreadyExists,
+        NotDirectory,
+        NotFile
+    });
 
 
 /// Each node contains a Directory of more nodes or some leaf data.
@@ -65,13 +65,11 @@ impl DirectoryData {
             Some(name) => name,
             None => return Ok(self)
         };
-        let child = match self.children.get_mut(name) {
-            Some(c) => c,
-            None => return Err(Box::new(TreeError::NoSuchNode(name.to_owned())))
-        };
+        let child = try!(self.children.get_mut(name).ok_or_else(||{
+                         TreeError::NoSuchNode(name)}));
         return match child {
             &mut Node::Directory(ref mut d) => d.lookup_directory_recursive(parts),
-            _ => Err(Box::new(TreeError::NotDirectory(name.to_owned()))),
+            _ => Err(TreeError::NotDirectory(name)),
         };
     }
 
@@ -81,31 +79,25 @@ impl DirectoryData {
         // Look up the next name, path or directory. If we ran out of
         // components before finding a file, then the path exists but does not
         // name a file.
-        let name = match parts.next() {
-            Some(name) => name,
-            None => return Err(Box::new(TreeError::NotFile("".to_owned())))
-        };
-        let child = match self.children.get_mut(name) {
-            Some(c) => c,
-            None => return Err(Box::new(TreeError::NoSuchNode(name.to_owned())))
-        };
+        let name = try!(parts.next().ok_or_else(||{
+                        TreeError::NotFile("last component is a directory")}));
+        let child = try!(self.children.get_mut(name).ok_or_else(||{
+                         TreeError::NoSuchNode(name)}));
         match child {
             &mut Node::Directory(ref mut d) => d.lookup_file_recursive(parts),
             &mut Node::File(ref mut f) => {
                 // If we still have components left, then we need to return
                 // NotADirectory to indicate the failed traversal.
-                if parts.next().is_some() {
-                    Err(Box::new(TreeError::NotDirectory(name.to_owned())))
-                } else {
-                    Ok(f as &mut DataHolder)
-                }
+                return parts.next().map_or(
+                    Ok(f as &mut DataHolder),
+                    |_|{Err(TreeError::NotDirectory(name))});
             },
             &mut Node::Formula(ref mut f) => {
-                if parts.next().is_some() {
-                    Err(Box::new(TreeError::NotDirectory(name.to_owned())))
-                } else {
-                    Ok(f as &mut DataHolder)
-                }
+                // If we still have components left, then we need to return
+                // NotADirectory to indicate the failed traversal.
+                return parts.next().map_or(
+                    Ok(f as &mut DataHolder),
+                    |_|{Err(TreeError::NotDirectory(name))});
             }
         }
     }
@@ -145,7 +137,7 @@ impl DirectoryData {
     fn add_child(&mut self, name: &str, node: Node) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         if self.children.contains_key(name) {
-            return Err(Box::new(TreeError::NodeAlreadyExists(name.to_owned())));
+            return Err(TreeError::NodeAlreadyExists(name));
         }
         let result = self.children.insert(name.to_owned(), node);
         assert!(result.is_none());
@@ -171,12 +163,11 @@ impl DirectoryData {
 
     // Returns the indicated child.
     fn get_child_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
-        return match self.children.get_mut(name) {
-            None => Err(Box::new(TreeError::NoSuchNode(name.to_owned()))),
-            Some(n) => match n {
-                &mut Node::Directory(ref mut d) => Ok(d),
-                _ => Err(Box::new(TreeError::NotDirectory(name.to_owned())))
-            }
+        let node = try!(self.children.get_mut(name).ok_or_else(||{
+                        TreeError::NoSuchNode(name)}));
+        return match node {
+            &mut Node::Directory(ref mut d) => Ok(d),
+            _ => Err(TreeError::NotDirectory(name))
         };
     }
 
@@ -184,15 +175,12 @@ impl DirectoryData {
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         {
-            let child = try!(self.children.get(name).ok_or(Box::new(
-                             TreeError::NoSuchNode(name.to_owned()))));
-            match child {
-                &Node::Directory(ref d) => {
-                    if !d.children.is_empty() {
-                        return Err(Box::new(TreeError::DirectoryNotEmpty(name.to_owned())));
-                    }
-                },
-                _ => {}
+            let child = try!(self.children.get(name).ok_or(
+                             TreeError::NoSuchNode(name)));
+            if let &Node::Directory(ref d) = child {
+                if !d.children.is_empty() {
+                    return Err(TreeError::DirectoryNotEmpty(name));
+                }
             }
         }
         let result = self.children.remove(name);
@@ -226,7 +214,7 @@ impl DataHolder for FileData {
 
 impl DataHolder for FormulaData {
     fn set_data(&mut self, new_data: &str) -> TreeResult<()> {
-        return Err(Box::new(TreeError::NotFile("invalid set on Formula node".to_owned())));
+        return Err(TreeError::NotFile("invalid set on Formula node"));
     }
     fn ref_data(&self) -> &str {
         return &self.cached_value;
