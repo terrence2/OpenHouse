@@ -146,56 +146,6 @@ macro_rules! close_on_failure {
     };
 }
 
-macro_rules! handle_client_request {
-    (
-        $kind:expr, $id:ident, $conn:expr, [ $( ($a:ident | $b:ident) ),* ]
-    ) =>
-    {
-        match $kind {
-            $(
-                Ok(client_request::$a(req)) => {
-                    let unwrapped = close_on_failure!(req, $conn);
-
-                    let result;
-                    let mut builder = ::capnp::message::Builder::new_default();
-                    {
-                        let message = builder.init_root::<server_message::Builder>();
-                        let mut response = message.init_response();
-                        response.set_id($id.to_u64());
-
-                        // Note that since capnp's generated response objects' |self| only
-                        // takes a copy, we *have* to move when calling our handler. This means
-                        // that we need to process the result later when message is not pinning
-                        // builder. We have to re-create the message, but not all the other
-                        // machinery.
-                        result = $conn.$b(&unwrapped, response);
-                    }
-
-                    // If we got an error, rebuild message as an error.
-                    match result {
-                        Ok(_) => {}
-                        Err(e) => {
-                            let message = builder.init_root::<server_message::Builder>();
-                            let mut response = message.init_response();
-                            response.set_id($id.to_u64());
-                            let mut error_response = response.init_error();
-                            error_response.set_name(e.description());
-                            error_response.set_context(&format!("{}", e));
-                        }
-                    };
-
-                    let mut buf = Vec::new();
-                    try!(capnp::serialize::write_message(&mut buf, &builder));
-                    return $conn.sender.borrow_mut().send(buf.as_slice());
-                }
-            ),*
-            Err(e) => {
-                close_on_failure!(Err(e), $conn);
-            }
-        }
-    };
-}
-
 struct Environment<'e> {
     // The database.
     db: Tree,
@@ -511,6 +461,56 @@ impl<'e> Connection<'e> {
         try!(capnp::serialize::write_message(&mut buf, &builder));
         return self.sender.borrow_mut().send(buf.as_slice());
     }
+}
+
+macro_rules! handle_client_request {
+    (
+        $kind:expr, $id:ident, $conn:expr, [ $( ($a:ident | $b:ident) ),* ]
+    ) =>
+    {
+        match $kind {
+            $(
+                Ok(client_request::$a(req)) => {
+                    let unwrapped = close_on_failure!(req, $conn);
+
+                    let result;
+                    let mut builder = ::capnp::message::Builder::new_default();
+                    {
+                        let message = builder.init_root::<server_message::Builder>();
+                        let mut response = message.init_response();
+                        response.set_id($id.to_u64());
+
+                        // Note that since capnp's generated response objects' |self| only
+                        // takes a copy, we *have* to move when calling our handler. This means
+                        // that we need to process the result later when message is not pinning
+                        // builder. We have to re-create the message, but not all the other
+                        // machinery.
+                        result = $conn.$b(&unwrapped, response);
+                    }
+
+                    // If we got an error, rebuild message as an error.
+                    match result {
+                        Ok(_) => {}
+                        Err(e) => {
+                            let message = builder.init_root::<server_message::Builder>();
+                            let mut response = message.init_response();
+                            response.set_id($id.to_u64());
+                            let mut error_response = response.init_error();
+                            error_response.set_name(e.description());
+                            error_response.set_context(&format!("{}", e));
+                        }
+                    };
+
+                    let mut buf = Vec::new();
+                    try!(capnp::serialize::write_message(&mut buf, &builder));
+                    return $conn.sender.borrow_mut().send(buf.as_slice());
+                }
+            ),*
+            Err(e) => {
+                close_on_failure!(Err(e), $conn);
+            }
+        }
+    };
 }
 
 impl<'e> ws::Handler for Connection<'e> {
