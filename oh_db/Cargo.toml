@@ -6,19 +6,18 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 argparse = "0.2"
-env_logger = "0.3"
+env_logger = "0.3.5"
 log = "0.3"
 rand = "0.3"
-rustc-serialize = "0.3"
-capnp = "0.7"
+capnp = "0.7.4"
 
 [dependencies.ws]
-version = "0.4"
+version = "=0.4.8"
 features = ["ssl"]
 
 [dependencies.openssl]
-version = "*"
+version = "=0.7.14"
 features = ["tlsv1_2", "ecdh_auto"]
 
 [build-dependencies]
-capnpc = "*"
+capnpc = "0.7.2"
