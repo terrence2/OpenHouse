@@ -47,6 +47,7 @@ class DirectoryNotEmpty(TreeError): pass
 class NodeContainsSubscriptions(TreeError): pass
 class NotDirectory(TreeError): pass
 class NotFile(TreeError): pass
+class FormulaInputNotFound(TreeError): pass
 
 # The following should match up with path.rs' PathError enum.
 class PathError(DatabaseError): pass
@@ -192,6 +193,12 @@ class Tree:
         return await self._dispatch_message(createFile=messages.CreateFileRequest.new_message(parentPath=parent_path,
                                                                                               name=name))
 
+    async def create_formula_async(self, parent_path: str, name: str, inputs: {str: str}, formula: str):
+        new_input = messages.CreateFormulaRequest.Input.new_message
+        input_list = [new_input(name=k, path=v) for k, v in inputs.items()]
+        return await self._dispatch_message(createFormula=messages.CreateFormulaRequest.new_message(
+            parentPath=parent_path, name=name, inputs=input_list, formula=formula))
+
     async def create_directory_async(self, parent_path: str, name: str):
         return await self._dispatch_message(createDirectory=messages.CreateDirectoryRequest.new_message(
             parentPath=parent_path, name=name))
@@ -224,6 +231,10 @@ class Tree:
     # ########## LowLevel Sync ##########
     async def create_file(self, parent_path: str, name: str):
         future = await self.create_file_async(parent_path, name)
+        await future
+
+    async def create_formula(self, parent_path: str, name: str, inputs: {str: str}, formula: str):
+        future = await self.create_formula_async(parent_path, name, inputs, formula)
         await future
 
     async def create_directory(self, parent_path: str, name: str):

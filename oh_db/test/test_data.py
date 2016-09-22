@@ -3,7 +3,6 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from util import run_server, make_connection
 import asyncio
-import oh_shared.db as db
 import pytest
 
 

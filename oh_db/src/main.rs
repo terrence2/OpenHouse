@@ -280,6 +280,33 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
+    fn handle_create_formula(&mut self, msg: &create_formula_request::Reader,
+                             response: server_response::Builder)
+        -> Result<(), Box<Error>>
+    {
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
+                               .finish_path());
+        let name = try!(msg.get_name());
+        let formula = try!(msg.get_formula());
+        let mut inputs = HashMap::new();
+        for input in try!(msg.get_inputs()).iter() {
+            inputs.insert(try!(input.get_name()), try!(input.get_path()));
+        }
+        info!("handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
+              parent_path, name, inputs, formula);
+        {
+            let mut env = self.env.borrow_mut();
+            {
+                let db = &mut env.db;
+                let parent = try!(db.lookup_directory(&parent_path));
+                try!(parent.add_file(&name));
+            }
+            env.notify_subscriptions(&parent_path, EventKind::Created, name);
+        }
+        response.init_ok();
+        return Ok(());
+    }
+
     fn handle_create_directory(&mut self, msg: &create_directory_request::Reader,
                                response: server_response::Builder)
         -> Result<(), Box<Error>>
@@ -287,7 +314,7 @@ impl<'e> Connection<'e> {
         let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
                                .finish_path());
         let name = try!(msg.get_name());
-        info!("handling Createdirectory -> parent: {},  name: {}", parent_path, name);
+        info!("handling Createdirectory -> parent: {}, name: {}", parent_path, name);
         {
             let mut env = self.env.borrow_mut();
             {
@@ -530,6 +557,7 @@ impl<'e> ws::Handler for Connection<'e> {
         handle_client_request!(message.which(), message_id, self,
                                [(Ping             | handle_ping),
                                 (CreateFile       | handle_create_file),
+                                (CreateFormula    | handle_create_formula),
                                 (CreateDirectory  | handle_create_directory),
                                 (RemoveNode       | handle_remove_node),
                                 (GetFile          | handle_get_file),

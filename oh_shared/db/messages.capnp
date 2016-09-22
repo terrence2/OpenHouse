@@ -29,15 +29,16 @@ struct ClientRequest {
     union {
         ping             @1  :PingRequest;
         createFile       @2  :CreateFileRequest;
-        createDirectory  @3  :CreateDirectoryRequest;
-        removeNode       @4  :RemoveNodeRequest;
-        listDirectory    @5  :ListDirectoryRequest;
-        getFile          @6  :GetFileRequest;
-        getMatchingFiles @7  :GetMatchingFilesRequest;
-        setFile          @8  :SetFileRequest;
-        setMatchingFiles @9  :SetMatchingFilesRequest;
-        subscribe        @10 :SubscribeRequest;
-        unsubscribe      @11 :UnsubscribeRequest;
+        createFormula    @3  :CreateFormulaRequest;
+        createDirectory  @4  :CreateDirectoryRequest;
+        removeNode       @5  :RemoveNodeRequest;
+        listDirectory    @6  :ListDirectoryRequest;
+        getFile          @7  :GetFileRequest;
+        getMatchingFiles @8  :GetMatchingFilesRequest;
+        setFile          @9  :SetFileRequest;
+        setMatchingFiles @10 :SetMatchingFilesRequest;
+        subscribe        @11 :SubscribeRequest;
+        unsubscribe      @12 :UnsubscribeRequest;
     }
 }
 
@@ -69,6 +70,18 @@ struct CreateFileRequest {
     parentPath @0 :Text;
     name @1 :Text;
 }
+
+struct CreateFormulaRequest {
+    struct Input {
+        name @0 :Text;
+        path @1 :Text;
+    }
+    parentPath @0 :Text;
+    name @1 :Text;
+    inputs @2 :List(Input);
+    formula @3 :Text;
+}
+
 struct CreateDirectoryRequest {
     parentPath @0 :Text;
     name @1 :Text;
