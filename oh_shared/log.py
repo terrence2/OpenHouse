@@ -17,8 +17,7 @@ def enable_logging(filename: str, level: str):
                 return False
             return True
 
-    #formatter = logging.Formatter('%(pathname)s [%(module)s] - %(funcName)s:L%(lineno)d : %(message)s')
-    formatter = logging.Formatter(fmt='%(asctime)s:%(levelname)s:%(name)s:%(message)s')
+    formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s')
 
     # File logger captures everything.
     file_handler = logging.FileHandler(filename)
@@ -28,10 +27,12 @@ def enable_logging(filename: str, level: str):
     stream_handler = RainbowLoggingHandler(
         sys.stdout,
         color_asctime=('cyan', None, False),
+        color_msecs=('cyan', None, False),
         color_levelname=('gray', None, False),
         color_module=('yellow', None, False),
         color_name=('blue', None, False),
         color_lineno=('green', None, False),
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
     stream_handler.setLevel(getattr(logging, level))
     stream_handler.addFilter(Squelch())
