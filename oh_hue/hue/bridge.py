@@ -28,9 +28,9 @@ class WatchedProperty:
         self = cls()
         self.value_ = await tree.get_file(prop)
 
-        def update_value(_0, _1, context: str):
-            self.value_ = context
-        self.subscription_ = await tree.subscribe(prop, update_value)
+        def update_value(changes: {str: [str]}):
+            self.value_ = next(iter(changes.keys()))
+        self.subscription_ = await tree.watch_matching_files(prop, update_value)
 
         return self
 

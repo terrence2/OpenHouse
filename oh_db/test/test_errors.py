@@ -111,21 +111,21 @@ async def test_data_errors():
 
 
 @pytest.mark.asyncio
-async def test_subscribe_errors():
+async def test_watch_errors():
     with run_server():
         async with make_connection() as tree:
             async def target(**_):
                 pass
 
             with pytest.raises(db.Dotfile):
-                await tree.subscribe("/../../usr/lib/libGL.so", target)
+                await tree.watch_matching_files("/../../usr/lib/libGL.so", target)
 
 
 @pytest.mark.asyncio
-async def test_unsubscribe_errors():
+async def test_unwatch_errors():
     with run_server():
         async with make_connection() as tree:
             with pytest.raises(db.NoSuchSubscription):
-                await tree.unsubscribe(10)
+                await tree.unwatch(10)
 
 

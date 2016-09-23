@@ -40,7 +40,7 @@ class Formula:
         instance = cls(target_path, tree)
         for name, path in raw_inputs.items():
             value = await tree.get_file(str(path))
-            sid = await tree.subscribe(str(path), instance.on_input_changed)
+            sid = await tree.watch_matching_files(str(path), instance.on_input_changed)
             assert path not in instance.inputs,\
                 "Duplicate input detected for {}: {}".format(target_path, path)
             instance.inputs[path] = cls.Input(name, path, value, sid)
@@ -65,20 +65,21 @@ class Formula:
         # Store the function into our Formula instance for later calls.
         instance.formula = env['formula_func']
 
-    async def on_input_changed(self, changed_paths: [str], change_kind, context: str):
-        # First, update our cached values.
-        for changed_path in changed_paths:
-            assert Path(changed_path) in self.inputs, "non-subscribed path in event"
-            self.inputs[Path(changed_path)].value = context
-            log.debug("Observed value of {} change to {}".format(changed_path, context))
+    async def on_input_changed(self, changes: {str: [str]}):
+        for context, changed_paths in changes.items():
+            # First, update our cached values.
+            for changed_path in changed_paths:
+                assert Path(changed_path) in self.inputs, "non-subscribed path in event"
+                self.inputs[Path(changed_path)].value = context
+                log.debug("Observed value of {} change to {}".format(changed_path, context))
 
-        # Next, apply the formula with the new values.
-        inputs = [inp.value for inp in self.inputs.values()]
-        result = self.formula(*inputs)
-        log.info("Formula {} input changed; new value is: {}".format(self.target_path, result))
+            # Next, apply the formula with the new values.
+            inputs = [inp.value for inp in self.inputs.values()]
+            result = self.formula(*inputs)
+            log.info("Formula {} input changed; new value is: {}".format(self.target_path, result))
 
-        # And update the tree with the new value.
-        await self.tree.set_file(str(self.target_path), result)
+            # And update the tree with the new value.
+            await self.tree.set_file(str(self.target_path), result)
 
 
 async def main():

@@ -177,8 +177,12 @@ class Tree:
             log.critical("received unknown subscription: {}", sid)
             return
         try:
+            #FIXME: We should be able to expect the update in this form already.
+            if event.kind != EventKind.changed:
+                return
+            changes = {event.context: list(event.paths)}
             cb = self.subscriptions[sid]
-            await cb(event.paths, event.kind, event.context)
+            await cb(changes)
         except Exception as e:
             log.critical("Handler for subscription id {} failed with exception:", sid)
             log.exception(e)
@@ -268,13 +272,13 @@ class Tree:
         result = await future
         return {x.path: x.data for x in result.data}
 
-    async def subscribe(self, glob: str, cb: callable) -> int:
+    async def watch_matching_files(self, glob: str, cb: callable) -> int:
         future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(glob=glob))
         result = await future
         self.subscriptions[result.subscriptionId] = cb
         return result.subscriptionId
 
-    async def unsubscribe(self, sid: int):
+    async def unwatch(self, sid: int):
         future = await self._dispatch_message(unsubscribe=messages.UnsubscribeRequest.new_message(subscriptionId=sid))
         await future
         del self.subscriptions[sid]

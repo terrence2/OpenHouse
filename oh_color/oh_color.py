@@ -26,26 +26,27 @@ class Color:
         self.path = path
         self.value = value
         self.light_kind = path.parent.name
-        async def on_change(_0, _1, context):
-            self.value = context
-        await tree.subscribe(str(path), on_change)
+        async def on_change(changes: {str: [str]}):
+            self.value = next(iter(changes.keys()))
+        await tree.watch_matching_files(str(path), on_change)
         return self
 
 
 def make_room_color_handler(palette: {str: {str: Color}}, tree: Tree):
-    async def on_room_color_changed(changed_paths: [str], _, context: str):
-        log.debug("color change detected in {}".format(changed_paths))
-        if context not in palette:
-            log.warning("Unknown color set on: {}".format(changed_paths))
-            return
+    async def on_room_color_changed(changes: {str: [str]}):
+        log.debug("color change detected: {}".format(changes))
+        for color_name, changed_paths in changes.items():
+            if color_name not in palette:
+                log.warning("Unknown color '{}' set on: {}".format(color_name, changed_paths))
+                return
 
-        colors_by_light_kind = palette[context]
-        for path in changed_paths:
-            room_path = Path(path).parent.parent
-            for light_kind, color in colors_by_light_kind.items():
-                lights_glob = room_path / light_kind / "*" / "color"
-                log.debug("updating {} to {}".format(lights_glob, color.value))
-                await tree.set_matching_files(str(lights_glob), color.value)
+            colors_by_light_kind = palette[color_name]
+            for path in changed_paths:
+                room_path = Path(path).parent.parent
+                for light_kind, color in colors_by_light_kind.items():
+                    lights_glob = room_path / light_kind / "*" / "color"
+                    log.debug("updating {} to {}".format(lights_glob, color.value))
+                    await tree.set_matching_files(str(lights_glob), color.value)
 
     return on_room_color_changed
 
@@ -64,7 +65,7 @@ async def main():
             color = await Color.create(Path(path), value, tree)
             palette[color_name][color.light_kind] = color
 
-        await tree.subscribe("/room/*/color/value", make_room_color_handler(palette, tree))
+        await tree.watch_matching_files("/room/*/color/value", make_room_color_handler(palette, tree))
 
         while True:
             try:

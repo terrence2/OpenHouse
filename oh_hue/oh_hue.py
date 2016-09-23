@@ -33,10 +33,11 @@ async def main():
     bridge = await Bridge.create(tree)
 
     # Subscribe to all light changes.
-    async def on_color_changed(paths: [str], _: EventKind, context: str):
-        names = names_from_color_paths(paths)
-        await bridge.set_lights_to_color(names, context)
-    await tree.subscribe("/room/*/hue-*/*/color", on_color_changed)
+    async def on_color_changed(changes: {str: [str]}):
+        for context, paths in changes.items():
+            names = names_from_color_paths(paths)
+            await bridge.set_lights_to_color(names, context)
+    await tree.watch_matching_files("/room/*/hue-*/*/color", on_color_changed)
 
     return tree, bridge.task
 
