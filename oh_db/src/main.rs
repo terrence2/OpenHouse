@@ -208,18 +208,18 @@ impl<'e> Environment<'e> {
     // The connection triggering the event does not care about failures to send to
     // subscriptions, so this method terminates any failure. We log and potentially
     // close the child connections, but do not report failures to the caller.
-    fn notify_subscriptions(&mut self, path: &Path, kind: EventKind, context: &str)
+    fn notify_subscriptions(&mut self, path: &Path, data: &str)
     {
         let paths: [Path; 1] = [path.clone()];
-        self.notify_subscriptions_glob(&paths, kind, context);
+        self.notify_subscriptions_glob(&paths, data);
     }
-    fn notify_subscriptions_glob(&mut self, paths: &[Path], kind: EventKind, context: &str)
+    fn notify_subscriptions_glob(&mut self, paths: &[Path], data: &str)
     {
         let matching = self.subscriptions.get_matching_subscriptions(None, paths);
         for (matching_paths, matching_conns) in  matching {
             for (token, sid) in matching_conns {
                 let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_change(&sid, &matching_paths, kind, context).ok();
+                conn.on_change(&sid, &matching_paths, data).ok();
             }
         }
     }
@@ -274,7 +274,6 @@ impl<'e> Connection<'e> {
                 let parent = try!(db.lookup_directory(&parent_path));
                 try!(parent.add_file(&name));
             }
-            env.notify_subscriptions(&parent_path, EventKind::Created, name);
         }
         response.init_ok();
         return Ok(());
@@ -301,7 +300,6 @@ impl<'e> Connection<'e> {
                 let parent = try!(db.lookup_directory(&parent_path));
                 try!(parent.add_file(&name));
             }
-            env.notify_subscriptions(&parent_path, EventKind::Created, name);
         }
         response.init_ok();
         return Ok(());
@@ -322,7 +320,6 @@ impl<'e> Connection<'e> {
                 let parent = try!(db.lookup_directory(&parent_path));
                 try!(parent.add_directory(&name));
             }
-            env.notify_subscriptions(&parent_path, EventKind::Created, name);
         }
         response.init_ok();
         return Ok(());
@@ -343,7 +340,6 @@ impl<'e> Connection<'e> {
                 let parent = try!(db.lookup_directory(&parent_path));
                 try!(parent.remove_child(&name));
             }
-            env.notify_subscriptions(&parent_path, EventKind::Removed, name);
         }
         response.init_ok();
         return Ok(());
@@ -414,7 +410,7 @@ impl<'e> Connection<'e> {
             let file = try!(db.lookup_file(&path));
             file.set_data(&data);
         }
-        self.env.borrow_mut().notify_subscriptions(&path, EventKind::Changed, &data);
+        self.env.borrow_mut().notify_subscriptions(&path, &data);
         response.init_ok();
         return Ok(());
     }
@@ -435,28 +431,28 @@ impl<'e> Connection<'e> {
                 paths.push(path);
             }
         }
-        self.env.borrow_mut().notify_subscriptions_glob(paths.as_slice(), EventKind::Changed, &data);
+        self.env.borrow_mut().notify_subscriptions_glob(paths.as_slice(), &data);
         response.init_ok();
         return Ok(());
     }
 
-    fn handle_subscribe(&mut self, msg: &subscribe_request::Reader,
-                        response: server_response::Builder)
+    fn handle_watch_matching_files(&mut self, msg: &watch_matching_files_request::Reader,
+                                   response: server_response::Builder)
         -> Result<(), Box<Error>>
     {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
-        info!("handling Subscribe -> glob: {}", glob);
+        info!("handling WatchMatchingFiles -> glob: {}", glob);
         let mut env = self.env.borrow_mut();
         env.last_subscription_id += 1;
         let sid = SubscriptionId::from_u64(env.last_subscription_id);
         env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &glob);
-        let mut sub_response = response.init_subscribe();
+        let mut sub_response = response.init_watch();
         sub_response.set_subscription_id(sid.to_u64());
         return Ok(());
     }
 
-    fn handle_unsubscribe(&mut self, msg: &unsubscribe_request::Reader,
-                          response: server_response::Builder)
+    fn handle_unwatch(&mut self, msg: &unwatch_request::Reader,
+                      response: server_response::Builder)
         -> Result<(), Box<Error>>
     {
         let sid = SubscriptionId::from_u64(msg.get_subscription_id());
@@ -468,8 +464,7 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn on_change(&mut self, sid: &SubscriptionId, paths: &[Path], kind: EventKind,
-                 context: &str)
+    fn on_change(&mut self, sid: &SubscriptionId, paths: &[Path], data: &str)
         -> ws::Result<()>
     {
         let mut builder = ::capnp::message::Builder::new_default();
@@ -477,12 +472,14 @@ impl<'e> Connection<'e> {
             let message = builder.init_root::<server_message::Builder>();
             let mut event = message.init_event();
             event.set_subscription_id(sid.to_u64());
-            event.set_kind(kind);
-            event.set_context(context);
-            let mut path_list = event.init_paths(paths.len() as u32);
-            for (i, path) in paths.iter().enumerate() {
-                path_list.set(i as u32, &path.to_str());
+            let mut changes_list = event.init_changes(1);
+            {
+                let mut path_list = changes_list.borrow().get(0).init_paths(paths.len() as u32);
+                for (i, path) in paths.iter().enumerate() {
+                    path_list.set(i as u32, &path.to_str());
+                }
             }
+            changes_list.borrow().get(0).set_data(data);
         }
         let mut buf = Vec::new();
         try!(capnp::serialize::write_message(&mut buf, &builder));
@@ -555,18 +552,18 @@ impl<'e> ws::Handler for Connection<'e> {
             message_reader.get_root::<client_request::Reader>(), self);
         let message_id = MessageId::from_u64(message.get_id());
         handle_client_request!(message.which(), message_id, self,
-                               [(Ping             | handle_ping),
-                                (CreateFile       | handle_create_file),
-                                (CreateFormula    | handle_create_formula),
-                                (CreateDirectory  | handle_create_directory),
-                                (RemoveNode       | handle_remove_node),
-                                (GetFile          | handle_get_file),
-                                (GetMatchingFiles | handle_get_matching_files),
-                                (SetFile          | handle_set_file),
-                                (SetMatchingFiles | handle_set_matching_files),
-                                (ListDirectory    | handle_list_directory),
-                                (Subscribe        | handle_subscribe),
-                                (Unsubscribe      | handle_unsubscribe)
+                               [(Ping              | handle_ping),
+                                (CreateFile        | handle_create_file),
+                                (CreateFormula     | handle_create_formula),
+                                (CreateDirectory   | handle_create_directory),
+                                (RemoveNode        | handle_remove_node),
+                                (GetFile           | handle_get_file),
+                                (GetMatchingFiles  | handle_get_matching_files),
+                                (SetFile           | handle_set_file),
+                                (SetMatchingFiles  | handle_set_matching_files),
+                                (ListDirectory     | handle_list_directory),
+                                (WatchMatchingFiles| handle_watch_matching_files),
+                                (Unwatch           | handle_unwatch)
                                ]);
         return Ok(());
     }

@@ -3,7 +3,7 @@
 struct ServerMessage {
     union {
         response @0 :ServerResponse;
-        event @1 :SubscriptionMessage;
+        event @1 :WatchedFilesChangedMessage;
     }
 }
 
@@ -20,25 +20,25 @@ struct ServerResponse {
         listDirectory    @4 :ListDirectoryResponse;
         getFile          @5 :GetFileResponse;
         getMatchingFiles @6 :GetMatchingFilesResponse;
-        subscribe        @7 :SubscribeResponse;
+        watch            @7 :WatchResponse;
     }
 }
 
 struct ClientRequest {
     id @0 :UInt64;
     union {
-        ping             @1  :PingRequest;
-        createFile       @2  :CreateFileRequest;
-        createFormula    @3  :CreateFormulaRequest;
-        createDirectory  @4  :CreateDirectoryRequest;
-        removeNode       @5  :RemoveNodeRequest;
-        listDirectory    @6  :ListDirectoryRequest;
-        getFile          @7  :GetFileRequest;
-        getMatchingFiles @8  :GetMatchingFilesRequest;
-        setFile          @9  :SetFileRequest;
-        setMatchingFiles @10 :SetMatchingFilesRequest;
-        subscribe        @11 :SubscribeRequest;
-        unsubscribe      @12 :UnsubscribeRequest;
+        ping               @1  :PingRequest;
+        createFile         @2  :CreateFileRequest;
+        createFormula      @3  :CreateFormulaRequest;
+        createDirectory    @4  :CreateDirectoryRequest;
+        removeNode         @5  :RemoveNodeRequest;
+        listDirectory      @6  :ListDirectoryRequest;
+        getFile            @7  :GetFileRequest;
+        getMatchingFiles   @8  :GetMatchingFilesRequest;
+        setFile            @9  :SetFileRequest;
+        setMatchingFiles   @10 :SetMatchingFilesRequest;
+        watchMatchingFiles @11 :WatchMatchingFilesRequest;
+        unwatch            @12 :UnwatchRequest;
     }
 }
 
@@ -134,30 +134,27 @@ struct SetMatchingFilesRequest {
     data @1 :Text;
 }
 
-enum EventKind {
-    created @0;
-    removed @1;
-    changed @2;
-}
-
-struct SubscribeRequest {
+struct WatchMatchingFilesRequest {
     # Register to receive messages whenever the given path changes.
     glob @0 :Text;
 }
-struct SubscribeResponse {
+struct WatchResponse {
     subscriptionId @0 :UInt64;
     # An identifier selected by the server that will identify any future
     # subscription messages that were matched by the requested glob.
 }
-struct SubscriptionMessage {
+struct WatchedFilesChangedMessage {
     subscriptionId @0 :UInt64;
-    paths @1 :List(Text);
-    kind @2 :EventKind;
-    context @3 :Text;
+
+    struct Change {
+        paths @0 :List(Text);
+        data  @1 :Text;
+    }
+    changes @1 :List(Change);
 }
 
-struct UnsubscribeRequest {
-    # Request to stop receiving messages for the given subscription.
+struct UnwatchRequest {
+    # Request to stop receiving messages for the given watch.
     subscriptionId @0 :UInt64;
     # The identifier must exist.
 }

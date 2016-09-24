@@ -15,10 +15,6 @@ capnp.remove_import_hook()
 messages = capnp.load('oh_shared/db/messages.capnp')
 
 
-# Re-export some deeply nested enums so that users don't have to worry about message structural details.
-EventKind = messages.EventKind
-
-
 # Tag all log messages that come from this module.
 log = logging.getLogger('db.tree')
 
@@ -145,7 +141,6 @@ class Tree:
                     await task
                 self.subscription_tasks.remove(task)
 
-
     async def _dispatch_message(self, **kwargs) -> asyncio.Future:
         message_id = next(self.message_id)
         assert message_id not in self.awaiting_response
@@ -156,7 +151,7 @@ class Tree:
 
     @staticmethod
     def _get_concrete_response(response: messages.ServerResponse):
-        for name in ('ok', 'getFile', 'getMatchingFiles', 'listDirectory', 'subscribe', 'ping'):
+        for name in ('ok', 'getFile', 'getMatchingFiles', 'listDirectory', 'watch', 'ping'):
             if response.which() == name:
                 return getattr(response, name)
         raise NotImplementedError("unknown response type: {}".format(response.which()))
@@ -171,16 +166,13 @@ class Tree:
         if not response_future.cancelled():
             response_future.set_result(concrete)
 
-    async def _handle_subscription_message(self, event: messages.SubscriptionMessage):
+    async def _handle_subscription_message(self, event: messages.WatchedFilesChangedMessage):
         sid = event.subscriptionId
         if sid not in self.subscriptions:
             log.critical("received unknown subscription: {}", sid)
             return
         try:
-            #FIXME: We should be able to expect the update in this form already.
-            if event.kind != EventKind.changed:
-                return
-            changes = {event.context: list(event.paths)}
+            changes = {s.data: list(s.paths) for s in event.changes}
             cb = self.subscriptions[sid]
             await cb(changes)
         except Exception as e:
@@ -273,12 +265,13 @@ class Tree:
         return {x.path: x.data for x in result.data}
 
     async def watch_matching_files(self, glob: str, cb: callable) -> int:
-        future = await self._dispatch_message(subscribe=messages.SubscribeRequest.new_message(glob=glob))
+        future = await self._dispatch_message(
+            watchMatchingFiles=messages.WatchMatchingFilesRequest.new_message(glob=glob))
         result = await future
         self.subscriptions[result.subscriptionId] = cb
         return result.subscriptionId
 
     async def unwatch(self, sid: int):
-        future = await self._dispatch_message(unsubscribe=messages.UnsubscribeRequest.new_message(subscriptionId=sid))
+        future = await self._dispatch_message(unwatch=messages.UnwatchRequest.new_message(subscriptionId=sid))
         await future
         del self.subscriptions[sid]
