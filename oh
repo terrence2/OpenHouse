@@ -1,0 +1,5 @@
+#!/bin/bash
+CONFIGS=`ls examples`
+CONFIG=${CONFIGS%% *}
+. .venv/bin/activate
+./oh_supervisor/oh_supervisor.py --config examples/$CONFIG
