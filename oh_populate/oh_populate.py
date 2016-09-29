@@ -15,6 +15,7 @@ log = logging.getLogger("oh_populate")
 
 
 async def slurp_config(tree: Tree, parent_path: str, config: dict):
+    formulas = []
     for key, value in config.items():
         assert isinstance(key, str)
         assert '/' not in key, "invalid path component"
@@ -23,13 +24,20 @@ async def slurp_config(tree: Tree, parent_path: str, config: dict):
         path = str(Path(parent_path) / key)
         if isinstance(value, dict):
             if 'formula' in value and 'where' in value:
-                await tree.create_formula(parent_path, key, value['where'], value['formula'])
+                formulas.append((parent_path, key, value['where'], value['formula']))
             else:
                 await tree.create_directory(parent_path, key)
-                await slurp_config(tree, path, value)
+                formulas.extend(await slurp_config(tree, path, value))
         else:
             await tree.create_file(parent_path, key)
             await tree.set_file(path, str(value))
+    return formulas
+
+
+async def create_formulas(tree: Tree, formulas):
+    """We have to create formulas after all normal nodes so that formula inputs are already present."""
+    for (parent_path, key, inputs, formula) in formulas:
+        await tree.create_formula(parent_path, key, inputs, formula)
 
 
 async def main():
@@ -49,7 +57,8 @@ async def main():
         with open(args.config, "r", encoding="utf-8") as fp:
             assert args.config.endswith("yaml")
             config = yaml.load(fp)
-            await slurp_config(tree, "/", config)
+            formulas = await slurp_config(tree, "/", config)
+            await create_formulas(tree, formulas)
 
 
 if __name__ == '__main__':
