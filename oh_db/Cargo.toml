@@ -10,6 +10,7 @@ env_logger = "0.3.5"
 log = "0.3"
 rand = "0.3"
 capnp = "0.7.4"
+ketos = { git = "https://github.com/murarth/ketos" }
 
 [dependencies.ws]
 version = "=0.4.8"

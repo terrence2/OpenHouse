@@ -131,8 +131,8 @@ room:
     geometry: {x: 12ft, y: 0ft, w: 12ft, l: 10ft}
     closets: [{x: -2ft, y: 0ft, w: 2ft, l: 5ft}]
     color:
-      value: default
-      formula: {same-as: /room/bedroom/radio-button/bedroom-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/bedroom/radio-button/bedroom-lightswitch.eyrie/state}
     hue-light:
       bedroom-bookshelf0: {color: none, x: 10ft, y: 1ft}
       bedroom-bookshelf1: {color: none, x:  4ft, y: 8ft}
@@ -155,8 +155,8 @@ room:
     geometry: {x:  0ft, y: 0ft, w: 10ft, l: 13ft}
     closets: [{x: 10ft, y: 5ft, w:  2ft, l:  5ft}]
     color:
-      value: default
-      formula: {same-as: /room/office/radio-button/office-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/office/radio-button/office-lightswitch.eyrie/state}
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
@@ -172,20 +172,16 @@ room:
     geometry: {x: 10ft, y: 10ft, w: 7ft, l: 6ft, noborder: true}
     closets: [{x:  6ft, y:  3ft, w: 1ft, l: 3ft}]
     color:
-      value: default
-      formula:
-        inputs:
-          bedroom: /room/bedroom/color/value
-          livingroom: /room/livingroom/color/value
-          kitchen: /room/kitchen/color/value
-          office: /room/office/color/value
-        compute: |
-          if bedroom == 'off' or livingroom == 'off':
-              return 'off'
-          for input in (bedroom, livingroom, kitchen, office):
-              if input == 'on':
-                  return 'on'
-          return 'default'
+      formula: |
+       (cond
+        ((or (= bedroom "off") (= livingroom "off"))                                "off")
+        ((or (= bedroom "on") (= livingroom "on") (= kitchen "on") (= office "on")) "on")
+        (else                                                                       "low"))
+      where:
+        bedroom: /room/bedroom/color
+        livingroom: /room/livingroom/color
+        kitchen: /room/kitchen/color
+        office: /room/office/color
     hue-light:
       hall-ceiling0: {color: none, x: 4ft, y: 2ft}
       hall-ceiling1: {color: none, x: 5ft, y: 3ft}
@@ -196,8 +192,8 @@ room:
   kitchen:
     geometry: {x: 13ft, y: 16ft, w: 11ft, l: 8ft}
     color:
-      value: default
-      formula: {same-as: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
     hue-light:
       kitchen-sink:     {color: none, x: 9ft, y: 1ft}
       kitchen-ceiling0: {color: none, x: 2ft, y: 6ft}
@@ -213,8 +209,8 @@ room:
   utility:
     geometry: {x: 20ft6in, y: 24ft, w: 4ft6in, l: 8ft6in}
     color:
-      value: default
-      formula: {same-as: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
     hue-light:
       utility-ceiling: {color: none, x: 2ft, y: 4ft}
     wemo-motion-detector:
@@ -223,8 +219,8 @@ room:
   livingroom:
     geometry: {x: 0ft, y: 13ft, w: 13ft, l: 19ft9in}
     color:
-      value: default
-      formula: {same-as: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
     hue-light:
       livingroom-couch:    {color: none, x:  1ft, y:  6ft}
       livingroom-torch:    {color: none, x:  1ft, y: 10ft}
@@ -248,8 +244,8 @@ room:
   diningroom:
     geometry: {x: 13ft, y: 24ft, w: 7ft6in, l: 8ft6in}
     color:
-      value: default
-      formula: {same-as: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
+      formula: switch
+      where: {switch: /room/livingroom/radio-button/livingroom-lightswitch.eyrie/state}
     hue-light:
       diningroom-shelves: {color: none, x: 6ft, y: 7ft}
       diningroom-ceiling: {color: none, x: 3ft, y: 4ft}

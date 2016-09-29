@@ -43,7 +43,10 @@ class DirectoryNotEmpty(TreeError): pass
 class NodeContainsSubscriptions(TreeError): pass
 class NotDirectory(TreeError): pass
 class NotFile(TreeError): pass
+class FormulaExecutionFailure(TreeError): pass
 class FormulaInputNotFound(TreeError): pass
+class FormulaSyntaxError(TreeError): pass
+class FormulaTypeError(TreeError): pass
 
 # The following should match up with path.rs' PathError enum.
 class PathError(DatabaseError): pass

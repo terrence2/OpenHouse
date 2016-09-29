@@ -168,7 +168,7 @@ impl PathBuilder {
 
 /// A path refers to a single location in the Tree. The location may or may
 /// not exist, path is just a reference to a location.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Path {
     parts: Vec<String>
 }
@@ -208,6 +208,10 @@ impl Path {
         let mut out = self.parts.clone();
         out.push(part.to_owned());
         return Ok(Path {parts: out});
+    }
+
+    pub fn root() -> Path {
+        return Path { parts: vec![] };
     }
 }
 

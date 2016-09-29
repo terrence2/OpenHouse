@@ -1,133 +1,91 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use path::{Glob, Path};
-use std::collections::{HashMap, HashSet};
+use path::Glob;
+use tree::TreeChanges;
 use std::error::Error;
 use std::fmt;
 use ws::util::Token;
 use ::SubscriptionId;
+use std::collections::HashMap;
 
 make_error_system!(
     SubscriptionErrorKind => SubscriptionError => SubscriptionResult {
         NoSuchSubscription
     });
 
-/// The collection of observed patterns and who to notify when a path
-/// matching one of the patterns changes.
-pub struct Subscriptions {
-    globs: HashMap<Glob, GlobSubscriptions>
+#[derive(Debug, Clone)]
+struct Watch {
+    glob: Glob,
+    conn: Token,
+    sid: SubscriptionId,
 }
 
-// A single connection may listen to the same glob in multiple locations,
-// so a single glob has to be able to map to a set of subscription ids.
-struct GlobSubscriptions {
-    connections: HashMap<Token, SubscriptionSet>
+pub struct Watches {
+    watches: Vec<Watch>
 }
 
-// A set of subscription ids.
-struct SubscriptionSet {
-    layout: HashSet<SubscriptionId>
-}
+impl Watches {
+    pub fn new() -> Self { Watches { watches: Vec::new() } }
 
-/// Subscriptions are stored nested for efficient add/remove. On events
-/// we flatten them out into connection/sid pairs for sending.
-pub type Subscriber = (Token, SubscriptionId);
-pub type SubscriberVec = Vec<Subscriber>;
-
-/// A single subscription match maps matching paths to all subscribers that
-/// need to be notified with those paths.
-pub type SubscriptionMatch = (Vec<Path>, Vec<Subscriber>);
-pub type SubscriptionMatches = Vec<SubscriptionMatch>;
-
-impl Subscriptions {
-    pub fn new() -> Subscriptions { Subscriptions { globs: HashMap::new() } }
-
-    pub fn add_subscription(&mut self, sid: &SubscriptionId,
-                            conn: &Token, glob: &Glob)
-    {
-        let subs = self.get_subscription_set(conn, glob);
-        let is_new = subs.layout.insert(*sid);
-        assert!(is_new);
-    }
-
-    /// Search the active subscriptions for the given glob and matching paths.
-    /// Returns pairs of path vectors and the subscribers that need notified
-    /// with those paths.
-    pub fn get_matching_subscriptions(&self, _: Option<&Glob>, paths: &[Path])
-        -> SubscriptionMatches
-    {
-        let mut sub_matches: SubscriptionMatches = Vec::new();
-        for (glob, subs) in self.globs.iter() {
-            let mut matching: Vec<Path> = Vec::new();
-            for path in paths {
-                if glob.matches(path) {
-                    matching.push(path.clone())
-                }
-            }
-            if matching.len() > 0 {
-                sub_matches.push((matching, subs.get_subscribers()))
-            }
+    pub fn add_watch(&mut self, sid: &SubscriptionId, conn: &Token, glob: &Glob) {
+        // Assert that at least the sid is unique.
+        for watch in &self.watches {
+            debug_assert!(watch.sid != *sid);
         }
-        return sub_matches;
+
+        self.watches.push(Watch {glob: glob.clone(), conn: *conn, sid: *sid});
     }
 
-    /// Returns true if the layout sid was present and removed successfully.
-    pub fn remove_subscription(&mut self, sid: &SubscriptionId)
+    pub fn remove_watch(&mut self, sid: &SubscriptionId)
         -> SubscriptionResult<()>
     {
-        for (_, glob_subs) in self.globs.iter_mut() {
-            for (_, subs) in glob_subs.connections.iter_mut() {
-                if subs.layout.remove(sid) {
-                    return Ok(());
+        let next_watches: Vec<Watch> = self.watches.iter()
+                                                   .filter(|w| w.sid != *sid)
+                                                   .map(|w| w.clone())
+                                                   .collect::<Vec<_>>();
+        if next_watches.len() == self.watches.len() {
+            return Err(SubscriptionError::NoSuchSubscription(&format!("{}", *sid)));
+        }
+        self.watches = next_watches;
+        return Ok(());
+    }
+
+    pub fn remove_connection(&mut self, conn: &Token) {
+        self.watches = self.watches.iter()
+                                   .filter(|w| w.conn == *conn)
+                                   .map(|w| w.clone())
+                                   .collect::<Vec<_>>();
+    }
+
+    pub fn filter_changes_for_each_watch(&self, changes: &TreeChanges)
+        -> Vec<(TreeChanges, Token, SubscriptionId)>
+    {
+        let mut result = Vec::new();
+        for watch in &self.watches {
+            let mut filtered: Option<TreeChanges> = None;
+            for (data, paths) in changes {
+                for path in paths {
+                    if watch.glob.matches(path) {
+                        // Add path to filtered change set.
+                        if filtered.is_none() {
+                            filtered = Some(HashMap::new());
+                        }
+                        if let Some(ref mut f) = filtered {
+                            if !f.contains_key(data) {
+                                f.insert(data.clone(), Vec::new());
+                            }
+                            if let Some(ref mut v) = f.get_mut(data) {
+                                v.push(path.clone());
+                            }
+                        }
+                    }
                 }
             }
-        }
-        return Err(SubscriptionError::NoSuchSubscription(&format!("{}", *sid)));
-    }
-
-    /// Remove all uses of the given connection and all subscriptions therein.
-    pub fn remove_connection(&mut self, conn: &Token) {
-        for (_, glob_subs) in self.globs.iter_mut() {
-            glob_subs.connections.remove(conn);
-        }
-    }
-
-    // Return the subscription set at path:conn, creating it if it doesn't exist.
-    fn get_subscription_set(&mut self, conn: &Token, glob: &Glob) -> &mut SubscriptionSet {
-        if !self.globs.contains_key(glob) {
-            self.globs.insert(glob.clone(), GlobSubscriptions::new());
-        }
-        return self.globs.get_mut(glob).unwrap().get_subscription_set(conn);
-    }
-
-}
-
-impl GlobSubscriptions {
-    fn new() -> GlobSubscriptions { GlobSubscriptions { connections: HashMap::new() } }
-
-    fn get_subscribers(&self) -> Vec<(Token, SubscriptionId)> {
-        let mut out = Vec::new();
-        for (conn, subs) in &self.connections {
-            for sid in &subs.layout {
-                out.push((*conn, *sid));
+            if let Some(filt) = filtered {
+                result.push((filt, watch.conn, watch.sid));
             }
         }
-        return out;
-    }
-
-    fn get_subscription_set(&mut self, conn: &Token) -> &mut SubscriptionSet {
-        if !self.connections.contains_key(conn) {
-            self.connections.insert(*conn, SubscriptionSet::new());
-        }
-        return self.connections.get_mut(conn).unwrap();
-    }
-}
-
-impl SubscriptionSet {
-    fn new() -> SubscriptionSet {
-        SubscriptionSet {
-            layout: HashSet::new()
-        }
+        return result;
     }
 }

@@ -21,7 +21,7 @@ make -C oh_home
 . .venv/bin/activate
 
 # Start the main database server and populate it.
-./oh_db/target/release/oh_db \
+./oh_db/target/debug/oh_db \
     -l info -L $LOGDIR/oh_db.log \
     -a 127.0.0.1 -p $PORT \
     -C CA/intermediate/certs/chain.cert.pem \
@@ -57,16 +57,6 @@ pid_hue=$!
     -c CA/intermediate/certs/oh_color.cert.pem \
     -k CA/intermediate/private/oh_color.key.pem &
 pid_color=$!
-
-./oh_formula/oh_formula.py \
-    -l INFO \
-    -L $LOGDIR/oh_formula.log \
-    -A 127.0.0.1 \
-    -P $PORT \
-    -C CA/intermediate/certs/chain.cert.pem \
-    -c CA/intermediate/certs/oh_formula.cert.pem \
-    -k CA/intermediate/private/oh_formula.key.pem &
-pid_formula=$!
 
 ./oh_button/oh_button.py \
     -l INFO \
@@ -117,7 +107,6 @@ pid_rest=$!
 
 echo "pid db:             "$pid_db
 echo "pid button:         "$pid_button
-echo "pid formula:        "$pid_formula
 echo "pid color:          "$pid_color
 #echo "pid wemo:           "$pid_wemo
 #echo "pid motion filter:  "$pid_motion_filter
@@ -138,7 +127,6 @@ wait $pid_rest
 #wait $pid_motion_filter
 #wait $pid_wemo
 wait $pid_color
-wait $pid_formula
 wait $pid_button
 wait $pid_db
 

@@ -7,7 +7,7 @@ import logging
 from hue.bridge import Bridge
 from oh_shared.args import parse_default_args
 from oh_shared.log import enable_logging
-from oh_shared.db import Connection, EventKind, Tree
+from oh_shared.db import Tree
 from pathlib import PurePosixPath
 
 log = logging.getLogger('oh_hue')

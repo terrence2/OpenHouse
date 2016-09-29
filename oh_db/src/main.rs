@@ -4,6 +4,7 @@
 extern crate argparse;
 extern crate capnp;
 extern crate env_logger;
+extern crate ketos;
 #[macro_use] extern crate log;
 extern crate openssl;
 extern crate rand;
@@ -29,9 +30,9 @@ use std::path::Path as FilePath;
 use openssl::x509::X509FileType;
 use openssl::ssl::{Ssl, SslContext, SslMethod,
                    SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
-use tree::Tree;
-use path::{Path, PathBuilder};
-use subscriptions::Subscriptions;
+use tree::{Tree, TreeChanges};
+use path::PathBuilder;
+use subscriptions::Watches;
 
 
 make_identifier!(MessageId);
@@ -105,8 +106,8 @@ fn run_server(address: &str, port: u16,
               private_key: &FilePath)
     -> ws::Result<()>
 {
-    let env: Rc<RefCell<Environment>> = Rc::new(RefCell::new(
-            Environment::new(ca_chain, certificate, private_key)));
+    let env = Rc::new(RefCell::new(Environment::new(ca_chain, certificate,
+                                                    private_key)));
 
     // Start the server.
     let mut settings = ws::Settings::default();
@@ -151,7 +152,7 @@ struct Environment<'e> {
     db: Tree,
 
     // Maps paths and keys to connections and subscription ids.
-    subscriptions: Subscriptions,
+    watches: Watches,
 
     // Used to hand out unique subscription identifiers.
     last_subscription_id: u64,
@@ -198,7 +199,7 @@ impl<'e> Environment<'e> {
 
         Environment {
             db: Tree::new(),
-            subscriptions: Subscriptions::new(),
+            watches: Watches::new(),
             last_subscription_id: 0,
             connections: HashMap::new(),
             ssl_context: context
@@ -208,19 +209,12 @@ impl<'e> Environment<'e> {
     // The connection triggering the event does not care about failures to send to
     // subscriptions, so this method terminates any failure. We log and potentially
     // close the child connections, but do not report failures to the caller.
-    fn notify_subscriptions(&mut self, path: &Path, data: &str)
+    fn notify_subscriptions_glob(&mut self, changes: &TreeChanges)
     {
-        let paths: [Path; 1] = [path.clone()];
-        self.notify_subscriptions_glob(&paths, data);
-    }
-    fn notify_subscriptions_glob(&mut self, paths: &[Path], data: &str)
-    {
-        let matching = self.subscriptions.get_matching_subscriptions(None, paths);
-        for (matching_paths, matching_conns) in  matching {
-            for (token, sid) in matching_conns {
-                let mut conn = self.connections.get_mut(&token).unwrap();
-                conn.on_change(&sid, &matching_paths, data).ok();
-            }
+        let matching = self.watches.filter_changes_for_each_watch(changes);
+        for (matching_changes, matching_conn, matching_sid) in  matching {
+            let mut conn = self.connections.get_mut(&matching_conn).unwrap();
+            conn.on_change(&matching_sid, &matching_changes).ok();
         }
     }
 }
@@ -267,13 +261,11 @@ impl<'e> Connection<'e> {
                                .finish_path());
         let name = try!(msg.get_name());
         info!("handling CreateFile -> parent: {},  name: {}", parent_path, name);
+        let mut env = self.env.borrow_mut();
         {
-            let mut env = self.env.borrow_mut();
-            {
-                let db = &mut env.db;
-                let parent = try!(db.lookup_directory(&parent_path));
-                try!(parent.add_file(&name));
-            }
+            let db = &mut env.db;
+            let parent = try!(db.lookup_directory(&parent_path));
+            try!(parent.add_file(&name));
         }
         response.init_ok();
         return Ok(());
@@ -289,7 +281,9 @@ impl<'e> Connection<'e> {
         let formula = try!(msg.get_formula());
         let mut inputs = HashMap::new();
         for input in try!(msg.get_inputs()).iter() {
-            inputs.insert(try!(input.get_name()), try!(input.get_path()));
+            let input_path = try!(try!(PathBuilder::new(try!(input.get_path())))
+                                  .finish_path());
+            inputs.insert(try!(input.get_name()).to_owned(), input_path);
         }
         info!("handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
               parent_path, name, inputs, formula);
@@ -297,8 +291,7 @@ impl<'e> Connection<'e> {
             let mut env = self.env.borrow_mut();
             {
                 let db = &mut env.db;
-                let parent = try!(db.lookup_directory(&parent_path));
-                try!(parent.add_file(&name));
+                try!(db.create_formula(&parent_path, &name, &inputs, &formula));
             }
         }
         response.init_ok();
@@ -373,8 +366,8 @@ impl<'e> Connection<'e> {
         let mut cat_response = response.init_get_file();
         {
             let db = &mut self.env.borrow_mut().db;
-            let file = try!(db.lookup_file(&path));
-            cat_response.set_data(file.ref_data());
+            let data = try!(db.get_data_at(&path));
+            cat_response.set_data(&data);
         }
         return Ok(());
     }
@@ -388,11 +381,11 @@ impl<'e> Connection<'e> {
         let cat_response = response.init_get_matching_files();
         {
             let db = &mut self.env.borrow_mut().db;
-            let matches = try!(db.find_matching_files(&glob));
+            let matches = try!(db.get_data_matching(&glob));
             let mut cat_data = cat_response.init_data(matches.len() as u32);
             for (i, &ref match_pair) in matches.iter().enumerate() {
                 cat_data.borrow().get(i as u32).set_path(&match_pair.0.to_str());
-                cat_data.borrow().get(i as u32).set_data(match_pair.1.ref_data());
+                cat_data.borrow().get(i as u32).set_data(&match_pair.1);
             }
         }
         return Ok(());
@@ -405,12 +398,12 @@ impl<'e> Connection<'e> {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         let data = try!(msg.get_data());
         info!("handling SetFile -> path: {}, data: {}", path, data);
+        let changes;
         {
             let db = &mut self.env.borrow_mut().db;
-            let file = try!(db.lookup_file(&path));
-            file.set_data(&data);
+            changes = try!(db.set_data_at(&path, &data));
         }
-        self.env.borrow_mut().notify_subscriptions(&path, &data);
+        self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
     }
@@ -421,17 +414,9 @@ impl<'e> Connection<'e> {
     {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         let data = try!(msg.get_data());
-        let mut paths: Vec<Path> = Vec::new();
         info!("handling SetMatchingFiles -> glob: {}, data: {}", glob, data);
-        {
-            let db = &mut self.env.borrow_mut().db;
-            let matches = try!(db.find_matching_files(&glob));
-            for (path, file) in matches {
-                file.set_data(&data);
-                paths.push(path);
-            }
-        }
-        self.env.borrow_mut().notify_subscriptions_glob(paths.as_slice(), &data);
+        let changes = try!(self.env.borrow_mut().db.set_data_matching(&glob, data));
+        self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
     }
@@ -445,7 +430,7 @@ impl<'e> Connection<'e> {
         let mut env = self.env.borrow_mut();
         env.last_subscription_id += 1;
         let sid = SubscriptionId::from_u64(env.last_subscription_id);
-        env.subscriptions.add_subscription(&sid, &self.sender.borrow().token(), &glob);
+        env.watches.add_watch(&sid, &self.sender.borrow().token(), &glob);
         let mut sub_response = response.init_watch();
         sub_response.set_subscription_id(sid.to_u64());
         return Ok(());
@@ -458,13 +443,13 @@ impl<'e> Connection<'e> {
         let sid = SubscriptionId::from_u64(msg.get_subscription_id());
         {
             let mut env = self.env.borrow_mut();
-            try!(env.subscriptions.remove_subscription(&sid));
+            try!(env.watches.remove_watch(&sid));
         }
         response.init_ok();
         return Ok(());
     }
 
-    fn on_change(&mut self, sid: &SubscriptionId, paths: &[Path], data: &str)
+    fn on_change(&mut self, sid: &SubscriptionId, changes: &TreeChanges)
         -> ws::Result<()>
     {
         let mut builder = ::capnp::message::Builder::new_default();
@@ -472,14 +457,16 @@ impl<'e> Connection<'e> {
             let message = builder.init_root::<server_message::Builder>();
             let mut event = message.init_event();
             event.set_subscription_id(sid.to_u64());
-            let mut changes_list = event.init_changes(1);
-            {
-                let mut path_list = changes_list.borrow().get(0).init_paths(paths.len() as u32);
+            let mut changes_list = event.init_changes(changes.len() as u32);
+            for (change_no, (data, paths)) in changes.iter().enumerate() {
+                let mut change_ref = changes_list.borrow().get(change_no as u32);
+                change_ref.set_data(data);
+                let mut path_list = change_ref
+                                                .init_paths(paths.len() as u32);
                 for (i, path) in paths.iter().enumerate() {
                     path_list.set(i as u32, &path.to_str());
                 }
             }
-            changes_list.borrow().get(0).set_data(data);
         }
         let mut buf = Vec::new();
         try!(capnp::serialize::write_message(&mut buf, &builder));
@@ -570,7 +557,7 @@ impl<'e> ws::Handler for Connection<'e> {
 
     fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
         info!("socket closing for ({:?}) {}", code, reason);
-        self.env.borrow_mut().subscriptions.remove_connection(&self.sender.borrow().token());
+        self.env.borrow_mut().watches.remove_connection(&self.sender.borrow().token());
     }
 
     fn build_ssl(&mut self) -> ws::Result<Ssl> {

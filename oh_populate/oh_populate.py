@@ -2,9 +2,9 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from oh_shared.args import make_parser
 from oh_shared.db import Connection, Tree
 from oh_shared.log import enable_logging
+from oh_shared.args import make_parser
 from pathlib import Path
 import asyncio
 import logging
@@ -22,8 +22,11 @@ async def slurp_config(tree: Tree, parent_path: str, config: dict):
         assert '?' not in key, "invalid path component"
         path = str(Path(parent_path) / key)
         if isinstance(value, dict):
-            await tree.create_directory(parent_path, key)
-            await slurp_config(tree, path, value)
+            if 'formula' in value and 'where' in value:
+                await tree.create_formula(parent_path, key, value['where'], value['formula'])
+            else:
+                await tree.create_directory(parent_path, key)
+                await slurp_config(tree, path, value)
         else:
             await tree.create_file(parent_path, key)
             await tree.set_file(path, str(value))

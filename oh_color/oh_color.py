@@ -34,19 +34,19 @@ class Color:
 
 def make_room_color_handler(palette: {str: {str: Color}}, tree: Tree):
     async def on_room_color_changed(changes: {str: [str]}):
-        log.debug("color change detected: {}".format(changes))
+        log.info("color change detected: {}".format(changes))
         for color_name, changed_paths in changes.items():
             if color_name not in palette:
                 log.warning("Unknown color '{}' set on: {}".format(color_name, changed_paths))
                 return
 
             colors_by_light_kind = palette[color_name]
-            for path in changed_paths:
-                room_path = Path(path).parent.parent
-                for light_kind, color in colors_by_light_kind.items():
-                    lights_glob = room_path / light_kind / "*" / "color"
-                    log.debug("updating {} to {}".format(lights_glob, color.value))
-                    await tree.set_matching_files(str(lights_glob), color.value)
+
+            rooms_changed = '{' + ','.join([Path(p).parent.name for p in changed_paths]) + '}'
+            for light_kind, color in colors_by_light_kind.items():
+                lights_glob = Path("/room") / rooms_changed / light_kind / "*" / "color"
+                log.info("updating {} to {}".format(lights_glob, color.value))
+                await tree.set_matching_files(str(lights_glob), color.value)
 
     return on_room_color_changed
 
@@ -65,7 +65,7 @@ async def main():
             color = await Color.create(Path(path), value, tree)
             palette[color_name][color.light_kind] = color
 
-        await tree.watch_matching_files("/room/*/color/value", make_room_color_handler(palette, tree))
+        await tree.watch_matching_files("/room/*/color", make_room_color_handler(palette, tree))
 
         while True:
             try:

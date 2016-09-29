@@ -2,9 +2,10 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use path::{PathBuilder, Glob, Path, PathIter};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
+use ketos::{Builder, FromValue, Interpreter, Name};
 
 make_error_system!(
     TreeErrorKind => TreeError => TreeResult {
@@ -12,41 +13,177 @@ make_error_system!(
         NoSuchNode,
         NodeAlreadyExists,
         NotDirectory,
-        NotFile
+        NotFile,
+        FormulaExecutionFailure,
+        FormulaInputNotFound,
+        FormulaSyntaxError,
+        FormulaTypeError,
+        FormulaRemovalDisallowed
     });
+
+pub type TreeChanges = HashMap<String, Vec<Path>>;
 
 
 /// Each node contains a Directory of more nodes or some leaf data.
-#[derive(Debug)]
 enum Node {
     Directory(DirectoryData),
     Formula(FormulaData),
     File(FileData)
 }
+impl Node {
+    // Follow the parts of the path iterator until we reach the terminal
+    // node, returning it.
+    fn lookup(&self, parts: &mut PathIter) -> TreeResult<&Node>
+    {
+        let name = match parts.next() {
+            Some(name) => name,
+            None => return Ok(self)
+        };
+        match self {
+            &Node::Directory(ref d) => return try!(d.lookup(name)).lookup(parts),
+            _ => {}
+        }
+        return match parts.next() {
+            Some(_) => Err(TreeError::NotDirectory(name)),
+            None => Ok(self)
+        };
+    }
 
-/// A data holder can get and set a contained data value.
-pub trait DataHolder {
-    fn set_data(&mut self, new_data: &str) -> TreeResult<()>;
-    fn ref_data(&self) -> &str;
+    // Like lookup, but takes and returns mutable references.
+    fn lookup_mut(&mut self, parts: &mut PathIter) -> TreeResult<&mut Node>
+    {
+        let name = match parts.next() {
+            Some(name) => name,
+            None => return Ok(self)
+        };
+        match self {
+            &mut Node::Directory(ref mut d) =>
+                return try!(d.lookup_mut(name)).lookup_mut(parts),
+            _ => {}
+        }
+        return match parts.next() {
+            Some(_) => Err(TreeError::NotDirectory(name)),
+            None => Ok(self)
+        };
+    }
+
+    // Return all files that match glob, given that this node is at |own_path|.
+    fn find(&self, own_path: &Path, glob: &Glob)
+        -> TreeResult<Vec<(Path, &Node)>>
+    {
+        let mut acc: Vec<(Path, &Node)> = Vec::new();
+        match self {
+            &Node::Directory(ref d) => {
+                for (child_name, child_node) in d.children.iter() {
+                    let child_path = try!(own_path.slash(child_name));
+                    let matching = try!(child_node.find(&child_path, glob));
+                    acc.extend(matching);
+                }
+            },
+            &Node::File(_) => {
+                if glob.matches(&own_path) {
+                    acc.push((own_path.clone(), self));
+                }
+            },
+            &Node::Formula(_) => {
+                if glob.matches(&own_path) {
+                    acc.push((own_path.clone(), self));
+                }
+            }
+        }
+        return Ok(acc);
+    }
+
+    // As with find but taking and returning mutable references.
+    fn find_mut(&mut self, own_path: &Path, glob: &Glob)
+        -> TreeResult<Vec<(Path, &mut Node)>>
+    {
+        let mut acc: Vec<(Path, &mut Node)> = Vec::new();
+        match self {
+            &mut Node::Directory(ref mut d) => {
+                for (child_name, child_node) in d.children.iter_mut() {
+                    let child_path = try!(own_path.slash(child_name));
+                    let matching = try!(child_node.find_mut(&child_path, glob));
+                    acc.extend(matching);
+                }
+            },
+            &mut Node::File(_) => {
+                if glob.matches(&own_path) {
+                    acc.push((own_path.clone(), self));
+                }
+            },
+            &mut Node::Formula(_) => {}
+        }
+        return Ok(acc);
+    }
 }
 
 /// A file is a basic data holder.
-#[derive(Debug)]
 pub struct FileData {
     data: String
 }
+impl FileData {
+    fn new() -> FileData { FileData { data: "".to_owned() } }
+    fn set_data(&mut self, new_data: &str) {
+        self.data = new_data.to_owned();
+    }
+    fn get_data(&self) -> String {
+        return self.data.clone();
+    }
+}
+
 
 /// A formula is a value that is recomputed when its inputs change. Setting data
 /// on a formula node does nothing, although is allowed to simplify the implementation.
-#[derive(Debug)]
 pub struct FormulaData {
-    inputs: Vec<Path>,
-    formula: String,
-    cached_value: String,
+    inputs: HashMap<Name, Path>,
+    interp: Interpreter,
+}
+impl FormulaData {
+    fn new(raw_inputs: &HashMap<String, Path>, formula: &str) -> TreeResult<FormulaData> {
+        let builder = Builder::new().name("__formula__");
+        let interp = builder.finish();
+        let mut inputs = HashMap::<Name, Path>::new();
+        for (raw_name, path) in raw_inputs.iter() {
+            let name = interp.scope().add_name(raw_name);
+            inputs.insert(name, path.clone());
+        }
+        let program = format!("(define (__compiled__) {})", formula);
+        if let Err(e) = interp.run_code(&program, None) {
+            return Err(TreeError::FormulaSyntaxError(e.description()));
+        }
+        return Ok(FormulaData {
+            inputs: inputs.clone(),
+            interp: interp,
+        });
+    }
+    fn get_data(&self, tree: &Tree) -> TreeResult<String> {
+        for (name, path) in self.inputs.iter() {
+            let data = match tree.get_data_at(path) {
+                Ok(d) => d,
+                Err(e) => {
+                    return Err(TreeError::FormulaInputNotFound(
+                               &format!("{} - from: {}", path, e)));
+                }
+            };
+            self.interp.scope().add_value(*name, data.clone().into());
+        }
+
+        let result = self.interp.call("__compiled__", vec![]);
+        return match result {
+            Err(e) => Err(TreeError::FormulaExecutionFailure(&format!("{:?}", e))),
+            Ok(v) => {
+                match String::from_value(v) {
+                    Err(e) => Err(TreeError::FormulaTypeError(&format!("{:?}", e))),
+                    Ok(s) => Ok(s)
+                }
+            }
+        };
+    }
 }
 
+
 /// A directory contains a list of children.
-#[derive(Debug)]
 pub struct DirectoryData {
     children: HashMap<String, Node>
 }
@@ -56,81 +193,18 @@ impl DirectoryData {
         DirectoryData { children: HashMap::new() }
     }
 
-    // Find the directory at the bottom of path. If the path crosses
-    // a file, return Err(NotDirectory).
-    fn lookup_directory_recursive(&mut self, parts: &mut PathIter)
-        -> TreeResult<&mut DirectoryData>
+    // Find and return the given node regardless of type.
+    fn lookup(&self, name: &str) -> TreeResult<&Node>
     {
-        let name = match parts.next() {
-            Some(name) => name,
-            None => return Ok(self)
-        };
-        let child = try!(self.children.get_mut(name).ok_or_else(||{
-                         TreeError::NoSuchNode(name)}));
-        return match child {
-            &mut Node::Directory(ref mut d) => d.lookup_directory_recursive(parts),
-            _ => Err(TreeError::NotDirectory(name)),
-        };
+        return self.children.get(name).ok_or_else(||{
+                    TreeError::NoSuchNode(name)});
     }
 
-    fn lookup_file_recursive(&mut self, parts: &mut PathIter)
-        -> TreeResult<&mut DataHolder>
+    // Find and return the given node regardless of type.
+    fn lookup_mut(&mut self, name: &str) -> TreeResult<&mut Node>
     {
-        // Look up the next name, path or directory. If we ran out of
-        // components before finding a file, then the path exists but does not
-        // name a file.
-        let name = try!(parts.next().ok_or_else(||{
-                        TreeError::NotFile("last component is a directory")}));
-        let child = try!(self.children.get_mut(name).ok_or_else(||{
-                         TreeError::NoSuchNode(name)}));
-        match child {
-            &mut Node::Directory(ref mut d) => d.lookup_file_recursive(parts),
-            &mut Node::File(ref mut f) => {
-                // If we still have components left, then we need to return
-                // NotADirectory to indicate the failed traversal.
-                return parts.next().map_or(
-                    Ok(f as &mut DataHolder),
-                    |_|{Err(TreeError::NotDirectory(name))});
-            },
-            &mut Node::Formula(ref mut f) => {
-                // If we still have components left, then we need to return
-                // NotADirectory to indicate the failed traversal.
-                return parts.next().map_or(
-                    Ok(f as &mut DataHolder),
-                    |_|{Err(TreeError::NotDirectory(name))});
-            }
-        }
-    }
-
-    /// Recursively trawl all directories finding matching globs. Note that
-    /// doing something smarter here is really hard because any ** will force
-    /// us to visit most paths anyway.
-    ///
-    /// TODO: think of reasonable caching strategies.
-    pub fn find_matching_files_recursive(&mut self, own_path: &Path, glob: &Glob)
-        -> TreeResult<Vec<(Path, &mut DataHolder)>>
-    {
-        let mut acc: Vec<(Path, &mut DataHolder)> = Vec::new();
-        for (child_name, child_node) in &mut self.children {
-            let child_path = try!(own_path.slash(child_name));
-            match child_node {
-                &mut Node::Directory(ref mut d) => {
-                    let matching = try!(d.find_matching_files_recursive(&child_path, glob));
-                    acc.extend(matching);
-                }
-                &mut Node::File(ref mut f) => {
-                    if glob.matches(&child_path) {
-                        acc.push((child_path, f as &mut DataHolder));
-                    }
-                }
-                &mut Node::Formula(ref mut f) => {
-                    if glob.matches(&child_path) {
-                        acc.push((child_path, f as &mut DataHolder));
-                    }
-                }
-            }
-        }
-        return Ok(acc);
+        return self.children.get_mut(name).ok_or_else(||{
+                    TreeError::NoSuchNode(name)});
     }
 
     // Internal helper for add_foo.
@@ -145,30 +219,13 @@ impl DirectoryData {
     }
 
     /// Returns the directory that was just created.
-    pub fn add_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
-        try!(self.add_child(name, Node::Directory(DirectoryData::new())));
-        return self.get_child_directory(name);
+    pub fn add_directory(&mut self, name: &str) -> TreeResult<()> {
+        return self.add_child(name, Node::Directory(DirectoryData::new()));
     }
 
-    /// Returns the file that was just created.
-    pub fn add_file(&mut self, name: &str) -> TreeResult<&mut FileData> {
-        try!(self.add_child(name, Node::File(FileData::new())));
-        // panic! if add_child succeeded but we can't find the node or it has
-        // the wrong type now, somehow.
-        if let &mut Node::File(ref mut fd) = self.children.get_mut(name).unwrap() {
-            return Ok(fd);
-        }
-        panic!("expected the Node::File that we just inserted");
-    }
-
-    // Returns the indicated child.
-    fn get_child_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
-        let node = try!(self.children.get_mut(name).ok_or_else(||{
-                        TreeError::NoSuchNode(name)}));
-        return match node {
-            &mut Node::Directory(ref mut d) => Ok(d),
-            _ => Err(TreeError::NotDirectory(name))
-        };
+    /// Adds a file to this directory at |name|.
+    pub fn add_file(&mut self, name: &str) -> TreeResult<()> {
+        return self.add_child(name, Node::File(FileData::new()));
     }
 
     /// Remove the given name from the tree.
@@ -181,6 +238,9 @@ impl DirectoryData {
                 if !d.children.is_empty() {
                     return Err(TreeError::DirectoryNotEmpty(name));
                 }
+            } else if let &Node::Formula(_) = child {
+                // FIXME: move removal up a level so we can fixup the inputs hash.
+                return Err(TreeError::FormulaRemovalDisallowed(name));
             }
         }
         let result = self.children.remove(name);
@@ -197,39 +257,17 @@ impl DirectoryData {
     }
 }
 
-/// A file contains some data.
-impl FileData {
-    fn new() -> FileData { FileData { data: "".to_owned() } }
-}
-
-impl DataHolder for FileData {
-    fn set_data(&mut self, new_data: &str) -> TreeResult<()> {
-        self.data = new_data.to_owned();
-        return Ok(());
-    }
-    fn ref_data(&self) -> &str {
-        return &self.data;
-    }
-}
-
-impl DataHolder for FormulaData {
-    fn set_data(&mut self, new_data: &str) -> TreeResult<()> {
-        return Err(TreeError::NotFile("invalid set on Formula node"));
-    }
-    fn ref_data(&self) -> &str {
-        return &self.cached_value;
-    }
-}
-
 /// A tree of Node.
 pub struct Tree {
-    root: DirectoryData
+    root: Node,
+    formula_inputs: HashMap<Path, HashSet<Path>>
 }
 impl Tree {
     /// Creates a new, empty Tree.
     pub fn new() -> Tree {
         Tree {
-            root: DirectoryData::new()
+            root: Node::Directory(DirectoryData::new()),
+            formula_inputs: HashMap::new()
         }
     }
 
@@ -237,24 +275,149 @@ impl Tree {
     pub fn lookup_directory(&mut self, path: &Path)
         -> TreeResult<&mut DirectoryData>
     {
-        return self.root.lookup_directory_recursive(&mut path.iter());
+        let node = try!(self.root.lookup_mut(&mut path.iter()));
+        return match node {
+            &mut Node::File(_) => Err(TreeError::NotDirectory(&path.to_str())),
+            &mut Node::Formula(_) => Err(TreeError::NotDirectory(&path.to_str())),
+            &mut Node::Directory(ref mut d) => Ok(d)
+        };
     }
 
-    /// Returns the file at the given directory or an error.
-    pub fn lookup_file(&mut self, path: &Path)
-        -> TreeResult<&mut DataHolder>
+    /// Create a new formula node.
+    pub fn create_formula(&mut self, parent: &Path, name: &str,
+                          inputs: &HashMap<String, Path>, formula: &str)
+        -> TreeResult<()>
     {
-        return self.root.lookup_file_recursive(&mut path.iter());
+        // Add formula inputs to the hash for quick lookup.
+        let formula_path = try!(parent.slash(name));
+        for path in inputs.values() {
+            if !self.formula_inputs.contains_key(path) {
+                self.formula_inputs.insert(path.clone(), HashSet::new());
+            }
+            self.formula_inputs
+                .get_mut(path)
+                .expect("just inserted new map")
+                .insert(formula_path.clone());
+        }
+
+        // Add the formula to the tree.
+        let parent = try!(self.lookup_directory(parent));
+        let formula = Node::Formula(try!(FormulaData::new(inputs, formula)));
+        return parent.add_child(name, formula);
     }
 
-    /// Returns pairs of (path, file) that match the given glob.
-    /// TODO: do we still need the lifetime params?
-    pub fn find_matching_files<'a>(&'a mut self, glob: &'a Glob)
-        -> TreeResult<Vec<(Path, &mut DataHolder)>>
+    /// Returns the data at the given node.
+    pub fn get_data_at(&self, path: &Path) -> TreeResult<String>
     {
-        let mut path = try!(try!(PathBuilder::new("/")).finish_path());
-        return self.root.find_matching_files_recursive(&mut path, glob);
+        let node = try!(self.root.lookup(&mut path.iter()));
+        return match node {
+            &Node::File(ref f) => Ok(f.get_data()),
+            &Node::Formula(ref f) => f.get_data(self),
+            &Node::Directory(_) => Err(TreeError::NotFile(&path.to_str()))
+        };
     }
+
+    /// Set the data at the given path.
+    pub fn set_data_at(&mut self, path: &Path, new_data: &str)
+        -> TreeResult<TreeChanges>
+    {
+        {
+            let node = try!(self.root.lookup_mut(&mut path.iter()));
+            match node {
+                &mut Node::File(ref mut f) => f.set_data(new_data),
+                _ => return Err(TreeError::NotFile(&path.to_str()))
+            };
+        }
+        let mut paths = HashSet::new();
+        paths.insert(path.clone());
+        return self.collect_dep_graph(&paths, new_data);
+    }
+
+    /// Get all nodes that match the given glob and return their data.
+    pub fn get_data_matching(&self, glob: &Glob) -> TreeResult<Vec<(Path, String)>> {
+        let matching = try!(self.root.find(&Path::root(), glob));
+        let mut pairs = Vec::new();
+        for (path, node) in matching {
+            match node {
+                &Node::File(ref f) => pairs.push((path, f.get_data())),
+                &Node::Formula(ref f) => pairs.push((path, try!(f.get_data(self)))),
+                &Node::Directory(_) => return Err(TreeError::NotFile(&path.to_str()))
+            }
+        }
+        return Ok(pairs);
+    }
+
+    /// Set the data at all matching paths. Returns all paths that were modified.
+    pub fn set_data_matching(&mut self, glob: &Glob, new_data: &str)
+        -> TreeResult<TreeChanges>
+    {
+        let mut paths = HashSet::new();
+        {
+            let matching = try!(self.root.find_mut(&Path::root(), glob));
+            for (path, node) in matching {
+                match node {
+                    &mut Node::File(ref mut f) => f.set_data(new_data),
+                    _ => return Err(TreeError::NotFile(&path.to_str())),
+                }
+                paths.insert(path);
+            }
+        }
+
+        return self.collect_dep_graph(&paths, new_data);
+    }
+
+    // Apply the formula dependency list to the given paths iteratively until
+    // we have discovered all formula paths that might possibly have changed
+    // based on the initial set of data changes. Formula values can depend on
+    // other formulas, so this needs to iterate to a fixed-point.
+    fn collect_dep_graph(&self, paths: &HashSet<Path>, new_data: &str)
+        -> TreeResult<TreeChanges>
+    {
+        let mut worklist: Vec<&Path> = Vec::new();
+        for path in paths {
+            worklist.push(path);
+        }
+
+        let mut affected: HashSet<Path> = HashSet::new();
+        let mut processed: HashSet<Path> = HashSet::new();
+        while worklist.len() > 0 {
+            // Grab the next item in the worklist.
+            let path = worklist.pop().expect("len > 0, so pop should work");
+
+            // If we've already visited this path we can skip it.
+            if processed.contains(path) {
+                continue;
+            }
+            processed.insert(path.clone());
+
+            // Extend affected with any deps we find.
+            if self.formula_inputs.contains_key(path) {
+                for affected_path in self.formula_inputs[path].iter() {
+                    worklist.push(affected_path);
+                    affected.insert(affected_path.clone());
+                }
+            }
+        }
+
+        // Our initial path seeds are things that can be modified, which means
+        // that they cannot be formulas themselves. Thus, we should not have
+        // found anything affected that was already in the initial paths set.
+        // Assert that these sets are actually totally disjoint.
+        debug_assert!(paths.intersection(&affected).collect::<Vec<_>>().len() == 0);
+
+        // Now we can build the complete change set to send to subscribers.
+        let mut changes = HashMap::new();
+        changes.insert(new_data.to_owned(), paths.to_owned().into_iter().collect::<Vec<_>>());
+        for path in &affected {
+            let data = try!(self.get_data_at(path));
+            if !changes.contains_key(&data) {
+                changes.insert(data.clone(), Vec::new());
+            }
+            changes.get_mut(&data).expect("just inserted").push(path.clone());
+        }
+        return Ok(changes);
+    }
+
 }
 
 #[cfg(test)]
@@ -342,7 +505,7 @@ mod tests {
                     }
 
                     let glob = make_glob($glob);
-                    let results = tree.find_matching_files(&glob).unwrap();
+                    let results = tree.get_data_matching(&glob).unwrap();
                     assert!(expect.len() == results.len());
                     for (path, _) in results {
                         let mut found = false;
