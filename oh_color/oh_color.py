@@ -6,7 +6,6 @@ from oh_shared.args import make_parser
 from oh_shared.db import Connection, Tree
 from oh_shared.log import enable_logging
 from pathlib import Path
-import ast
 import asyncio
 import logging
 from collections import defaultdict
@@ -62,6 +61,7 @@ async def main():
         colors = await tree.get_matching_files("/global/palette/*/*light/color")
         for path, value in colors.items():
             color_name = Path(path).parent.parent.name
+            log.info("Learning about color: {}".format(color_name))
             color = await Color.create(Path(path), value, tree)
             palette[color_name][color.light_kind] = color
 
