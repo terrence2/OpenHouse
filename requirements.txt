@@ -19,3 +19,4 @@ six==1.10.0
 tzlocal==1.2
 waitress==0.8.10
 websockets==3.1
+prompt_toolkit=1.0
