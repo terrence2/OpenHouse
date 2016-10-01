@@ -4,7 +4,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 from aiohttp import web
 from oh_shared.args import add_common_args
-from oh_shared.db import Tree, NotDirectory, PathError, TreeError
+from oh_shared.db import Tree, NotDirectory, PathError, TreeError, make_connection
 from oh_shared.log import enable_logging
 import argparse
 import asyncio
@@ -12,12 +12,6 @@ import logging
 import sys
 
 log = logging.getLogger('oh_rest')
-
-
-async def make_connection(args):
-    tree = await Tree.connect((args.db_address, args.db_port),
-                              args.ca_chain, args.certificate, args.private_key)
-    return tree
 
 
 def make_handler(tree: Tree):

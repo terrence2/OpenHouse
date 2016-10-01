@@ -7,16 +7,10 @@ import logging
 from hue.bridge import Bridge
 from oh_shared.args import parse_default_args
 from oh_shared.log import enable_logging
-from oh_shared.db import Tree
+from oh_shared.db import make_connection
 from pathlib import PurePosixPath
 
 log = logging.getLogger('oh_hue')
-
-
-async def make_connection(args):
-    tree = await Tree.connect((args.db_address, args.db_port),
-                              args.ca_chain, args.certificate, args.private_key)
-    return tree
 
 
 def names_from_color_paths(paths: [str]):

@@ -5,7 +5,7 @@
 from aiohttp import web
 from pathlib import PurePosixPath as Path
 from oh_shared.args import make_parser
-from oh_shared.db import Tree, TreeError
+from oh_shared.db import Tree, TreeError, make_connection
 from oh_shared.log import enable_logging
 import asyncio
 import logging
@@ -13,12 +13,6 @@ import socket
 import sys
 
 log = logging.getLogger('oh_button')
-
-
-async def make_connection(args):
-    tree = await Tree.connect((args.db_address, args.db_port),
-                              args.ca_chain, args.certificate, args.private_key)
-    return tree
 
 
 async def update_ip_map(tree, ip_map):

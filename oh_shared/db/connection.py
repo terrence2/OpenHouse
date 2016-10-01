@@ -26,3 +26,10 @@ class Connection:
 
     async def __aexit__(self, exc, *args):
         await self.connection.close()
+
+
+async def make_connection(args):
+    """
+    A function to make a tree connection from args.
+    """
+    return await Tree.connect((args.db_address, args.db_port), args.ca_chain, args.certificate, args.private_key)
