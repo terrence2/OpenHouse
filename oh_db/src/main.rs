@@ -262,8 +262,11 @@ impl<'e> Connection<'e> {
         let name = try!(msg.get_name());
         info!("handling CreateFile -> parent: {},  name: {}", parent_path, name);
         let mut env = self.env.borrow_mut();
-        let parent = try!(env.db.lookup_directory(&parent_path));
-        try!(parent.add_file(&name));
+        {
+            let db = &mut env.db;
+            let parent = try!(db.lookup_directory(&parent_path));
+            try!(parent.add_file(&name));
+        }
         response.init_ok();
         return Ok(());
     }
@@ -272,7 +275,8 @@ impl<'e> Connection<'e> {
                              response: server_response::Builder)
         -> Result<(), Box<Error>>
     {
-        let parent = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
+                               .finish_path());
         let name = try!(msg.get_name());
         let formula = try!(msg.get_formula());
         let mut inputs = HashMap::new();
@@ -282,8 +286,14 @@ impl<'e> Connection<'e> {
             inputs.insert(try!(input.get_name()).to_owned(), input_path);
         }
         info!("handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
-              parent, name, inputs, formula);
-        try!(self.env.borrow_mut().db.create_formula(&parent, &name, &inputs, &formula));
+              parent_path, name, inputs, formula);
+        {
+            let mut env = self.env.borrow_mut();
+            {
+                let db = &mut env.db;
+                try!(db.create_formula(&parent_path, &name, &inputs, &formula));
+            }
+        }
         response.init_ok();
         return Ok(());
     }
@@ -296,9 +306,14 @@ impl<'e> Connection<'e> {
                                .finish_path());
         let name = try!(msg.get_name());
         info!("handling Createdirectory -> parent: {}, name: {}", parent_path, name);
-        let mut env = self.env.borrow_mut();
-        let parent = try!(env.db.lookup_directory(&parent_path));
-        try!(parent.add_directory(&name));
+        {
+            let mut env = self.env.borrow_mut();
+            {
+                let db = &mut env.db;
+                let parent = try!(db.lookup_directory(&parent_path));
+                try!(parent.add_directory(&name));
+            }
+        }
         response.init_ok();
         return Ok(());
     }
@@ -311,9 +326,14 @@ impl<'e> Connection<'e> {
                                .finish_path());
         let name = try!(msg.get_name());
         info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
-        let mut env = self.env.borrow_mut();
-        let parent = try!(env.db.lookup_directory(&parent_path));
-        try!(parent.remove_child(&name));
+        {
+            let mut env = self.env.borrow_mut();
+            {
+                let db = &mut env.db;
+                let parent = try!(db.lookup_directory(&parent_path));
+                try!(parent.remove_child(&name));
+            }
+        }
         response.init_ok();
         return Ok(());
     }
@@ -343,11 +363,12 @@ impl<'e> Connection<'e> {
     {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         info!("handling GetFile -> path: {}", path);
-        let db = &mut self.env.borrow_mut().db;
-        let data = try!(db.get_data_at(&path));
-
         let mut cat_response = response.init_get_file();
-        cat_response.set_data(&data);
+        {
+            let db = &mut self.env.borrow_mut().db;
+            let data = try!(db.get_data_at(&path));
+            cat_response.set_data(&data);
+        }
         return Ok(());
     }
 
@@ -357,14 +378,15 @@ impl<'e> Connection<'e> {
     {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         info!("handling GetMatchingFiles -> glob: {}", glob);
-        let db = &mut self.env.borrow_mut().db;
-        let matches = try!(db.get_data_matching(&glob));
-
         let cat_response = response.init_get_matching_files();
-        let mut cat_data = cat_response.init_data(matches.len() as u32);
-        for (i, &ref match_pair) in matches.iter().enumerate() {
-            cat_data.borrow().get(i as u32).set_path(&match_pair.0.to_str());
-            cat_data.borrow().get(i as u32).set_data(&match_pair.1);
+        {
+            let db = &mut self.env.borrow_mut().db;
+            let matches = try!(db.get_data_matching(&glob));
+            let mut cat_data = cat_response.init_data(matches.len() as u32);
+            for (i, &ref match_pair) in matches.iter().enumerate() {
+                cat_data.borrow().get(i as u32).set_path(&match_pair.0.to_str());
+                cat_data.borrow().get(i as u32).set_data(&match_pair.1);
+            }
         }
         return Ok(());
     }
@@ -376,8 +398,11 @@ impl<'e> Connection<'e> {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         let data = try!(msg.get_data());
         info!("handling SetFile -> path: {}, data: {}", path, data);
-        let db = &mut self.env.borrow_mut().db;
-        let changes = try!(db.set_data_at(&path, &data));
+        let changes;
+        {
+            let db = &mut self.env.borrow_mut().db;
+            changes = try!(db.set_data_at(&path, &data));
+        }
         self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
@@ -390,9 +415,8 @@ impl<'e> Connection<'e> {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         let data = try!(msg.get_data());
         info!("handling SetMatchingFiles -> glob: {}, data: {}", glob, data);
-        let env = &mut self.env.borrow_mut();
-        let changes = try!(env.db.set_data_matching(&glob, data));
-        env.notify_subscriptions_glob(&changes);
+        let changes = try!(self.env.borrow_mut().db.set_data_matching(&glob, data));
+        self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
     }
@@ -417,7 +441,10 @@ impl<'e> Connection<'e> {
         -> Result<(), Box<Error>>
     {
         let sid = SubscriptionId::from_u64(msg.get_subscription_id());
-        try!(self.env.borrow_mut().watches.remove_watch(&sid));
+        {
+            let mut env = self.env.borrow_mut();
+            try!(env.watches.remove_watch(&sid));
+        }
         response.init_ok();
         return Ok(());
     }
@@ -434,7 +461,8 @@ impl<'e> Connection<'e> {
             for (change_no, (data, paths)) in changes.iter().enumerate() {
                 let mut change_ref = changes_list.borrow().get(change_no as u32);
                 change_ref.set_data(data);
-                let mut path_list = change_ref.init_paths(paths.len() as u32);
+                let mut path_list = change_ref
+                                                .init_paths(paths.len() as u32);
                 for (i, path) in paths.iter().enumerate() {
                     path_list.set(i as u32, &path.to_str());
                 }
@@ -463,12 +491,11 @@ macro_rules! handle_client_request {
                         let mut response = message.init_response();
                         response.set_id($id.to_u64());
 
-                        // Note that since capnp's generated response objects'
-                        // |self| only takes a copy, we *have* to move when
-                        // calling our handler. This means that we need to
-                        // process the result later when message is not pinning
-                        // builder. We have to re-create the message, but not
-                        // all the other machinery.
+                        // Note that since capnp's generated response objects' |self| only
+                        // takes a copy, we *have* to move when calling our handler. This means
+                        // that we need to process the result later when message is not pinning
+                        // builder. We have to re-create the message, but not all the other
+                        // machinery.
                         result = $conn.$b(&unwrapped, response);
                     }
 
