@@ -79,6 +79,9 @@ global:
     username: MasterControlProgram
     transition_time: 0.5
 
+  zwave-local-controller:
+    device: /dev/zwave
+
   # These get adjusted on the fly by oh_seasonal based on the given parameters.
   palette:
     'off':
@@ -157,6 +160,9 @@ room:
     color:
       formula: switch
       where: {switch: /room/office/radio-button/office-lightswitch.eyrie/state}
+    default-color:
+      formula: (cond ((= md0 "on") "on") (else "off"))
+      where: {md0: /room/office/zwave-motiondetector/2/state}
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
@@ -201,8 +207,8 @@ room:
       kitchen-ceiling2: {color: none, x: 4ft, y: 4ft}
       kitchen-ceiling3: {color: none, x: 5ft, y: 3ft}
       kitchen-ceiling4: {color: none, x: 6ft, y: 2ft}
-    wemo-motion-detector:
-      m-kitchen-sink: {x: 11ft, y: 1ft4in}
+    zwave-motion-detector:
+      fridge: {id: 2, value: 0}
     radio-button:
       kitchen-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
 

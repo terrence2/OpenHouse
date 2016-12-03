@@ -26,6 +26,11 @@ class Network
     bool done;
     bool failed;
 
+    // Runtime Callbacks.
+    using ListenerEventCallbackType = void (*)(uint8_t id, uint8_t event, void* data);
+    ListenerEventCallbackType event_listener;
+    void* event_listener_data;
+
     struct Node
     {
         uint8_t id;
@@ -45,11 +50,14 @@ class Network
     std::unordered_map<uint8_t, Node> nodes;
 
     static void InitHandler(OpenZWave::Notification const* _notification, void* _context);
+    static void ListenEventsHandler(OpenZWave::Notification const* notification, void* _context);
 
  public:
     Network(std::string dev_name, bool verbose);
     ~Network();
     bool init();
     void show(bool verbose);
+
+    bool listen_events(ListenerEventCallbackType callback, void* data);
 };
 

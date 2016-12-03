@@ -1,17 +1,17 @@
+# This Source Code Form is subject to the terms of the GNU General Public
+# License, version 3. If a copy of the GPL was not distributed with this file,
+# You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 CC=g++
 
 CFLAGS=`ozw_config --Cflags` `ozw_config --Libs`
 LIBS=-pthread -lboost_program_options
 
-all: build/show_network build/configure_node
+all: build/oh_zwave
 
-build/%.o : src/%.cpp
+build/%.o : src/%.cpp Makefile
 	${CC} -o $@ -c $< -Wall -g -O0 ${CFLAGS} ${LIBS}
 
-build/show_network: build/show_network.o build/network.o
-	${CC} -o $@ $^ -Wall -g -O0 ${CFLAGS} ${LIBS}
-
-build/configure_node: build/configure_node.o build/network.o
+build/oh_zwave: build/oh_zwave.o build/network.o
 	${CC} -o $@ $^ -Wall -g -O0 ${CFLAGS} ${LIBS}
 
 clean:

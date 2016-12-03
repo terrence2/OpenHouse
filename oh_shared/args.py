@@ -17,7 +17,7 @@ def add_common_args(parser: argparse.ArgumentParser):
     group.add_argument('--db-port', '-P', default=8887, type=int,
                        help="The HOMe daemon's ipv4 port.")
     group.add_argument('--ca-chain', '-C', type=str,
-                       help="The private key of this daemon.")
+                       help="The certificate verification chain.")
     group.add_argument('--certificate', '-c', type=str,
                        help="The certificate of this daemon.")
     group.add_argument('--private-key', '-k', type=str,

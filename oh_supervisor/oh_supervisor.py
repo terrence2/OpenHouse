@@ -14,7 +14,7 @@ from pathlib import Path
 
 loop = asyncio.get_event_loop()
 
-Daemons = ['hue', 'color', 'button']
+Daemons = ['hue', 'color', 'button', 'zwave']
 DebugDaemons = ['rest']
 
 

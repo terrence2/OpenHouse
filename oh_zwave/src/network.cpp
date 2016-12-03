@@ -13,6 +13,8 @@
 #include <value_classes/ValueBool.h>
 #include <value_classes/ValueStore.h>
 
+#include <unistd.h>
+
 using std::cout;
 using std::endl;
 using std::mutex;
@@ -28,6 +30,8 @@ Network::Network(string dev_name, bool verbose)
   , home_id(0)
   , done(false)
   , failed(false)
+  , event_listener(nullptr)
+  , event_listener_data(nullptr)
 {
     ozw::Options::Create("./config/", "", "--SaveConfiguration=true --DumpTriggerLevel=0");
 	//ozw::Options::Get()->Lock();
@@ -183,6 +187,67 @@ Network::InitHandler(ozw::Notification const* notification, void* _context)
 		case ozw::Notification::Type_ButtonOn:
 		case ozw::Notification::Type_ButtonOff:
             assert(!"did not expect button presses");
+    }
+}
+
+bool
+Network::listen_events(ListenerEventCallbackType callback, void* data)
+{
+    assert(event_listener == nullptr);
+    event_listener = callback;
+    event_listener_data = data;
+    ozw::Manager::Get()->AddWatcher(ListenEventsHandler, this);
+    return true;
+}
+
+/* static */ void
+Network::ListenEventsHandler(ozw::Notification const* notification, void* _context)
+{
+    auto network = static_cast<Network*>(_context);
+    unique_lock<mutex> guard(network->lock);
+
+    if (network->home_id)
+        assert(network->home_id == notification->GetHomeId());
+
+    switch (notification->GetType()) {
+        case ozw::Notification::Type_NodeEvent:
+        {
+            uint8_t id = notification->GetNodeId();
+            uint8_t event = notification->GetEvent();
+            network->event_listener(id, event, network->event_listener_data);
+            break;
+        }
+
+        case ozw::Notification::Type_ValueAdded:        Poke('.'); break;
+        case ozw::Notification::Type_NodeNew:           Poke('N'); break;
+		case ozw::Notification::Type_NodeAdded:         Poke('@'); break;
+		case ozw::Notification::Type_ValueRefreshed:    Poke('r'); break;
+		case ozw::Notification::Type_Group:             Poke('g'); break;
+		case ozw::Notification::Type_ValueChanged:      Poke('^'); break;
+        case ozw::Notification::Type_DriverReady:       Poke('d'); break;
+        case ozw::Notification::Type_DriverFailed:      Poke('F'); break;
+		case ozw::Notification::Type_AwakeNodesQueried:       Poke('X'); break;
+		case ozw::Notification::Type_AllNodesQueried:         Poke('Y'); break;
+		case ozw::Notification::Type_AllNodesQueriedSomeDead: Poke('Z'); break;
+		case ozw::Notification::Type_NodeNaming:        Poke('a'); break;
+		case ozw::Notification::Type_DriverReset:       Poke('D'); break;
+		case ozw::Notification::Type_Notification:      Poke('i'); break;
+		case ozw::Notification::Type_NodeProtocolInfo:        Poke('I'); break;
+		case ozw::Notification::Type_NodeQueriesComplete:     Poke('Q'); break;
+		case ozw::Notification::Type_EssentialNodeQueriesComplete: Poke('E'); break;
+		case ozw::Notification::Type_DriverRemoved:     Poke('R'); break;
+        case ozw::Notification::Type_ValueRemoved:      Poke('V'); break;
+		case ozw::Notification::Type_NodeRemoved:       Poke('v'); break;
+        case ozw::Notification::Type_PollingEnabled:    Poke('P'); break;
+		case ozw::Notification::Type_PollingDisabled:   Poke('p'); break;
+		case ozw::Notification::Type_NodeReset:         Poke('r'); break;
+		case ozw::Notification::Type_SceneEvent:        Poke('S'); break;
+		case ozw::Notification::Type_ControllerCommand: Poke('C'); break;
+		case ozw::Notification::Type_CreateButton:      Poke('B'); break;
+		case ozw::Notification::Type_DeleteButton:      Poke('b'); break;
+		case ozw::Notification::Type_ButtonOn:          Poke('O'); break;
+		case ozw::Notification::Type_ButtonOff:         Poke('o'); break;
+        default:                                        Poke('!'); break;
     }
 }
 
