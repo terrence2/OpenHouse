@@ -5,24 +5,15 @@ from contextlib import contextmanager
 
 
 CLIENTS = [
-    "oh_alarm",
-    "oh_apply_scene",
-    "oh_apply_sensor",
     "oh_button",
     "oh_cli",
     "oh_color",
     "oh_db_test",
-    "oh_formula",
     "oh_fs",
     "oh_hue",
-    "oh_infer_activity",
-    "oh_motion_filter",
     "oh_populate",
-    "oh_rave",
     "oh_rest",
-    "oh_sun",
-    "oh_web",
-    "oh_wemo",
+    "oh_zwave",
 ]
 
 
