@@ -3,17 +3,22 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 CC=g++
 
+OPTFLAGS=-O2
+#OPTFLAGs=-g -O0
 CFLAGS=`ozw_config --Cflags` `ozw_config --Libs`
 LIBS=-pthread -lboost_program_options
 
 all: build/oh_zwave
 
-build/%.o : src/%.cpp Makefile
-	${CC} -o $@ -c $< -Wall -g -O0 ${CFLAGS} ${LIBS}
+build:
+	mkdir -p build
+
+build/%.o : src/%.cpp Makefile build
+	${CC} -o $@ -c $< -Wall ${OPTFLAGS} ${CFLAGS} ${LIBS}
 
 build/oh_zwave: build/oh_zwave.o build/network.o
-	${CC} -o $@ $^ -Wall -g -O0 ${CFLAGS} ${LIBS}
+	${CC} -o $@ $^ -Wall ${OPTFLAGS} ${CFLAGS} ${LIBS}
 
 clean:
-	rm -rf build/*
+	rm -rf build
 
