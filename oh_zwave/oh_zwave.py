@@ -34,14 +34,17 @@ async def watch_devices(device: str, tree: Tree, target_by_id: {int: Path}):
                              "--event-fd", str(wfd)],
                             pass_fds=[wfd],
                             env={'LD_LIBRARY_PATH': '/usr/local/lib64'})
-    while True:
-        bs = os.read(rfd, 2)
-        device_id = int(bs[0])
-        value = int(bs[1])
+    try:
+        while True:
+            bs = os.read(rfd, 2)
+            device_id = int(bs[0])
+            value = int(bs[1])
 
-        if device_id in target_by_id:
-            target = str(target_by_id[device_id])
-            await tree.set_file(target, str(value))
+            if device_id in target_by_id:
+                target = str(target_by_id[device_id])
+                await tree.set_file(target, str(value))
+    finally:
+        proc.terminate()
 
 
 async def main():
