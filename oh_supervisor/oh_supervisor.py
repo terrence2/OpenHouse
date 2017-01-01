@@ -10,6 +10,7 @@ import contextlib
 import os
 import sys
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 loop = asyncio.get_event_loop()
@@ -168,7 +169,7 @@ def main():
                         help="Run extra debugging daemons.")
     parser.add_argument('--verbosity', '-v', type=int, default=1,
                         help="Run with verbosity level.")
-    parser.add_argument('--logdir', '-L', type=str, default='log',
+    parser.add_argument('--logdir', '-L', type=str, default='log/{}'.format(datetime.now()),
                         help="Choose where to put logs.")
     args = parser.parse_args()
 
@@ -179,6 +180,15 @@ def main():
     if args.debug:
         global Daemons
         Daemons += DebugDaemons
+
+    # Make the logdir and link it.
+    os.makedirs(args.logdir, 0o775, True)
+    linkpath = str(Path(args.logdir).parent / "latest")
+    try:
+        os.unlink(linkpath)
+    except FileNotFoundError:
+        pass
+    os.symlink(str(Path(args.logdir).name), linkpath, target_is_directory=True)
 
     # Launch the shell on a sub-loop.
     shell_task = loop.create_task(interactive_shell())
@@ -197,6 +207,7 @@ def main():
     loop.run_until_complete(shell_task)
     for proc in managed:
         proc.terminate()
+        loop.run_until_complete(proc.wait())
     loop.run_until_complete(background_task)
     print('Quiting event loop. Bye.')
     loop.close()

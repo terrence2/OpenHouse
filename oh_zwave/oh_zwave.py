@@ -9,19 +9,30 @@ from oh_shared.log import enable_logging
 import asyncio
 import logging
 import os
+import signal
 import subprocess
 import sys
 
-log = logging.getLogger('oh_button')
+log = logging.getLogger('oh_zwave')
 
 EventType = 1
 ValueType = 2
+
+
+# Handle SIGTERM in python. This forces the interpretter to unwind the stack
+# allowing us to kill our child before exiting. I'm not sure why it does not
+# normally.
+def sigterm_handler(signal, frame):
+    sys.exit(0)
+signal.signal(signal.SIGTERM, sigterm_handler)
+
 
 async def build_id_map(tree: Tree):
     by_id = {}
     mds = await tree.get_matching_files("/room/*/zwave-motion-detector/*/id")
     for path, device_id in mds.items():
         by_id[int(device_id)] = Path(path).parent / 'value'
+        log.info("Mapping ZWave id {} to {}".format(device_id, by_id[int(device_id)]))
     return by_id
 
 
@@ -36,6 +47,7 @@ async def watch_devices(device: str, tree: Tree, target_by_id: {int: Path}):
                             env={'LD_LIBRARY_PATH': '/usr/local/lib64'})
     try:
         while True:
+            print("WAITING AT READ")
             bs = os.read(rfd, 3)
             print("BS is: {0}".format(bs))
 
@@ -55,8 +67,11 @@ async def watch_devices(device: str, tree: Tree, target_by_id: {int: Path}):
                 value_kind = int(bs[2])
 
     except KeyboardInterrupt:
+        log.info("Got keyboard interrupt")
         pass
+
     finally:
+        log.info("Cleaning up zwave daemon")
         os.close(rfd)
         os.close(wfd)
         proc.terminate()
