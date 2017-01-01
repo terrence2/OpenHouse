@@ -3,9 +3,9 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 CC=g++
 
-OPTFLAGS=-O2
-#OPTFLAGs=-g -O0
-CFLAGS=`ozw_config --Cflags` `ozw_config --Libs`
+#OPTFLAGS=-O2
+OPTFLAGs=-g -O0
+CFLAGS=-Wno-unknown-pragmas `ozw_config --Cflags` `ozw_config --Libs`
 LIBS=-pthread -lboost_program_options
 
 all: build/oh_zwave

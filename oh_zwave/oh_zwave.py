@@ -2,20 +2,20 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-from aiohttp import web
 from pathlib import PurePosixPath as Path
 from oh_shared.args import make_parser
-from oh_shared.db import Tree, TreeError, make_connection
+from oh_shared.db import Tree, make_connection
 from oh_shared.log import enable_logging
 import asyncio
 import logging
 import os
-import socket
 import subprocess
 import sys
 
 log = logging.getLogger('oh_button')
 
+EventType = 1
+ValueType = 2
 
 async def build_id_map(tree: Tree):
     by_id = {}
@@ -36,15 +36,31 @@ async def watch_devices(device: str, tree: Tree, target_by_id: {int: Path}):
                             env={'LD_LIBRARY_PATH': '/usr/local/lib64'})
     try:
         while True:
-            bs = os.read(rfd, 2)
-            device_id = int(bs[0])
-            value = int(bs[1])
+            bs = os.read(rfd, 3)
+            print("BS is: {0}".format(bs))
 
-            if device_id in target_by_id:
-                target = str(target_by_id[device_id])
-                await tree.set_file(target, str(value))
+            msg_type = int(bs[0])
+            if msg_type == EventType:
+                assert len(bs) == 3, "unexpected event message length"
+                device_id = int(bs[1])
+                value = int(bs[2])
+                if device_id in target_by_id:
+                    target = str(target_by_id[device_id])
+                    if msg_type == EventType:
+                        await tree.set_file(target, str(value))
+
+            elif msg_type == ValueType:
+                assert len(bs) == 7, "unexpected value message length"
+                device_id = int(bs[1])
+                value_kind = int(bs[2])
+
+    except KeyboardInterrupt:
+        pass
     finally:
+        os.close(rfd)
+        os.close(wfd)
         proc.terminate()
+        proc.wait()
 
 
 async def main():

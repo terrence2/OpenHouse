@@ -30,6 +30,10 @@ class Network
     using ListenerEventCallbackType = void (*)(uint8_t id, uint8_t event, void* data);
     ListenerEventCallbackType event_listener;
     void* event_listener_data;
+    using ListenerValueCallbackType = void (*)(uint8_t id, std::string label,
+                                               std::string value, void* data);
+    ListenerValueCallbackType value_listener;
+    void* value_listener_data;
 
     struct Node
     {
@@ -58,6 +62,8 @@ class Network
     bool init();
     void show(bool verbose);
 
-    bool listen_events(ListenerEventCallbackType callback, void* data);
+    void listen_events(ListenerEventCallbackType callback, void* data);
+    void listen_value_changes(ListenerValueCallbackType callback, void* data);
+    void begin_watching();
 };
 
