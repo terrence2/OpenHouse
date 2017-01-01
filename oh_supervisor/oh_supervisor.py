@@ -34,13 +34,16 @@ class GenericProcess:
     because we can infer less about the environment. These processes are blocking.
     Typically these are used for build tasks and other setup before OH begins running.
     """
-    def __init__(self, name: str, command: str, pwd: Path):
+    def __init__(self, name: str, command: str, pwd: Path, args):
         self.name = name
         self.command = command.split()
         self.pwd = pwd
+        self.show_command = args.verbosity >= 1
 
     async def start(self):
         with chdir(self.pwd):
+            if self.show_command:
+                print("Running: ", " ".join(self.command))
             rv = subprocess.run(self.command)
         assert rv.returncode == 0,\
             "GenericProcess({}) failed to run: {}".format(self.name, self.command)
@@ -62,8 +65,11 @@ class OpenHouseDatabase:
             '-c', 'CA/intermediate/certs/oh_db.cert.pem',
             '-k', 'CA/intermediate/private/oh_db.key.pem',
         ]
+        self.show_command = args.verbosity >= 1
 
     async def start(self) -> asyncio.subprocess.Process:
+        if self.show_command:
+            print("Running: ", " ".join(self.command))
         return await asyncio.create_subprocess_exec(*self.command)
 
 
@@ -83,8 +89,11 @@ class OpenHouseDaemon:
             '-c', 'CA/intermediate/certs/{}.cert.pem'.format(self.name),
             '-k', 'CA/intermediate/private/{}.key.pem'.format(self.name),
         ]
+        self.show_command = args.verbosity >= 1
 
     async def start(self) -> asyncio.subprocess.Process:
+        if self.show_command:
+            print("Running: ", " ".join(self.command))
         return await asyncio.create_subprocess_exec(*self.command)
 
 
@@ -176,7 +185,7 @@ def main():
 
     # Build the supervisor tree.
     processes = [
-        GenericProcess('compile-oh_db', 'cargo build --release', Path('./oh_db')),
+        GenericProcess('compile-oh_db', 'cargo build --release', Path('./oh_db'), args),
         OpenHouseDatabase(args),
         OpenHouseProcess('oh_populate', ['--config', args.config], args),
     ] + [OpenHouseDaemon('oh_' + name, args) for name in Daemons]
