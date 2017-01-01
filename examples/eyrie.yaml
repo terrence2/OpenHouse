@@ -166,11 +166,6 @@ room:
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
-    wemo-motion-detector:
-      m-office-desk1: {x:  3ft, y:  6in}
-      m-office-desk2: {x:  9ft, y:  5ft}
-      m-office-south: {x:  0ft, y: 10ft}
-      m-office-east:  {x: 10ft, y: 12ft}
     radio-button:
       office-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
 
@@ -219,8 +214,6 @@ room:
       where: {switch: /room/kitchen/radio-button/kitchen-lightswitch.eyrie/state}
     hue-light:
       utility-ceiling: {color: none, x: 2ft, y: 4ft}
-    wemo-motion-detector:
-      m-utility-north: {x: 4in, y: 1ft6in}
 
   livingroom:
     geometry: {x: 0ft, y: 13ft, w: 13ft, l: 19ft9in}
