@@ -2,16 +2,19 @@
 # This Source Code Form is subject to the terms of the GNU General Public
 # License, version 3. If a copy of the GPL was not distributed with this file,
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+from collections import namedtuple
+from datetime import datetime
+from oh_shared.db import make_connection, Tree
+from pathlib import Path
+from pprint import pprint
 from prompt_toolkit.interface import CommandLineInterface
 from prompt_toolkit.shortcuts import create_prompt_application, create_asyncio_eventloop, prompt_async
 import argparse
 import asyncio
 import contextlib
 import os
-import sys
 import subprocess
-from datetime import datetime
-from pathlib import Path
+import sys
 
 loop = asyncio.get_event_loop()
 
@@ -122,18 +125,7 @@ async def spawn(processes):
     return managed
 
 
-async def print_counter():
-    """
-    Coroutine that prints counters.
-    """
-    i = 0
-    while True:
-        print('Counter: %i' % i)
-        i += 1
-        await asyncio.sleep(3)
-
-
-async def interactive_shell():
+async def interactive_shell(args):
     """
     Like `interactive_shell`, but doing things manual.
     """
@@ -143,18 +135,47 @@ async def interactive_shell():
 
     # Create interface.
     cli = CommandLineInterface(
-        application=create_prompt_application('Say something inside the event loop: '),
+        application=create_prompt_application('>>> '),
         eventloop=eventloop)
 
     # Patch stdout in something that will always print *above* the prompt when
     # something is written to stdout.
     sys.stdout = cli.stdout_proxy()
 
-    # Run echo loop. Read text from stdin, and reply it back.
+    async def maybe_connect(t: Tree) -> Tree:
+        if t is None:
+            FakeArgs = namedtuple("FakeArgs", "db_address db_port ca_chain certificate private_key".split())
+            fake_args = FakeArgs('127.0.0.1', args.db_port,
+                                 'CA/intermediate/certs/chain.cert.pem',
+                                 'CA/intermediate/certs/oh_supervisor.cert.pem',
+                                 'CA/intermediate/private/oh_supervisor.key.pem')
+            return await make_connection(fake_args)
+        return t
+
+    tree = None
     while True:
         try:
             result = await cli.run_async()
-            print('You said: "{0}"'.format(result.text))
+            tree = await maybe_connect(tree)
+            result = result.text.strip()
+            if result.startswith('ls '):
+                target = result[len('ls '):].strip()
+                try:
+                    dir_list = await tree.list_directory(target)
+                except Exception as e:
+                    print('Failed to ls "{0}": {1}'.format(target, str(e)))
+                    continue
+                for name in dir_list:
+                    print(name)
+            elif result.startswith('cat '):
+                target = result[len('cat '):].strip()
+                try:
+                    content = await tree.get_matching_files(target)
+                except Exception as e:
+                    print('Failed to cat "{0}": {1"'.format(target, str(e)))
+                print(content)
+            else:
+                print('Unknown command "{0}"'.format(result))
         except (EOFError, KeyboardInterrupt):
             return
 
@@ -191,7 +212,7 @@ def main():
     os.symlink(str(Path(args.logdir).name), linkpath, target_is_directory=True)
 
     # Launch the shell on a sub-loop.
-    shell_task = loop.create_task(interactive_shell())
+    shell_task = loop.create_task(interactive_shell(args))
 
     # Build the supervisor tree.
     processes = [
