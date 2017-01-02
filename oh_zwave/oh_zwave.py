@@ -29,7 +29,7 @@ signal.signal(signal.SIGTERM, sigterm_handler)
 
 async def build_id_map(tree: Tree):
     by_id = {}
-    mds = await tree.get_matching_files("/room/*/zwave-motion-detector/*/id")
+    mds = await tree.get_matching_files("/room/*/zwave-motiondetector/*/id")
     for path, device_id in mds.items():
         by_id[int(device_id)] = Path(path).parent / 'value'
         log.info("Mapping ZWave id {} to {}".format(device_id, by_id[int(device_id)]))

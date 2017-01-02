@@ -158,16 +158,19 @@ room:
     geometry: {x:  0ft, y: 0ft, w: 10ft, l: 13ft}
     closets: [{x: 10ft, y: 5ft, w:  2ft, l:  5ft}]
     color:
-      formula: switch
-      where: {switch: /room/office/radio-button/office-lightswitch.eyrie/state}
-    default-color:
-      formula: (cond ((= md0 "on") "on") (else "off"))
-      where: {md0: /room/office/zwave-motiondetector/2/state}
+      formula:
+        (cond ((= switch "default") (cond ((= md0 "0") "off") (else "on")))
+        (else switch))
+      where:
+        switch: /room/office/radio-button/office-lightswitch.eyrie/state
+        md0: /room/office/zwave-motiondetector/desk-left/value
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
     radio-button:
       office-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
+    zwave-motiondetector:
+      desk-left: {id: 2, value: 0}
 
   hall:
     geometry: {x: 10ft, y: 10ft, w: 7ft, l: 6ft, noborder: true}
@@ -202,8 +205,6 @@ room:
       kitchen-ceiling2: {color: none, x: 4ft, y: 4ft}
       kitchen-ceiling3: {color: none, x: 5ft, y: 3ft}
       kitchen-ceiling4: {color: none, x: 6ft, y: 2ft}
-    zwave-motion-detector:
-      fridge: {id: 2, value: 0}
     radio-button:
       kitchen-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
 

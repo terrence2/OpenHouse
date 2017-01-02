@@ -173,7 +173,7 @@ async def interactive_shell(args):
                     content = await tree.get_matching_files(target)
                 except Exception as e:
                     print('Failed to cat "{0}": {1"'.format(target, str(e)))
-                print(content)
+                pprint(content)
             else:
                 print('Unknown command "{0}"'.format(result))
         except (EOFError, KeyboardInterrupt):

@@ -34,6 +34,7 @@ def enable_logging(filename: str, level: str):
         color_lineno=('green', None, False),
         datefmt="%Y-%m-%d %H:%M:%S"
     )
+    #stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setLevel(getattr(logging, level))
     stream_handler.addFilter(Squelch())
 
