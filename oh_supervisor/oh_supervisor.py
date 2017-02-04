@@ -16,10 +16,19 @@ import os
 import subprocess
 import sys
 
+
 loop = asyncio.get_event_loop()
 
-Daemons = ['hue', 'color', 'button', 'zwave']
-DebugDaemons = ['rest']
+
+Daemons = [
+    'button',
+    'color',
+    'hue',
+]
+DebugDaemons = [
+    'rest',
+    'zwave',
+]
 
 
 @contextlib.contextmanager
@@ -201,6 +210,9 @@ def main():
     if args.debug:
         global Daemons
         Daemons += DebugDaemons
+
+    # Export variables to customize coloredlogs before we start spawning things.
+    os.environ['COLOREDLOGS_LOG_FORMAT'] = '%(asctime)s.%(msecs)03d %(name)s[%(process)d]@%(hostname)s %(levelname)s %(message)s'
 
     # Make the logdir and link it.
     os.makedirs(args.logdir, 0o775, True)

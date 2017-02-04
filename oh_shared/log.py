@@ -3,7 +3,7 @@
 # You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 import logging
 import sys
-from rainbow_logging_handler import RainbowLoggingHandler
+import coloredlogs
 
 
 def enable_logging(filename: str, level: str):
@@ -17,34 +17,17 @@ def enable_logging(filename: str, level: str):
                 return False
             return True
 
-    formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s')
+
+    root = logging.getLogger('')
+    root.setLevel(logging.DEBUG)
 
     # File logger captures everything.
     file_handler = logging.FileHandler(filename)
     file_handler.setLevel(logging.DEBUG)
-
-    # Console output level is configurable.
-    stream_handler = RainbowLoggingHandler(
-        sys.stdout,
-        color_asctime=('cyan', None, False),
-        color_msecs=('cyan', None, False),
-        color_levelname=('gray', None, False),
-        color_module=('yellow', None, False),
-        color_name=('blue', None, False),
-        color_lineno=('green', None, False),
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    #stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setLevel(getattr(logging, level))
-    stream_handler.addFilter(Squelch())
-
-    # Set an output format.
-    stream_handler.setFormatter(formatter)
+    formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s[%(process)d]:%(message)s')
     file_handler.setFormatter(formatter)
     file_handler.addFilter(Squelch())
-
-    # Add handlers to root.
-    root = logging.getLogger('')
-    root.setLevel(logging.DEBUG)
-    root.addHandler(stream_handler)
     root.addHandler(file_handler)
+
+    coloredlogs.install(level=getattr(logging, level))
+
