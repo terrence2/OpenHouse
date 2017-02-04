@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import signal
+import struct
 import subprocess
 import sys
 
@@ -31,7 +32,7 @@ async def build_id_map(tree: Tree):
     by_id = {}
     mds = await tree.get_matching_files("/room/*/zwave-motiondetector/*/id")
     for path, device_id in mds.items():
-        by_id[int(device_id)] = Path(path).parent / 'value'
+        by_id[int(device_id)] = Path(path).parent / 'raw-value'
         log.info("Mapping ZWave id {} to {}".format(device_id, by_id[int(device_id)]))
     return by_id
 
@@ -47,24 +48,30 @@ async def watch_devices(device: str, tree: Tree, target_by_id: {int: Path}):
                             env={'LD_LIBRARY_PATH': '/usr/local/lib64'})
     try:
         while True:
-            print("WAITING AT READ")
-            bs = os.read(rfd, 3)
-            print("BS is: {0}".format(bs))
+            bs = os.read(rfd, 4098)
+            log.debug("oh_zwave read {} bytes: {}".format(len(bs), bs))
 
-            msg_type = int(bs[0])
-            if msg_type == EventType:
-                assert len(bs) == 3, "unexpected event message length"
-                device_id = int(bs[1])
-                value = int(bs[2])
-                if device_id in target_by_id:
+            while len(bs) > 0:
+                assert len(bs) >= 3, "malformed message from oh_zwave daemon"
+                msg_type = int(bs[0])
+                bs = bs[1:]
+
+                if msg_type == EventType:
+                    assert len(bs) == 2, "unexpected event message length"
+                    device_id, value = struct.unpack('bb', bs)
+                    bs = b''
+
+                    if device_id not in target_by_id:
+                        log.warning("got zwave message from unconfigured device {}".format(device_id))
+                        continue
+
                     target = str(target_by_id[device_id])
-                    if msg_type == EventType:
-                        await tree.set_file(target, str(value))
+                    await tree.set_file(target, str(value))
 
-            elif msg_type == ValueType:
-                assert len(bs) == 7, "unexpected value message length"
-                device_id = int(bs[1])
-                value_kind = int(bs[2])
+                elif msg_type == ValueType:
+                    assert len(bs) == 6, "unexpected value message length"
+                    device_id, value_kind, value = struct.unpack('bbi', bs)
+
 
     except KeyboardInterrupt:
         log.info("Got keyboard interrupt")
@@ -89,7 +96,12 @@ async def main():
     device = await tree.get_file("/global/zwave-local-controller/device")
     if not os.path.isfile("./src/oh_zwave.cpp") and os.path.isfile("./oh_zwave/src/oh_zwave.cpp"):
         os.chdir('oh_zwave')
-    await watch_devices(device, tree, target_by_id)
+
+    try:
+        await watch_devices(device, tree, target_by_id)
+    except Exception as ex:
+        log.exception("unexpected exception in watch_devices", exc_info=ex)
+
 
 
 if __name__ == '__main__':

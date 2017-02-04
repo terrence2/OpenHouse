@@ -163,14 +163,14 @@ room:
         (else switch))
       where:
         switch: /room/office/radio-button/office-lightswitch.eyrie/state
-        md0: /room/office/zwave-motiondetector/desk-left/value
+        md0: /room/office/zwave-motiondetector/desk-left/raw-value
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
     radio-button:
       office-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
     zwave-motiondetector:
-      desk-left: {id: 2, value: 0}
+      desk-left: {id: 2, raw-value: 0}
 
   hall:
     geometry: {x: 10ft, y: 10ft, w: 7ft, l: 6ft, noborder: true}
