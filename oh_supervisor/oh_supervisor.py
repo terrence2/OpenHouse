@@ -195,7 +195,7 @@ def main():
                         help="The configuration to load.")
     parser.add_argument('--db-port', '-p', type=int, default=28184,
                         help="The port to start the database on.")
-    parser.add_argument('--debug', '-d', type=bool, default=False,
+    parser.add_argument('--debug', '-d', action='store_true',
                         help="Run extra debugging daemons.")
     parser.add_argument('--verbosity', '-v', type=int, default=1,
                         help="Run with verbosity level.")
