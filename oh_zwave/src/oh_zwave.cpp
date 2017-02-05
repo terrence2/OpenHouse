@@ -43,7 +43,7 @@ uint8_t find_value_of_type(const char* label) {
 }
 
 static void onEvent(uint8_t id, uint8_t event, void* data) {
-    cout << "Node Event on " << +id << ": " << +event << endl;
+    //cout << "Node Event on " << +id << ": " << +event << endl;
     int targetfd = (int)(size_t)data;
     uint8_t buf[3] = {EventType, id, event};
     ssize_t rv = write(targetfd, buf, sizeof(buf));
@@ -53,14 +53,14 @@ static void onEvent(uint8_t id, uint8_t event, void* data) {
 }
 
 static void onValueChanged(uint8_t id, string label, string value, void* data) {
-    cout << "Value Changed: " << label << ": " << value << endl;
+    //cout << "Value Changed: " << label << ": " << value << endl;
     int targetfd = (int)(size_t)data;
     uint8_t value_type = find_value_of_type(label.c_str());
     if (value_type == 0)
         return;
     uint8_t buf[7] = {ValueType, id, value_type, 0, 0, 0, 0};
     ssize_t rv = write(targetfd, buf, sizeof(buf));
-    if (rv != 3) {
+    if (rv != 7) {
         cerr << "Write value failure: " << rv << endl;
     }
 }

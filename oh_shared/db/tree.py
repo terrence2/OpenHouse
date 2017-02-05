@@ -262,7 +262,7 @@ class Tree:
         result = await future
         return result.data
 
-    async def get_matching_files(self, glob: str) -> str:
+    async def get_matching_files(self, glob: str) -> {str: str}:
         future = await self.get_matching_files_async(glob)
         result = await future
         return {x.path: x.data for x in result.data}
