@@ -20,11 +20,12 @@ class Color:
     Note: this is a simple stub so that we can support button events, but little else.
     """
     @classmethod
-    async def create(cls, path: Path, value: str, tree: Tree):
+    async def create(cls, path: Path, value: str, color_name: str, lamp_kind: str, tree: Tree):
         self = cls()
         self.path = path
         self.value = value
-        self.light_kind = path.parent.name
+        self.color_name = color_name
+        self.lamp_kind = lamp_kind
         async def on_change(changes: {str: [str]}):
             self.value = next(iter(changes.keys()))
         await tree.watch_matching_files(str(path), on_change)
@@ -39,11 +40,11 @@ def make_room_color_handler(palette: {str: {str: Color}}, tree: Tree):
                 log.warning("Unknown color '{}' set on: {}".format(color_name, changed_paths))
                 return
 
-            colors_by_light_kind = palette[color_name]
+            colors_by_lamp_kind = palette[color_name]
 
             rooms_changed = '{' + ','.join([Path(p).parent.name for p in changed_paths]) + '}'
-            for light_kind, color in colors_by_light_kind.items():
-                lights_glob = Path("/room") / rooms_changed / light_kind / "*" / "color"
+            for lamp_kind, color in colors_by_lamp_kind.items():
+                lights_glob = Path("/room") / rooms_changed / lamp_kind / "*" / "color"
                 log.info("updating {} to {}".format(lights_glob, color.value))
                 await tree.set_matching_files(str(lights_glob), color.value)
 
@@ -57,13 +58,14 @@ async def main():
     enable_logging(args.log_target, args.log_level)
 
     async with Connection.from_args(args) as tree:
-        palette = defaultdict(dict)  # {color_name: {light_kind: Color}}
+        palette = defaultdict(dict)  # {color_name: {lamp_kind: Color}}
         colors = await tree.get_matching_files("/global/palette/*/*light/color")
         for path, value in colors.items():
             color_name = Path(path).parent.parent.name
-            log.info("Learning about color: {}".format(color_name))
-            color = await Color.create(Path(path), value, tree)
-            palette[color_name][color.light_kind] = color
+            lamp_kind = Path(path).parent.name
+            log.info("Learning about color '{}' for lamp kind '{}'".format(color_name, lamp_kind))
+            color = await Color.create(Path(path), value, color_name, lamp_kind, tree)
+            palette[color_name][lamp_kind] = color
 
         await tree.watch_matching_files("/room/*/color", make_room_color_handler(palette, tree))
 

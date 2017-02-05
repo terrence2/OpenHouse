@@ -87,7 +87,7 @@ global:
     'off':
       hue-light:
         color: none
-      hue-livingcolor:
+      hue-highlight:
         color: none
 
     'on':
@@ -98,7 +98,7 @@ global:
           summer: bhs(255, 34495, 232)
           fall:   bhs(255, 34495, 232)
           winter: bhs(255, 34495, 232)
-      hue-livingcolors:
+      hue-highlight:
         color: none
 
     low:
@@ -109,13 +109,13 @@ global:
           summer: bhs(64, 34495, 232)
           fall:   bhs(64, 34495, 232)
           winter: bhs(64, 34495, 232)
-      hue-livingcolors:
+      hue-highlight:
         color: none
 
     moonlight:
       hue-light:
         color: none
-      hue-livingcolors:
+      hue-highlight:
         color: bhs(255, 47000, 255)
         seasonal:
           spring: bhs(255, 47000, 255)
@@ -126,7 +126,7 @@ global:
     test:
       hue-light:
         color: rgb(255, 0, 255)
-      hue-livingcolor:
+      hue-highlight:
         color: rgb(255, 0, 255)
 
 room:
@@ -167,6 +167,8 @@ room:
     hue-light:
       office-ceiling1: {color: none, x: 5ft, y: 6ft}
       office-ceiling2: {color: none, x: 4ft, y: 7ft}
+    hue-highlight:
+      office-desk0: {color: none, x: 11ft, y: 0ft}
     radio-button:
       office-lightswitch.eyrie: {state: default, x: 0ft, y: 0ft}
     zwave-motiondetector:
@@ -230,8 +232,6 @@ room:
       livingroom-curtain1: {color: none, x: 10ft, y: 15ft}
       livingroom-curtain2: {color: none, x: 11ft, y: 16ft}
       livingroom-curtain3: {color: none, x: 12ft, y: 17ft}
-    hue-livingcolor:
-      livingroom-console0: {color: none, x: 12ft, y: 8ft}
     buttons:
       controller1-button1: {type: nodemcu, scene: evening,  x: 2ft6in, y: 10ft6in}
       controller1-button2: {type: nodemcu, scene: sleep,    x: 2ft6in, y: 10ft6in}
