@@ -4,11 +4,11 @@ aiohttp==0.21.1
 bottle==0.12.8
 chardet==2.3.0
 colorama==0.3.3
-coloredlogs=5.1
+coloredlogs==5.1
 cython==0.24.1
 llfuse==1.1
 logutils==0.3.3
-prompt_toolkit=1.0
+prompt_toolkit==1.0
 py==1.4.31
 pycapnp==0.5.9
 pytest-asyncio==0.3.0

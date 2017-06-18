@@ -50,9 +50,10 @@ def make_handler(tree: Tree, ip_map: {str: str} = {}):
         try:
             path = ip_map[peer[0]]
         except KeyError:
+            log.warn("Do not know how to map ip {} to a path!".format(peer[0]))
             return web.Response(status=404, reason="Unknown device")
         try:
-            log.debug("Updating {} to {}".format(path, data))
+            log.info("Updating {} to {}".format(path, data))
             await tree.set_file(path, data)
         except TreeError as ex:
             return web.Response(status=502, reason=str(ex))
