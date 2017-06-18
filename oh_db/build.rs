@@ -1,5 +1,8 @@
 extern crate capnpc;
 
 fn main() {
-    ::capnpc::compile("schema", &["oh_shared/db/messages.capnp"]).unwrap();
+    capnpc::CompilerCommand::new()
+        .src_prefix("oh_shared/db/")
+        .file("oh_shared/db/messages.capnp")
+        .run().expect("schema compiler command");
 }

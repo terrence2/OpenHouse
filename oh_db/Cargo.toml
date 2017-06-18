@@ -21,4 +21,4 @@ version = "=0.7.14"
 features = ["tlsv1_2", "ecdh_auto"]
 
 [build-dependencies]
-capnpc = "0.7.2"
+capnpc = "0.8"
