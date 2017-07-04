@@ -14,7 +14,6 @@ CLIENTS = [
     "oh_populate",
     "oh_rest",
     "oh_supervisor",
-    "oh_zwave",
 ]
 
 
