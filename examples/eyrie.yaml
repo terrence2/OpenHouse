@@ -75,7 +75,7 @@
 
 global:
   hue-bridge:
-    address: hue-bridge
+    address: hue-bridge.eyrie
     username: MasterControlProgram
     transition_time: 0.5
 
