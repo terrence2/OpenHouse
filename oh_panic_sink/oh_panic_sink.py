@@ -16,7 +16,8 @@ def make_handler():
     async def post(request):
         """Listen for POST requests and print the content as an error."""
         data = await request.content.read()
-        log.error(data.decode('UTF-8'))
+        for line in data.decode('UTF-8').split('\n'):
+            log.error(line.rstrip())
         return web.Response(status=200)
 
     return post
@@ -35,7 +36,7 @@ def main():
 
     app = web.Application()
     post_handler = make_handler()
-    paths = app.router.add_resource(r'/event')
+    paths = app.router.add_resource(r'/')
     paths.add_route('POST', post_handler)
     log.info("Listening on '{}:{}'".format(args.address, args.port))
     web.run_app(app, host=args.address, port=args.port)
