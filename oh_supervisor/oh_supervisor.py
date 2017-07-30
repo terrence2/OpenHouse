@@ -24,10 +24,10 @@ Daemons = [
     'button',
     'color',
     'hue',
+    'panic_sink'
 ]
 DebugDaemons = [
     'rest',
-    'zwave',
 ]
 
 
