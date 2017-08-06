@@ -68,7 +68,7 @@ def main():
     group = parser.add_argument_group("Where to listen for connections.")
     group.add_argument('-a', '--address', default='0.0.0.0',
                        help="The address to listen for REST on.")
-    group.add_argument('-p', '--port', default=8090, type=int,
+    group.add_argument('-b', '--bind', default=8090, type=int,
                        help="The port to listen for REST on.")
     args = parser.parse_args()
 
@@ -80,8 +80,8 @@ def main():
     post_handler = make_handler(tree, {})
     paths = app.router.add_resource(r'/event')
     paths.add_route('POST', post_handler)
-    log.info("Listening on '{}:{}'".format(args.address, args.port))
-    web.run_app(app, host=args.address, port=args.port)
+    log.info("Listening on '{}:{}'".format(args.address, args.bind))
+    web.run_app(app, host=args.address, port=args.bind)
 
 
 if __name__ == '__main__':

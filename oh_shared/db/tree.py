@@ -6,7 +6,6 @@ import capnp
 import itertools
 import logging
 import os.path
-import ssl
 import websockets
 
 
@@ -89,23 +88,11 @@ class Tree:
         await self.listener_task
 
     @staticmethod
-    async def connect(address: (str, int),
-                      ca_cert_chain: str,
-                      cert_chain: str,
-                      key_file: str) -> 'Tree':
-        assert os.path.exists(ca_cert_chain)
-        assert os.path.exists(cert_chain)
-        assert os.path.exists(key_file)
-
+    async def connect(port: int) -> 'Tree':
         websock = None
         while not websock:
             try:
-                ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-                ctx.load_cert_chain(cert_chain, keyfile=key_file)
-                ctx.load_verify_locations(cafile=ca_cert_chain)
-                ctx.verify_mode = ssl.CERT_REQUIRED
-                ctx.check_hostname = False
-                websock = await websockets.connect('wss://{}:{}'.format(*address), ssl=ctx)
+                websock = await websockets.connect('ws://127.0.0.1:{}'.format(port))
             except ConnectionRefusedError:
                 log.warn("Failed to connect, retrying in 0.5s")
                 await asyncio.sleep(0.5)

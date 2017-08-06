@@ -14,7 +14,7 @@ PyYAML==3.11
 aiohttp==0.21.1
 coloredlogs==5.1
 prompt_toolkit==1.0
-pycapnp==0.5.9
+pycapnp==0.6.1
 pytest-asyncio==0.3.0
 pytest==2.9.1
 pytz==2015.6

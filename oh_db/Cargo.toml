@@ -10,15 +10,10 @@ env_logger = "0.3.5"
 log = "0.3"
 rand = "0.3"
 capnp = "=0.8.10"
-ketos = "0.3"
+ketos = "=0.10"
 
 [dependencies.ws]
-version = "=0.4.8"
-features = ["ssl"]
-
-[dependencies.openssl]
-version = "=0.7.14"
-features = ["tlsv1_2", "ecdh_auto"]
+version = "=0.7"
 
 [build-dependencies]
 capnpc = "=0.8.5"

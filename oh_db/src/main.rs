@@ -6,7 +6,6 @@ extern crate capnp;
 extern crate env_logger;
 extern crate ketos;
 #[macro_use] extern crate log;
-extern crate openssl;
 extern crate rand;
 extern crate ws;
 
@@ -26,10 +25,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
-use std::path::Path as FilePath;
-use openssl::x509::X509FileType;
-use openssl::ssl::{Ssl, SslContext, SslMethod,
-                   SSL_VERIFY_PEER, SSL_VERIFY_FAIL_IF_NO_PEER_CERT};
 use tree::{Tree, TreeChanges};
 use path::PathBuilder;
 use subscriptions::Watches;
@@ -42,10 +37,6 @@ make_identifier!(SubscriptionId);
 fn main() {
     let mut log_level = "DEBUG".to_string();
     let mut log_target = "events.log".to_string();
-    let mut address = "0.0.0.0".to_string();
-    let mut ca_chain = "".to_string();
-    let mut certificate = "".to_string();
-    let mut private_key = "".to_string();
     let mut port = 8182;
     {
         let mut ap = argparse::ArgumentParser::new();
@@ -56,65 +47,28 @@ fn main() {
         ap.refer(&mut log_target)
           .add_option(&["-L", "--log-target"], argparse::Store,
                       "The logging target. (default events.log)");
-        ap.refer(&mut address)
-          .add_option(&["-a", "--address"], argparse::Store,
-                      "The address to listen on. (default 0.0.0.0)");
         ap.refer(&mut port)
-          .add_option(&["-p", "--port"], argparse::Store,
-                      "The port to listen on. (default 8887)");
-        ap.refer(&mut ca_chain)
-          .add_option(&["-C", "--ca-chain"], argparse::Store,
-                      "The authority chain to use. (required)");
-        ap.refer(&mut certificate)
-          .add_option(&["-c", "--certificate"], argparse::Store,
-                      "The public key for connections. (required)");
-        ap.refer(&mut private_key)
-          .add_option(&["-k", "--private-key"], argparse::Store,
-                      "The private key for connections. (required)");
+          .add_option(&["-b", "--bind"], argparse::Store,
+                      "The port to listen on. (default 8182)");
         ap.parse_args_or_exit();
-    }
-
-    if ca_chain == "" {
-        panic!(concat!("A certificate authority trust chain must be specified to verify ",
-                       "client connections. Please pass -C or --ca-chain with the trust ",
-                       "chain used to sign clients we expect to accept."));
-    }
-    if certificate == "" {
-        panic!(concat!("A certificate (public key) must be specified for use with SSL. ",
-                       "Please use -c or --certificiate to provide a PEM encoded file to ",
-                       "use as the certificate to present to client connections."));
-    }
-    if private_key == "" {
-        panic!(concat!("A private key matching the given certificate must be provided ",
-                       "with -k or --private-key so that we can communicate with clients."));
     }
 
     env_logger::init().unwrap();
 
     info!("oh_db Version {}", env!("CARGO_PKG_VERSION"));
-    info!("Using {}", openssl::version::version());
 
-    run_server(&address, port,
-               FilePath::new(&ca_chain),
-               FilePath::new(&certificate),
-               FilePath::new(&private_key)).unwrap();
+    run_server(port).unwrap();
 }
 
-fn run_server(address: &str, port: u16,
-              ca_chain: &FilePath,
-              certificate: &FilePath,
-              private_key: &FilePath)
-    -> ws::Result<()>
+fn run_server(port: u16) -> ws::Result<()>
 {
-    let env = Rc::new(RefCell::new(Environment::new(ca_chain, certificate,
-                                                    private_key)));
+    let env = Rc::new(RefCell::new(Environment::new()));
 
     // Start the server.
     let mut settings = ws::Settings::default();
     settings.method_strict = true;
     settings.masking_strict = true;
     settings.key_strict = true;
-    settings.encrypt_server = true;
 
     let template = try!(ws::Builder::new().with_settings(settings).build(move |sock| {
         let conn = Connection {
@@ -125,8 +79,8 @@ fn run_server(address: &str, port: u16,
         return conn;
     }));
 
-    info!("Starting server on {}:{}", address, port);
-    try!(template.listen((address, port)));
+    info!("Starting server on 127.0.0.1:{}", port);
+    try!(template.listen(("127.0.0.1", port)));
     info!("SERVER: listen ended");
     return Ok(());
 }
@@ -159,50 +113,16 @@ struct Environment<'e> {
 
     // List of current connections.
     connections: HashMap<ws::util::Token, Connection<'e>>,
-
-    // The SSL configuration to use when establishing new connections.
-    ssl_context: SslContext
 }
 
 impl<'e> Environment<'e> {
-    fn new(ca_chain: &'e FilePath,
-           certificate: &'e FilePath,
-           private_key: &'e FilePath) -> Self
+    fn new() -> Self
     {
-        let mut context = SslContext::new(SslMethod::Tlsv1_2).unwrap();
-
-        // Verify peer certificates.
-        context.set_verify(SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, None);
-        context.set_verify_depth(std::u32::MAX);
-
-        // Enable our way to more security.
-        context.set_options(openssl::ssl::SSL_OP_SINGLE_DH_USE |
-                            openssl::ssl::SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
-                            openssl::ssl::SSL_OP_NO_TICKET);
-
-        // Set a session id because that's required.
-        let mut session_ctx: [u8;32] = [0;32];
-        for i in 0..32 { session_ctx[i] = rand::random::<u8>(); }
-        context.set_session_id_context(&session_ctx).unwrap();  // must be set for client certs.
-
-        // Set our certificate paths.
-        context.set_CA_file(ca_chain).unwrap();  // set trust authority to our CA
-        context.set_certificate_file(certificate, X509FileType::PEM).unwrap();
-        context.set_private_key_file(private_key, X509FileType::PEM).unwrap();
-        context.check_private_key().unwrap();  // check consistency of cert and key
-
-        // Use EC if possible.
-        context.set_ecdh_auto(true).unwrap();  // needed for forward security.
-
-        // Only support the one cipher we want to use.
-        context.set_cipher_list("ECDHE-RSA-AES256-GCM-SHA384").unwrap();
-
         Environment {
             db: Tree::new(),
             watches: Watches::new(),
             last_subscription_id: 0,
             connections: HashMap::new(),
-            ssl_context: context
         }
     }
 
@@ -558,18 +478,5 @@ impl<'e> ws::Handler for Connection<'e> {
     fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
         info!("socket closing for ({:?}) {}", code, reason);
         self.env.borrow_mut().watches.remove_connection(&self.sender.borrow().token());
-    }
-
-    fn build_ssl(&mut self) -> ws::Result<Ssl> {
-        info!("building OpenSSL session for new connection");
-        match Ssl::new(&self.env.borrow().ssl_context) {
-            Ok(a) => return Ok(a),
-            Err(e) => {
-                // Close the connection if SSL session creation fails.
-                self.sender.borrow_mut().close_with_reason(
-                    ws::CloseCode::Error, format!("{}", e)).ok();
-                return Err(ws::Error::new(ws::ErrorKind::Ssl(e), "ssl session create failed"));
-            }
-        }
     }
 }

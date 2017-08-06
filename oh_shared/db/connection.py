@@ -8,20 +8,16 @@ class Connection:
     """
     An async context manager to create and clean up a Tree connection.
     """
-    def __init__(self, address: (str, int), ca_cert_chain: str, cert_chain: str, key_file: str):
-        self.address = address
-        self.ca_cert_chain = ca_cert_chain
-        self.cert_chain = cert_chain
-        self.key_file = key_file
+    def __init__(self, port: int):
+        self.port = port
         self.connection = None
 
     @classmethod
     def from_args(cls, args):
-        return cls((args.db_address, args.db_port), args.ca_chain, args.certificate, args.private_key)
+        return cls(args.db_port)
 
     async def __aenter__(self):
-        self.connection = await Tree.connect(self.address, self.ca_cert_chain,
-                                             self.cert_chain, self.key_file)
+        self.connection = await Tree.connect(self.port)
         return self.connection
 
     async def __aexit__(self, exc, *args):
@@ -32,4 +28,4 @@ async def make_connection(args):
     """
     A function to make a tree connection from args.
     """
-    return await Tree.connect((args.db_address, args.db_port), args.ca_chain, args.certificate, args.private_key)
+    return await Tree.connect(args.db_port)

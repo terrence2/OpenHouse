@@ -26,9 +26,9 @@ def main():
     parser = make_parser('A helper to print OpenActuator panic messages into the OpenHouse console.')
     group = parser.add_argument_group("Where to listen for connections.")
     group.add_argument('-a', '--address', default='0.0.0.0',
-                       help="The address to listen panics on.")
-    group.add_argument('-p', '--port', default=6666, type=int,
-                       help="The port to listen for REST on.")
+                       help="The address to listen for panics on.")
+    group.add_argument('-b', '--bind', default=6666, type=int,
+                       help="The port to listen for panics on.")
     args = parser.parse_args()
 
     enable_logging(args.log_target, args.log_level)
@@ -37,8 +37,8 @@ def main():
     post_handler = make_handler()
     paths = app.router.add_resource(r'/event')
     paths.add_route('POST', post_handler)
-    log.info("Listening on '{}:{}'".format(args.address, args.port))
-    web.run_app(app, host=args.address, port=args.port)
+    log.info("Listening on '{}:{}'".format(args.address, args.bind))
+    web.run_app(app, host=args.address, port=args.bind)
 
 
 if __name__ == '__main__':

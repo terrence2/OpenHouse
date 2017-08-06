@@ -73,10 +73,7 @@ class OpenHouseDatabase:
             './oh_db/target/release/oh_db',
             '-l', 'debug' if args.verbosity >= 3 else 'info',
             '-L', args.logdir + '/oh_db.log',
-            '-a', '127.0.0.1', '-p', str(args.db_port),
-            '-C', 'CA/intermediate/certs/chain.cert.pem',
-            '-c', 'CA/intermediate/certs/oh_db.cert.pem',
-            '-k', 'CA/intermediate/private/oh_db.key.pem',
+            '-b', str(args.db_port),
         ]
         self.show_command = args.verbosity >= 1
 
@@ -97,10 +94,7 @@ class OpenHouseDaemon:
             '{0}/{0}.py'.format(self.name),
             '-l', 'DEBUG' if args.verbosity >= 3 else 'INFO',
             '-L', args.logdir + '/{}.log'.format(self.name),
-            '-A', '127.0.0.1', '-P', str(args.db_port),
-            '-C', 'CA/intermediate/certs/chain.cert.pem',
-            '-c', 'CA/intermediate/certs/{}.cert.pem'.format(self.name),
-            '-k', 'CA/intermediate/private/{}.key.pem'.format(self.name),
+            '-p', str(args.db_port),
         ]
         self.show_command = args.verbosity >= 1
 
@@ -153,11 +147,7 @@ async def interactive_shell(args):
 
     async def maybe_connect(t: Tree) -> Tree:
         if t is None:
-            FakeArgs = namedtuple("FakeArgs", "db_address db_port ca_chain certificate private_key".split())
-            fake_args = FakeArgs('127.0.0.1', args.db_port,
-                                 'CA/intermediate/certs/chain.cert.pem',
-                                 'CA/intermediate/certs/oh_supervisor.cert.pem',
-                                 'CA/intermediate/private/oh_supervisor.key.pem')
+            fake_args = namedtuple("FakeArgs", ["db_port"])(args.db_port)
             return await make_connection(fake_args)
         return t
 
