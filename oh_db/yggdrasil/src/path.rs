@@ -11,7 +11,7 @@ pub mod errors {
         }
     }
 }
-use ::path::errors::{PathResultExt, PathResult};
+use path::errors::{PathResultExt, PathResult};
 
 
 /// OpenHouse paths have somewhat stricter rules than a typical filesystem. The
@@ -32,7 +32,7 @@ use ::path::errors::{PathResultExt, PathResult};
 /// glob characters. Both paths and globs can be constructed using a PathBuilder.
 pub struct PathBuilder {
     parts: Vec<String>,
-    contains_glob_chars: bool
+    contains_glob_chars: bool,
 }
 
 fn is_invalid_character(c: char) -> bool {
@@ -43,15 +43,11 @@ fn is_invalid_character(c: char) -> bool {
     c == '\\'|| // Confusing and restricted in windows paths regardless.
     c == ':' || // "
     c == '"' || // "
-    c == '\''   // "
+    c == '\'' // "
 }
 
 fn is_glob_character(c: char) -> bool {
-    c == '?' ||
-    c == '*' ||
-    c == '{' ||
-    c == '}' ||
-    c == ','
+    c == '?' || c == '*' || c == '{' || c == '}' || c == ','
 }
 
 impl PathBuilder {
@@ -66,9 +62,9 @@ impl PathBuilder {
         // instead of trying to do something smart in the loop below.
         if raw == "/" {
             return Ok(PathBuilder {
-                          parts: Vec::new(),
-                          contains_glob_chars: false
-                      });
+                parts: Vec::new(),
+                contains_glob_chars: false,
+            });
         }
 
         // Note that since we start with /, we have to skip the first, empty, part.
@@ -81,8 +77,8 @@ impl PathBuilder {
             parts.push(part.to_owned());
         }
         return Ok(PathBuilder {
-           parts: parts,
-           contains_glob_chars: contains_glob_chars
+            parts: parts,
+            contains_glob_chars: contains_glob_chars,
         });
     }
 
@@ -130,7 +126,7 @@ impl PathBuilder {
         if self.contains_glob_chars {
             bail!("unexpected glob characters in path component");
         }
-        return Ok(Path {parts: self.parts});
+        return Ok(Path { parts: self.parts });
     }
 
     /// Return the built glob.
@@ -138,8 +134,9 @@ impl PathBuilder {
         // Construct Glob part matchers from our strings.
         let mut parts = Vec::new();
         for part in self.parts {
-            parts.push(GlobComponent::new(&part)
-                .chain_err(|| "failed to create glob component")?);
+            parts.push(GlobComponent::new(&part).chain_err(
+                || "failed to create glob component",
+            )?);
         }
 
         // Check that we do not have multiple RecursiveSequence in a row.
@@ -149,7 +146,7 @@ impl PathBuilder {
             let j = parts.iter().skip(1);
             for (a, b) in i.zip(j) {
                 if a.tokens[0] == GlobToken::AnyRecursiveSequence &&
-                   b.tokens[0] == GlobToken::AnyRecursiveSequence
+                    b.tokens[0] == GlobToken::AnyRecursiveSequence
                 {
                     bail!("unreachable ** component");
                 }
@@ -158,7 +155,7 @@ impl PathBuilder {
 
         return Ok(Glob {
             parts: parts,
-            is_exact: !self.contains_glob_chars
+            is_exact: !self.contains_glob_chars,
         });
     }
 }
@@ -167,17 +164,20 @@ impl PathBuilder {
 /// not exist, path is just a reference to a location.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Path {
-    parts: Vec<String>
+    parts: Vec<String>,
 }
 
 impl Path {
     // Build a new String containing the canonical representation of this path.
     pub fn to_str(&self) -> String {
-        return "/".to_owned() + &self.parts.join("/")
+        return "/".to_owned() + &self.parts.join("/");
     }
 
     pub fn iter(&self) -> PathIter {
-        PathIter { parts: &self.parts, offset: 0 }
+        PathIter {
+            parts: &self.parts,
+            offset: 0,
+        }
     }
 
     #[cfg(test)]
@@ -189,14 +189,14 @@ impl Path {
         for part in self.parts.iter().take(self.parts.len() - 1) {
             parent_parts.push(part.clone());
         }
-        return Ok(Path {parts: parent_parts});
+        return Ok(Path { parts: parent_parts });
     }
 
     #[cfg(test)]
     pub fn basename(&self) -> PathResult<String> {
         match self.parts.last() {
             None => bail!("the root node has no name"),
-            Some(p) => Ok(p.clone())
+            Some(p) => Ok(p.clone()),
         }
     }
 
@@ -204,7 +204,7 @@ impl Path {
         // FIXME: take &PathComponent so that we don't lose verification.
         let mut out = self.parts.clone();
         out.push(part.to_owned());
-        return Ok(Path {parts: out});
+        return Ok(Path { parts: out });
     }
 
     pub fn root() -> Path {
@@ -222,7 +222,7 @@ impl fmt::Display for Path {
 #[derive(Debug)]
 pub struct PathIter<'a> {
     parts: &'a Vec<String>,
-    offset: usize
+    offset: usize,
 }
 
 impl<'a> Iterator for PathIter<'a> {
@@ -242,20 +242,25 @@ impl<'a> Iterator for PathIter<'a> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Glob {
     parts: Vec<GlobComponent>,
-    is_exact: bool
+    is_exact: bool,
 }
 
 impl Glob {
     /// Produce the components of a glob, one at a time.
     pub fn iter(&self) -> GlobIter {
-        GlobIter { parts: &self.parts, offset: 0 }
+        GlobIter {
+            parts: &self.parts,
+            offset: 0,
+        }
     }
 
     fn to_str(&self) -> String {
-        "/".to_owned() + &self.parts.iter()
-                              .map(|x| x.source.clone())
-                              .collect::<Vec<_>>()
-                              .join("/")
+        "/".to_owned() +
+            &self.parts
+                .iter()
+                .map(|x| x.source.clone())
+                .collect::<Vec<_>>()
+                .join("/")
     }
 
     /// Check if the given path matches this glob.
@@ -266,15 +271,14 @@ impl Glob {
             let glob_part = match glob_parts.next() {
                 Some(p) => p,
                 // Exit to check if our path is exhausted too.
-                None => break
+                None => break,
             };
             let mut path_part = match path_parts.next() {
                 Some(p) => p,
                 // If there are more glob parts, we might still match if the
                 // glob matcher is ** and it is the last part.
                 None => {
-                    return glob_part.source == "**" &&
-                           glob_parts.next() == None;
+                    return glob_part.source == "**" && glob_parts.next() == None;
                 }
             };
             match glob_part.matches(path_part) {
@@ -286,14 +290,14 @@ impl Glob {
                     let glob_next = match glob_parts.next() {
                         Some(g) => g,
                         // The last glob part is **, which matches everything.
-                        None => return true
+                        None => return true,
                     };
                     while glob_next.matches(path_part) == MatchResult::NoMatch {
                         path_part = match path_parts.next() {
                             Some(p) => p,
                             // If the last path component did not match the
                             // *next* glob component, then we failed to match.
-                            None => return false
+                            None => return false,
                         }
                     }
                 }
@@ -302,7 +306,7 @@ impl Glob {
         // If we matched all parts, return success, else fail.
         return match path_parts.next() {
             None => true,
-            Some(_) => false
+            Some(_) => false,
         };
     }
 }
@@ -330,14 +334,14 @@ enum GlobToken {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct GlobComponent {
     source: String,
-    tokens: Vec<GlobToken>
+    tokens: Vec<GlobToken>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum MatchResult {
     NoMatch,
     Match,
-    MatchRecurse // i.e. **
+    MatchRecurse, // i.e. **
 }
 
 impl GlobComponent {
@@ -347,7 +351,10 @@ impl GlobComponent {
         let mut tokens = Vec::new();
         if part == "**" {
             tokens.push(GlobToken::AnyRecursiveSequence);
-            return Ok(GlobComponent { source: part.to_owned(), tokens: tokens });
+            return Ok(GlobComponent {
+                source: part.to_owned(),
+                tokens: tokens,
+            });
         }
 
         let mut i = 0;
@@ -401,7 +408,10 @@ impl GlobComponent {
                 }
             }
         }
-        return Ok(GlobComponent { source: part.to_owned(), tokens: tokens });
+        return Ok(GlobComponent {
+            source: part.to_owned(),
+            tokens: tokens,
+        });
     }
 
     /// Returns whether the token matches and whether the match is recursive.
@@ -412,20 +422,22 @@ impl GlobComponent {
             // Take the next token.
             let token = match tokens.next() {
                 None => break,
-                Some(t) => t
+                Some(t) => t,
             };
             match *token {
-                GlobToken::AnyRecursiveSequence => { // **
+                GlobToken::AnyRecursiveSequence => {
+                    // **
                     return MatchResult::MatchRecurse;
-                },
-                GlobToken::AnyChar => { // ?
+                }
+                GlobToken::AnyChar => {
+                    // ?
                     if let Some(_) = part.next() {
                         continue;
                     } else {
                         // Out of chars in the string to match against.
                         return MatchResult::NoMatch;
                     }
-                },
+                }
                 GlobToken::AnyOf(ref options) => {
                     // Grab the rest of the token and use startswith against each option.
                     let remainder = part.as_str().to_owned();
@@ -439,7 +451,7 @@ impl GlobComponent {
                         }
                     }
                     return MatchResult::NoMatch;
-                },
+                }
                 GlobToken::Char(token_char) => {
                     if let Some(c) = part.next() {
                         if token_char != c {
@@ -451,8 +463,9 @@ impl GlobComponent {
                         // Out of chars to match against.
                         return MatchResult::NoMatch;
                     }
-                },
-                GlobToken::AnySequence => { // *
+                }
+                GlobToken::AnySequence => {
+                    // *
                     // We process the next token inline instead of recursing to
                     // avoid making a copy. We can do this because we do not
                     // support backtracking currently.
@@ -461,9 +474,13 @@ impl GlobComponent {
                         // the string regardless, so we can shortcut here and
                         // return early without having to drain all chars.
                         None => return MatchResult::Match,
-                        Some(t) => match *t {
-                            GlobToken::Char(c) => c,
-                            _ => { panic!("reached *? state"); }
+                        Some(t) => {
+                            match *t {
+                                GlobToken::Char(c) => c,
+                                _ => {
+                                    panic!("reached *? state");
+                                }
+                            }
                         }
                     };
                     // If there are no constant chars anywhere after the *, we
@@ -486,7 +503,7 @@ impl GlobComponent {
             MatchResult::NoMatch
         } else {
             MatchResult::Match
-        }
+        };
     }
 }
 
@@ -494,7 +511,7 @@ impl GlobComponent {
 #[derive(Debug)]
 pub struct GlobIter<'a> {
     parts: &'a Vec<GlobComponent>,
-    offset: usize
+    offset: usize,
 }
 
 impl<'a> Iterator for GlobIter<'a> {
@@ -531,33 +548,35 @@ mod tests {
             )*
         }
     }
-    make_badpath_tests!([
-        (test_empty_path, ""),
-        (test_relative_path, "foo/bar"),
-        (test_empty_component_root, "//"),
-        (test_empty_component_front, "//foo"),
-        (test_empty_component_back, "/foo/"),
-        (test_empty_component_middle, "/foo//bar"),
-        (test_dotfile_self, "/foo/."),
-        (test_dotfile_self_middle, "/foo/./bar"),
-        (test_dotfile_parent, "/foo/.."),
-        (test_dotfile_parent_middle, "/foo/../bar"),
-        (test_dotfile_hidden, "/foo/.bar"),
-        (test_dotfile_hidden_middle, "/foo/.bar/baz"),
-        (test_whitespace_space, "/foo/a b/baz"),
-        (test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
-        (test_whitespace_tab, "/foo/a\tb/baz"),
-        (test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
-        (test_whitespace_newline, "/foo/a\nb/baz"),
-        (test_whitespace_carriage_return, "/foo/a\rb/baz"),
-        (test_invalid_backslash, "/foo/a\\b/baz"),
-        (test_invalid_colon, "/foo/a:b/baz"),
-        (test_invalid_open_bracket, "/foo/a[b/baz"),
-        (test_invalid_close_bracket, "/foo/a]b/baz"),
-        (test_invalid_exclamation, "/foo/a!b/baz"),
-        (test_invalid_star, "/foo/a*b/baz"),
-        (test_invalid_question, "/foo/a?b/baz")
-    ]);
+    make_badpath_tests!(
+        [
+            (test_empty_path, ""),
+            (test_relative_path, "foo/bar"),
+            (test_empty_component_root, "//"),
+            (test_empty_component_front, "//foo"),
+            (test_empty_component_back, "/foo/"),
+            (test_empty_component_middle, "/foo//bar"),
+            (test_dotfile_self, "/foo/."),
+            (test_dotfile_self_middle, "/foo/./bar"),
+            (test_dotfile_parent, "/foo/.."),
+            (test_dotfile_parent_middle, "/foo/../bar"),
+            (test_dotfile_hidden, "/foo/.bar"),
+            (test_dotfile_hidden_middle, "/foo/.bar/baz"),
+            (test_whitespace_space, "/foo/a b/baz"),
+            (test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
+            (test_whitespace_tab, "/foo/a\tb/baz"),
+            (test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
+            (test_whitespace_newline, "/foo/a\nb/baz"),
+            (test_whitespace_carriage_return, "/foo/a\rb/baz"),
+            (test_invalid_backslash, "/foo/a\\b/baz"),
+            (test_invalid_colon, "/foo/a:b/baz"),
+            (test_invalid_open_bracket, "/foo/a[b/baz"),
+            (test_invalid_close_bracket, "/foo/a]b/baz"),
+            (test_invalid_exclamation, "/foo/a!b/baz"),
+            (test_invalid_star, "/foo/a*b/baz"),
+            (test_invalid_question, "/foo/a?b/baz"),
+        ]
+    );
 
     fn make_glob(p: &str) -> Glob {
         PathBuilder::new(p).unwrap().finish_glob().unwrap()
@@ -576,29 +595,34 @@ mod tests {
             )*
         }
     }
-    make_badglob_tests!([
-        (test_unreachable_sole, "/**/**"),
-        (test_unreachable_end, "/a/**/**"),
-        (test_unreachable_prefix, "/**/**/b"),
-        (test_unreachable_middle, "/a/**/**/b"),
-        (test_invalid_multistar2_start, "/a/**foo/b"),
-        (test_invalid_multistar2_end, "/a/foo**/b"),
-        (test_invalid_multistar2_middle, "/a/fo**oo/b"),
-        (test_invalid_multistar3, "/a/***/b"),
-        (test_invalid_multistar4, "/a/****/b"),
-        (test_invalid_backtracking1, "/a/foo*?/b"),
-        (test_invalid_backtracking2, "/a/*?foo/b"),
-        (test_mismatched_empty_braces, "/foo/{}/baz"),
-        (test_mismatched_no_closing, "/a/{foo,bar,baz"),
-        (test_mismatched_no_opening1, "/a/foo,bar,baz}"),
-        (test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
-        (test_mismatched_no_recursion, "/a/{{}")
-    ]);
+    make_badglob_tests!(
+        [
+            (test_unreachable_sole, "/**/**"),
+            (test_unreachable_end, "/a/**/**"),
+            (test_unreachable_prefix, "/**/**/b"),
+            (test_unreachable_middle, "/a/**/**/b"),
+            (test_invalid_multistar2_start, "/a/**foo/b"),
+            (test_invalid_multistar2_end, "/a/foo**/b"),
+            (test_invalid_multistar2_middle, "/a/fo**oo/b"),
+            (test_invalid_multistar3, "/a/***/b"),
+            (test_invalid_multistar4, "/a/****/b"),
+            (test_invalid_backtracking1, "/a/foo*?/b"),
+            (test_invalid_backtracking2, "/a/*?foo/b"),
+            (test_mismatched_empty_braces, "/foo/{}/baz"),
+            (test_mismatched_no_closing, "/a/{foo,bar,baz"),
+            (test_mismatched_no_opening1, "/a/foo,bar,baz}"),
+            (test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
+            (test_mismatched_no_recursion, "/a/{{}"),
+        ]
+    );
 
     // Generic glob construction test to make sure that sane combinations don't crash.
     #[test]
     fn test_construct_glob() {
-        PathBuilder::new("/?a/a?/a?b/*c/c*/c*d").unwrap().finish_glob().unwrap();
+        PathBuilder::new("/?a/a?/a?b/*c/c*/c*d")
+            .unwrap()
+            .finish_glob()
+            .unwrap();
     }
 
     macro_rules! make_glob_match_tests {
@@ -628,56 +652,134 @@ mod tests {
             )*
         }
     }
-    make_glob_match_tests!([
-        (test_exact,    "/foo", ["/foo"], ["/Xfoo", "/fooX", "/FOO"]),
-        (test_q_start,  "/?a", ["/Xa"], ["/ab", "/Xaa"]),
-        (test_q_end,    "/a?", ["/aX", "/a."], ["/Xa", "/aXX", "/AX"]),
-        (test_q_middle, "/a?b", ["/aXb", "/a.b"], ["/XaXb", "/aXXb", "/aXbX"]),
-        (test_s_start,  "/*a", ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
-                               ["/aX", "/XXaX"]),
-        (test_s_end,    "/a*", ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
-                               ["/Xa", "/XaXXXXX", "/XaABCDEF"]),
-        (test_s_middle, "/a*b", ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
-                                ["/Xab", "/abX", "/XaXb", "/aXbX"]),
-        (test_ss,       "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
-        (test_ss_start, "/**/foo", ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
-                                   ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"]),
-        (test_ss_end,   "/foo/**", ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
-                                   ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]),
-        (test_ss_middle,"/foo/**/bar", ["/foo/bar", "/foo/X/bar",
-                                        "/foo/X/Y/bar", "/foo/X/Y/Z/bar"],
-                                       ["/X/foo/bar", "/foo/bar/X",
-                                        "/X/foo/X/Y/bar", "/foo/X/Y/bar/Z"]),
-        (test_any_seq0, "/foo/{a,b}/bar", ["/foo/a/bar", "/foo/b/bar"],
-                                          ["/foo/Xa/bar", "/foo/Xb/bar",
-                                           "/foo/aX/bar", "/foo/bX/bar",
-                                           "/foo/X/bar", "/foo/aa/bar", "/foo/bb/bar",
-                                           "/foo/ab/bar", "/foo/ba/bar",
-                                           "/a/bar", "/b/bar",
-                                           "/foo/a", "/foo/b"]),
-        (test_any_seq1, "/foo/X{a,b}/bar", ["/foo/Xa/bar", "/foo/Xb/bar"],
-                                           ["/foo/a/bar", "/foo/b/bar",
-                                            "/foo/aX/bar", "/foo/bX/bar",
-                                            "/foo/X/bar", "/foo/XX/bar",
-                                            "/foo/Xaa/bar", "/foo/Xbb/bar",
-                                            "/foo/Xab/bar", "/foo/Xba/bar",
-                                            "/Xa/bar", "/Xb/bar",
-                                            "/foo/Xa", "/bar/Xb"]),
-        (test_any_seq2, "/foo/{a,b}X/bar", ["/foo/aX/bar", "/foo/bX/bar"],
-                                           ["/foo/a/bar", "/foo/b/bar",
-                                            "/foo/Xa/bar", "/foo/Xb/bar",
-                                            "/foo/X/bar", "/foo/XX/bar",
-                                            "/foo/aaX/bar", "/foo/bbX/bar",
-                                            "/foo/abX/bar", "/foo/baX/bar",
-                                            "/Xa/bar", "/Xb/bar",
-                                            "/foo/Xa", "/bar/Xb"])
-    ]);
+    make_glob_match_tests!(
+        [
+            (test_exact, "/foo", ["/foo"], ["/Xfoo", "/fooX", "/FOO"]),
+            (test_q_start, "/?a", ["/Xa"], ["/ab", "/Xaa"]),
+            (test_q_end, "/a?", ["/aX", "/a."], ["/Xa", "/aXX", "/AX"]),
+            (
+                test_q_middle,
+                "/a?b",
+                ["/aXb", "/a.b"],
+                ["/XaXb", "/aXXb", "/aXbX"],
+            ),
+            (
+                test_s_start,
+                "/*a",
+                ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
+                ["/aX", "/XXaX"],
+            ),
+            (
+                test_s_end,
+                "/a*",
+                ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
+                ["/Xa", "/XaXXXXX", "/XaABCDEF"],
+            ),
+            (
+                test_s_middle,
+                "/a*b",
+                ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
+                ["/Xab", "/abX", "/XaXb", "/aXbX"],
+            ),
+            (test_ss, "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
+            (
+                test_ss_start,
+                "/**/foo",
+                ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
+                ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"],
+            ),
+            (
+                test_ss_end,
+                "/foo/**",
+                ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
+                ["/X/foo", "/X/foo/X", "/X/foo/X/Y"],
+            ),
+            (
+                test_ss_middle,
+                "/foo/**/bar",
+                ["/foo/bar", "/foo/X/bar", "/foo/X/Y/bar", "/foo/X/Y/Z/bar"],
+                [
+                    "/X/foo/bar",
+                    "/foo/bar/X",
+                    "/X/foo/X/Y/bar",
+                    "/foo/X/Y/bar/Z",
+                ],
+            ),
+            (
+                test_any_seq0,
+                "/foo/{a,b}/bar",
+                ["/foo/a/bar", "/foo/b/bar"],
+                [
+                    "/foo/Xa/bar",
+                    "/foo/Xb/bar",
+                    "/foo/aX/bar",
+                    "/foo/bX/bar",
+                    "/foo/X/bar",
+                    "/foo/aa/bar",
+                    "/foo/bb/bar",
+                    "/foo/ab/bar",
+                    "/foo/ba/bar",
+                    "/a/bar",
+                    "/b/bar",
+                    "/foo/a",
+                    "/foo/b",
+                ],
+            ),
+            (
+                test_any_seq1,
+                "/foo/X{a,b}/bar",
+                ["/foo/Xa/bar", "/foo/Xb/bar"],
+                [
+                    "/foo/a/bar",
+                    "/foo/b/bar",
+                    "/foo/aX/bar",
+                    "/foo/bX/bar",
+                    "/foo/X/bar",
+                    "/foo/XX/bar",
+                    "/foo/Xaa/bar",
+                    "/foo/Xbb/bar",
+                    "/foo/Xab/bar",
+                    "/foo/Xba/bar",
+                    "/Xa/bar",
+                    "/Xb/bar",
+                    "/foo/Xa",
+                    "/bar/Xb",
+                ],
+            ),
+            (
+                test_any_seq2,
+                "/foo/{a,b}X/bar",
+                ["/foo/aX/bar", "/foo/bX/bar"],
+                [
+                    "/foo/a/bar",
+                    "/foo/b/bar",
+                    "/foo/Xa/bar",
+                    "/foo/Xb/bar",
+                    "/foo/X/bar",
+                    "/foo/XX/bar",
+                    "/foo/aaX/bar",
+                    "/foo/bbX/bar",
+                    "/foo/abX/bar",
+                    "/foo/baX/bar",
+                    "/Xa/bar",
+                    "/Xb/bar",
+                    "/foo/Xa",
+                    "/bar/Xb",
+                ],
+            ),
+        ]
+    );
 
     #[test]
     fn test_path_manipulation() {
         let root = Path::root();
         assert_eq!(root.to_str(), "/");
-        let abc = root.slash("a").unwrap().slash("b").unwrap().slash("c").unwrap();
+        let abc = root.slash("a")
+            .unwrap()
+            .slash("b")
+            .unwrap()
+            .slash("c")
+            .unwrap();
         assert_eq!(abc.to_str(), "/a/b/c");
         assert_eq!(abc.basename().unwrap(), "c");
         assert_eq!(abc.parent().unwrap().to_str(), "/a/b")

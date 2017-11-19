@@ -56,7 +56,7 @@ mod errors {
         }
     }
 }
-use ::tree::errors::{TreeErrorKind, TreeResult};
+use tree::errors::{TreeErrorKind, TreeResult};
 
 pub type TreeChanges = HashMap<String, Vec<Path>>;
 
@@ -64,16 +64,15 @@ pub type TreeChanges = HashMap<String, Vec<Path>>;
 enum Node {
     Directory(DirectoryData),
     Formula(FormulaData),
-    File(FileData)
+    File(FileData),
 }
 impl Node {
     // Follow the parts of the path iterator until we reach the terminal
     // node, returning it.
-    fn lookup(&self, parts: &mut PathIter) -> TreeResult<&Node>
-    {
+    fn lookup(&self, parts: &mut PathIter) -> TreeResult<&Node> {
         let name = match parts.next() {
             Some(name) => name,
-            None => return Ok(self)
+            None => return Ok(self),
         };
         match self {
             &Node::Directory(ref d) => return d.lookup(name)?.lookup(parts),
@@ -81,32 +80,28 @@ impl Node {
         }
         return match parts.next() {
             Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
-            None => Ok(self)
+            None => Ok(self),
         };
     }
 
     // Like lookup, but takes and returns mutable references.
-    fn lookup_mut(&mut self, parts: &mut PathIter) -> TreeResult<&mut Node>
-    {
+    fn lookup_mut(&mut self, parts: &mut PathIter) -> TreeResult<&mut Node> {
         let name = match parts.next() {
             Some(name) => name,
-            None => return Ok(self)
+            None => return Ok(self),
         };
         match self {
-            &mut Node::Directory(ref mut d) =>
-                return d.lookup_mut(name)?.lookup_mut(parts),
+            &mut Node::Directory(ref mut d) => return d.lookup_mut(name)?.lookup_mut(parts),
             _ => {}
         }
         return match parts.next() {
             Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
-            None => Ok(self)
+            None => Ok(self),
         };
     }
 
     // Return all files that match glob, given that this node is at |own_path|.
-    fn find(&self, own_path: &Path, glob: &Glob)
-        -> TreeResult<Vec<(Path, &Node)>>
-    {
+    fn find(&self, own_path: &Path, glob: &Glob) -> TreeResult<Vec<(Path, &Node)>> {
         let mut acc: Vec<(Path, &Node)> = Vec::new();
         match self {
             &Node::Directory(ref d) => {
@@ -115,12 +110,12 @@ impl Node {
                     let matching = child_node.find(&child_path, glob)?;
                     acc.extend(matching);
                 }
-            },
+            }
             &Node::File(_) => {
                 if glob.matches(&own_path) {
                     acc.push((own_path.clone(), self));
                 }
-            },
+            }
             &Node::Formula(_) => {
                 if glob.matches(&own_path) {
                     acc.push((own_path.clone(), self));
@@ -131,9 +126,7 @@ impl Node {
     }
 
     // As with find but taking and returning mutable references.
-    fn find_mut(&mut self, own_path: &Path, glob: &Glob)
-        -> TreeResult<Vec<(Path, &mut Node)>>
-    {
+    fn find_mut(&mut self, own_path: &Path, glob: &Glob) -> TreeResult<Vec<(Path, &mut Node)>> {
         let mut acc: Vec<(Path, &mut Node)> = Vec::new();
         match self {
             &mut Node::Directory(ref mut d) => {
@@ -142,12 +135,12 @@ impl Node {
                     let matching = child_node.find_mut(&child_path, glob)?;
                     acc.extend(matching);
                 }
-            },
+            }
             &mut Node::File(_) => {
                 if glob.matches(&own_path) {
                     acc.push((own_path.clone(), self));
                 }
-            },
+            }
             &mut Node::Formula(_) => {}
         }
         return Ok(acc);
@@ -156,10 +149,12 @@ impl Node {
 
 /// A file is a basic data holder.
 pub struct FileData {
-    data: String
+    data: String,
 }
 impl FileData {
-    fn new() -> FileData { FileData { data: "".to_owned() } }
+    fn new() -> FileData {
+        FileData { data: "".to_owned() }
+    }
     fn set_data(&mut self, new_data: &str) {
         self.data = new_data.to_owned();
     }
@@ -186,7 +181,9 @@ impl FormulaData {
         }
         let program = format!("(define (__compiled__) {})", formula);
         if let Err(e) = interp.run_code(&program, None) {
-            return Err(TreeErrorKind::FormulaSyntaxError(e.description().into()).into());
+            return Err(
+                TreeErrorKind::FormulaSyntaxError(e.description().into()).into(),
+            );
         }
         return Ok(FormulaData {
             inputs: inputs.clone(),
@@ -198,8 +195,10 @@ impl FormulaData {
             let data = match tree.get_data_at(path) {
                 Ok(d) => d,
                 Err(e) => {
-                    return Err(TreeErrorKind::FormulaInputNotFound(
-                               format!("{} - from: {}", path, e)).into());
+                    return Err(
+                        TreeErrorKind::FormulaInputNotFound(format!("{} - from: {}", path, e))
+                            .into(),
+                    );
                 }
             };
             self.interp.scope().add_value(*name, data.clone().into());
@@ -207,11 +206,13 @@ impl FormulaData {
 
         let result = self.interp.call("__compiled__", vec![]);
         return match result {
-            Err(e) => Err(TreeErrorKind::FormulaExecutionFailure(format!("{:?}", e)).into()),
+            Err(e) => Err(
+                TreeErrorKind::FormulaExecutionFailure(format!("{:?}", e)).into(),
+            ),
             Ok(v) => {
                 match String::from_value(v) {
                     Err(e) => Err(TreeErrorKind::FormulaTypeError(format!("{:?}", e)).into()),
-                    Ok(s) => Ok(s)
+                    Ok(s) => Ok(s),
                 }
             }
         };
@@ -221,7 +222,7 @@ impl FormulaData {
 
 /// A directory contains a list of children.
 pub struct DirectoryData {
-    children: HashMap<String, Node>
+    children: HashMap<String, Node>,
 }
 
 impl DirectoryData {
@@ -230,17 +231,17 @@ impl DirectoryData {
     }
 
     // Find and return the given node regardless of type.
-    fn lookup(&self, name: &str) -> TreeResult<&Node>
-    {
+    fn lookup(&self, name: &str) -> TreeResult<&Node> {
         return self.children.get(name).ok_or_else(|| {
-                    TreeErrorKind::NoSuchNode(name.into()).into() });
+            TreeErrorKind::NoSuchNode(name.into()).into()
+        });
     }
 
     // Find and return the given node regardless of type.
-    fn lookup_mut(&mut self, name: &str) -> TreeResult<&mut Node>
-    {
+    fn lookup_mut(&mut self, name: &str) -> TreeResult<&mut Node> {
         return self.children.get_mut(name).ok_or_else(|| {
-                    TreeErrorKind::NoSuchNode(name.into()).into() });
+            TreeErrorKind::NoSuchNode(name.into()).into()
+        });
     }
 
     // Internal helper for add_foo.
@@ -268,8 +269,9 @@ impl DirectoryData {
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         PathBuilder::validate_path_component(name)?;
         {
-            let child = self.children.get(name).ok_or(
-                             TreeErrorKind::NoSuchNode(name.into()))?;
+            let child = self.children.get(name).ok_or(TreeErrorKind::NoSuchNode(
+                name.into(),
+            ))?;
             if let &Node::Directory(ref d) = child {
                 if !d.children.is_empty() {
                     bail!(TreeErrorKind::DirectoryNotEmpty(name.into()));
@@ -296,34 +298,35 @@ impl DirectoryData {
 /// A tree of Node.
 pub struct Tree {
     root: Node,
-    formula_inputs: HashMap<Path, HashSet<Path>>
+    formula_inputs: HashMap<Path, HashSet<Path>>,
 }
 impl Tree {
     /// Creates a new, empty Tree.
     pub fn new() -> Tree {
         Tree {
             root: Node::Directory(DirectoryData::new()),
-            formula_inputs: HashMap::new()
+            formula_inputs: HashMap::new(),
         }
     }
 
     /// Returns the directory at the given path or an error.
-    pub fn lookup_directory(&mut self, path: &Path)
-        -> TreeResult<&mut DirectoryData>
-    {
+    pub fn lookup_directory(&mut self, path: &Path) -> TreeResult<&mut DirectoryData> {
         let node = self.root.lookup_mut(&mut path.iter())?;
         return match node {
             &mut Node::File(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
             &mut Node::Formula(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
-            &mut Node::Directory(ref mut d) => Ok(d)
+            &mut Node::Directory(ref mut d) => Ok(d),
         };
     }
 
     /// Create a new formula node.
-    pub fn create_formula(&mut self, parent: &Path, name: &str,
-                          inputs: &HashMap<String, Path>, formula: &str)
-        -> TreeResult<()>
-    {
+    pub fn create_formula(
+        &mut self,
+        parent: &Path,
+        name: &str,
+        inputs: &HashMap<String, Path>,
+        formula: &str,
+    ) -> TreeResult<()> {
         // Add formula inputs to the hash for quick lookup.
         let formula_path = parent.slash(name)?;
         for path in inputs.values() {
@@ -343,25 +346,22 @@ impl Tree {
     }
 
     /// Returns the data at the given node.
-    pub fn get_data_at(&self, path: &Path) -> TreeResult<String>
-    {
+    pub fn get_data_at(&self, path: &Path) -> TreeResult<String> {
         let node = self.root.lookup(&mut path.iter())?;
         return match node {
             &Node::File(ref f) => Ok(f.get_data()),
             &Node::Formula(ref f) => f.get_data(self),
-            &Node::Directory(_) => Err(TreeErrorKind::NotFile(path.clone()).into())
+            &Node::Directory(_) => Err(TreeErrorKind::NotFile(path.clone()).into()),
         };
     }
 
     /// Set the data at the given path.
-    pub fn set_data_at(&mut self, path: &Path, new_data: &str)
-        -> TreeResult<TreeChanges>
-    {
+    pub fn set_data_at(&mut self, path: &Path, new_data: &str) -> TreeResult<TreeChanges> {
         {
             let node = self.root.lookup_mut(&mut path.iter())?;
             match node {
                 &mut Node::File(ref mut f) => f.set_data(new_data),
-                _ => bail!(TreeErrorKind::NotFile(path.clone()))
+                _ => bail!(TreeErrorKind::NotFile(path.clone())),
             };
         }
         let mut paths = HashSet::new();
@@ -377,16 +377,14 @@ impl Tree {
             match node {
                 &Node::File(ref f) => pairs.push((path, f.get_data())),
                 &Node::Formula(ref f) => pairs.push((path, f.get_data(self)?)),
-                &Node::Directory(_) => bail!(TreeErrorKind::NotFile(path.clone()))
+                &Node::Directory(_) => bail!(TreeErrorKind::NotFile(path.clone())),
             }
         }
         return Ok(pairs);
     }
 
     /// Set the data at all matching paths. Returns all paths that were modified.
-    pub fn set_data_matching(&mut self, glob: &Glob, new_data: &str)
-        -> TreeResult<TreeChanges>
-    {
+    pub fn set_data_matching(&mut self, glob: &Glob, new_data: &str) -> TreeResult<TreeChanges> {
         let mut paths = HashSet::new();
         {
             let matching = self.root.find_mut(&Path::root(), glob)?;
@@ -406,9 +404,7 @@ impl Tree {
     // we have discovered all formula paths that might possibly have changed
     // based on the initial set of data changes. Formula values can depend on
     // other formulas, so this needs to iterate to a fixed-point.
-    fn collect_dep_graph(&self, paths: &HashSet<Path>, new_data: &str)
-        -> TreeResult<TreeChanges>
-    {
+    fn collect_dep_graph(&self, paths: &HashSet<Path>, new_data: &str) -> TreeResult<TreeChanges> {
         let mut worklist: Vec<&Path> = Vec::new();
         for path in paths {
             worklist.push(path);
@@ -443,17 +439,21 @@ impl Tree {
 
         // Now we can build the complete change set to send to subscribers.
         let mut changes = HashMap::new();
-        changes.insert(new_data.to_owned(), paths.to_owned().into_iter().collect::<Vec<_>>());
+        changes.insert(
+            new_data.to_owned(),
+            paths.to_owned().into_iter().collect::<Vec<_>>(),
+        );
         for path in &affected {
             let data = self.get_data_at(path)?;
             if !changes.contains_key(&data) {
                 changes.insert(data.clone(), Vec::new());
             }
-            changes.get_mut(&data).expect("just inserted").push(path.clone());
+            changes.get_mut(&data).expect("just inserted").push(
+                path.clone(),
+            );
         }
         return Ok(changes);
     }
-
 }
 
 #[cfg(test)]
@@ -558,32 +558,92 @@ mod tests {
             )*
         }
     }
-    make_glob_matching_tests!([
-        (test_match_one_char, "/?",
-         ["/d"], ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a"],
-         ["/a", "/b", "/c"])
-       ,(test_match_one_char_subdir, "/?/a",
-         ["/d", "/e", "/f", "/f/g"], ["/a", "/b", "/c", "/d/a", "/d/X", "/e/a", "/e/X",
-                                      "/f/a", "/f/X", "/f/g/a", "/f/g/X"],
-         ["/d/a", "/e/a", "/f/a"])
-       ,(test_match_star, "/*",
-         ["/d"], ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a", "/d/b", "/d/c"],
-         ["/a", "/b", "/c", "/aa", "/bb", "/cc"])
-       ,(test_match_complex, "/room/*/hue-*/*/color",
-         ["/room", "/room/a", "/room/b",
-          "/room/a/hue-light", "/room/a/hue-livingcolor",
-          "/room/b/hue-light", "/room/b/hue-livingcolor",
-          "/room/a/hue-light/a-desk", "/room/a/hue-light/a-table",
-          "/room/a/hue-livingcolor/a-desk", "/room/a/hue-livingcolor/a-table",
-          "/room/b/hue-light/b-desk", "/room/b/hue-light/b-table",
-          "/room/b/hue-livingcolor/b-desk", "/room/b/hue-livingcolor/b-table"],
-         ["/room/a/hue-light/a-desk/color", "/room/a/hue-light/a-table/color",
-          "/room/a/hue-livingcolor/a-desk/color", "/room/a/hue-livingcolor/a-table/color",
-          "/room/b/hue-light/b-desk/color", "/room/b/hue-light/b-table/color",
-          "/room/b/hue-livingcolor/b-desk/color", "/room/b/hue-livingcolor/b-table/color"],
-         ["/room/a/hue-light/a-desk/color", "/room/a/hue-light/a-table/color",
-          "/room/a/hue-livingcolor/a-desk/color", "/room/a/hue-livingcolor/a-table/color",
-          "/room/b/hue-light/b-desk/color", "/room/b/hue-light/b-table/color",
-          "/room/b/hue-livingcolor/b-desk/color", "/room/b/hue-livingcolor/b-table/color"])
-    ]);
+    make_glob_matching_tests!(
+        [
+            (
+                test_match_one_char,
+                "/?",
+                ["/d"],
+                ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a"],
+                ["/a", "/b", "/c"],
+            ),
+            (
+                test_match_one_char_subdir,
+                "/?/a",
+                ["/d", "/e", "/f", "/f/g"],
+                [
+                    "/a",
+                    "/b",
+                    "/c",
+                    "/d/a",
+                    "/d/X",
+                    "/e/a",
+                    "/e/X",
+                    "/f/a",
+                    "/f/X",
+                    "/f/g/a",
+                    "/f/g/X",
+                ],
+                ["/d/a", "/e/a", "/f/a"],
+            ),
+            (
+                test_match_star,
+                "/*",
+                ["/d"],
+                [
+                    "/a",
+                    "/b",
+                    "/c",
+                    "/aa",
+                    "/bb",
+                    "/cc",
+                    "/d/a",
+                    "/d/b",
+                    "/d/c",
+                ],
+                ["/a", "/b", "/c", "/aa", "/bb", "/cc"],
+            ),
+            (
+                test_match_complex,
+                "/room/*/hue-*/*/color",
+                [
+                    "/room",
+                    "/room/a",
+                    "/room/b",
+                    "/room/a/hue-light",
+                    "/room/a/hue-livingcolor",
+                    "/room/b/hue-light",
+                    "/room/b/hue-livingcolor",
+                    "/room/a/hue-light/a-desk",
+                    "/room/a/hue-light/a-table",
+                    "/room/a/hue-livingcolor/a-desk",
+                    "/room/a/hue-livingcolor/a-table",
+                    "/room/b/hue-light/b-desk",
+                    "/room/b/hue-light/b-table",
+                    "/room/b/hue-livingcolor/b-desk",
+                    "/room/b/hue-livingcolor/b-table",
+                ],
+                [
+                    "/room/a/hue-light/a-desk/color",
+                    "/room/a/hue-light/a-table/color",
+                    "/room/a/hue-livingcolor/a-desk/color",
+                    "/room/a/hue-livingcolor/a-table/color",
+                    "/room/b/hue-light/b-desk/color",
+                    "/room/b/hue-light/b-table/color",
+                    "/room/b/hue-livingcolor/b-desk/color",
+                    "/room/b/hue-livingcolor/b-table/color",
+                ],
+                [
+                    "/room/a/hue-light/a-desk/color",
+                    "/room/a/hue-light/a-table/color",
+                    "/room/a/hue-livingcolor/a-desk/color",
+                    "/room/a/hue-livingcolor/a-table/color",
+                    "/room/b/hue-light/b-desk/color",
+                    "/room/b/hue-light/b-table/color",
+                    "/room/b/hue-livingcolor/b-desk/color",
+                    "/room/b/hue-livingcolor/b-table/color",
+                ],
+            ),
+        ]
+    );
 }

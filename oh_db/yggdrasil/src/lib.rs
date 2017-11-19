@@ -12,7 +12,7 @@ pub use path::{Glob, Path, PathBuilder};
 pub use tree::{Tree, TreeChanges};
 
 mod errors {
-    error_chain! {}
+    error_chain!{}
 }
 
 #[cfg(test)]
