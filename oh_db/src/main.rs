@@ -5,12 +5,14 @@ extern crate argparse;
 extern crate capnp;
 extern crate env_logger;
 extern crate ketos;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate rand;
 extern crate ws;
 extern crate yggdrasil;
 
-#[macro_use] mod utility;
+#[macro_use]
+mod utility;
 mod subscriptions;
 
 pub mod messages_capnp {
@@ -40,15 +42,21 @@ fn main() {
     {
         let mut ap = argparse::ArgumentParser::new();
         ap.set_description("The OpenHouse central database.");
-        ap.refer(&mut log_level)
-          .add_option(&["-l", "--log-level"], argparse::Store,
-                      "The logging level. (default DEBUG)");
-        ap.refer(&mut log_target)
-          .add_option(&["-L", "--log-target"], argparse::Store,
-                      "The logging target. (default events.log)");
-        ap.refer(&mut port)
-          .add_option(&["-b", "--bind"], argparse::Store,
-                      "The port to listen on. (default 8182)");
+        ap.refer(&mut log_level).add_option(
+            &["-l", "--log-level"],
+            argparse::Store,
+            "The logging level. (default DEBUG)",
+        );
+        ap.refer(&mut log_target).add_option(
+            &["-L", "--log-target"],
+            argparse::Store,
+            "The logging target. (default events.log)",
+        );
+        ap.refer(&mut port).add_option(
+            &["-b", "--bind"],
+            argparse::Store,
+            "The port to listen on. (default 8182)",
+        );
         ap.parse_args_or_exit();
     }
 
@@ -59,8 +67,7 @@ fn main() {
     run_server(port).unwrap();
 }
 
-fn run_server(port: u16) -> ws::Result<()>
-{
+fn run_server(port: u16) -> ws::Result<()> {
     let env = Rc::new(RefCell::new(Environment::new()));
 
     // Start the server.
@@ -69,14 +76,19 @@ fn run_server(port: u16) -> ws::Result<()>
     settings.masking_strict = true;
     settings.key_strict = true;
 
-    let template = try!(ws::Builder::new().with_settings(settings).build(move |sock| {
-        let conn = Connection {
-            sender: Rc::new(RefCell::new(sock)),
-            env: env.clone()
-        };
-        env.borrow_mut().connections.insert(conn.sender.borrow().token(), conn.clone());
-        return conn;
-    }));
+    let template = try!(ws::Builder::new().with_settings(settings).build(
+        move |sock| {
+            let conn = Connection {
+                sender: Rc::new(RefCell::new(sock)),
+                env: env.clone(),
+            };
+            env.borrow_mut().connections.insert(
+                conn.sender.borrow().token(),
+                conn.clone(),
+            );
+            return conn;
+        },
+    ));
 
     info!("Starting server on 127.0.0.1:{}", port);
     try!(template.listen(("127.0.0.1", port)));
@@ -115,8 +127,7 @@ struct Environment<'e> {
 }
 
 impl<'e> Environment<'e> {
-    fn new() -> Self
-    {
+    fn new() -> Self {
         Environment {
             db: Tree::new(),
             watches: Watches::new(),
@@ -128,10 +139,9 @@ impl<'e> Environment<'e> {
     // The connection triggering the event does not care about failures to send to
     // subscriptions, so this method terminates any failure. We log and potentially
     // close the child connections, but do not report failures to the caller.
-    fn notify_subscriptions_glob(&mut self, changes: &TreeChanges)
-    {
+    fn notify_subscriptions_glob(&mut self, changes: &TreeChanges) {
         let matching = self.watches.filter_changes_for_each_watch(changes);
-        for (matching_changes, matching_conn, matching_sid) in  matching {
+        for (matching_changes, matching_conn, matching_sid) in matching {
             let conn = self.connections.get_mut(&matching_conn).unwrap();
             conn.on_change(&matching_sid, &matching_changes).ok();
         }
@@ -156,15 +166,17 @@ impl<'e> Clone for Connection<'e> {
     fn clone(&self) -> Self {
         Connection {
             sender: self.sender.clone(),
-            env: self.env.clone()
+            env: self.env.clone(),
         }
     }
 }
 
 impl<'e> Connection<'e> {
-    fn handle_ping(&mut self, msg: &ping_request::Reader, response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_ping(
+        &mut self,
+        msg: &ping_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let data = try!(msg.get_data());
         info!("handling Ping -> {}", data);
         let mut pong = response.init_ping();
@@ -172,14 +184,18 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_create_file(&mut self, msg: &create_file_request::Reader,
-                          response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
-                               .finish_path());
+    fn handle_create_file(
+        &mut self,
+        msg: &create_file_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
         let name = try!(msg.get_name());
-        info!("handling CreateFile -> parent: {},  name: {}", parent_path, name);
+        info!(
+            "handling CreateFile -> parent: {},  name: {}",
+            parent_path,
+            name
+        );
         let mut env = self.env.borrow_mut();
         {
             let db = &mut env.db;
@@ -190,22 +206,26 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_create_formula(&mut self, msg: &create_formula_request::Reader,
-                             response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
-                               .finish_path());
+    fn handle_create_formula(
+        &mut self,
+        msg: &create_formula_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
         let name = try!(msg.get_name());
         let formula = try!(msg.get_formula());
         let mut inputs = HashMap::new();
         for input in try!(msg.get_inputs()).iter() {
-            let input_path = try!(try!(PathBuilder::new(try!(input.get_path())))
-                                  .finish_path());
+            let input_path = try!(try!(PathBuilder::new(try!(input.get_path()))).finish_path());
             inputs.insert(try!(input.get_name()).to_owned(), input_path);
         }
-        info!("handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
-              parent_path, name, inputs, formula);
+        info!(
+            "handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
+            parent_path,
+            name,
+            inputs,
+            formula
+        );
         {
             let mut env = self.env.borrow_mut();
             {
@@ -217,14 +237,18 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_create_directory(&mut self, msg: &create_directory_request::Reader,
-                               response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
-                               .finish_path());
+    fn handle_create_directory(
+        &mut self,
+        msg: &create_directory_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
         let name = try!(msg.get_name());
-        info!("handling Createdirectory -> parent: {}, name: {}", parent_path, name);
+        info!(
+            "handling Createdirectory -> parent: {}, name: {}",
+            parent_path,
+            name
+        );
         {
             let mut env = self.env.borrow_mut();
             {
@@ -237,14 +261,18 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_remove_node(&mut self, msg: &remove_node_request::Reader,
-                          response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path())))
-                               .finish_path());
+    fn handle_remove_node(
+        &mut self,
+        msg: &remove_node_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
+        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
         let name = try!(msg.get_name());
-        info!("handling RemoveNode-> parent: {}, name: {}", parent_path, name);
+        info!(
+            "handling RemoveNode-> parent: {}, name: {}",
+            parent_path,
+            name
+        );
         {
             let mut env = self.env.borrow_mut();
             {
@@ -257,10 +285,11 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_list_directory(&mut self, msg: &list_directory_request::Reader,
-                             response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_list_directory(
+        &mut self,
+        msg: &list_directory_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         info!("handling ListDirectory -> path: {}", path);
         let db = &mut self.env.borrow_mut().db;
@@ -276,10 +305,11 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_get_file(&mut self, msg: &get_file_request::Reader,
-                       response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_get_file(
+        &mut self,
+        msg: &get_file_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         info!("handling GetFile -> path: {}", path);
         let mut cat_response = response.init_get_file();
@@ -291,10 +321,11 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_get_matching_files(&mut self, msg: &get_matching_files_request::Reader,
-                                 response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_get_matching_files(
+        &mut self,
+        msg: &get_matching_files_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         info!("handling GetMatchingFiles -> glob: {}", glob);
         let cat_response = response.init_get_matching_files();
@@ -303,17 +334,20 @@ impl<'e> Connection<'e> {
             let matches = try!(db.get_data_matching(&glob));
             let mut cat_data = cat_response.init_data(matches.len() as u32);
             for (i, &ref match_pair) in matches.iter().enumerate() {
-                cat_data.borrow().get(i as u32).set_path(&match_pair.0.to_str());
+                cat_data.borrow().get(i as u32).set_path(
+                    &match_pair.0.to_str(),
+                );
                 cat_data.borrow().get(i as u32).set_data(&match_pair.1);
             }
         }
         return Ok(());
     }
 
-    fn handle_set_file(&mut self, msg: &set_file_request::Reader,
-                       response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_set_file(
+        &mut self,
+        msg: &set_file_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
         let data = try!(msg.get_data());
         info!("handling SetFile -> path: {}, data: {}", path, data);
@@ -327,38 +361,49 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn handle_set_matching_files(&mut self, msg: &set_matching_files_request::Reader,
-                                 response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_set_matching_files(
+        &mut self,
+        msg: &set_matching_files_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         let data = try!(msg.get_data());
-        info!("handling SetMatchingFiles -> glob: {}, data: {}", glob, data);
+        info!(
+            "handling SetMatchingFiles -> glob: {}, data: {}",
+            glob,
+            data
+        );
         let changes = try!(self.env.borrow_mut().db.set_data_matching(&glob, data));
         self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
     }
 
-    fn handle_watch_matching_files(&mut self, msg: &watch_matching_files_request::Reader,
-                                   response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_watch_matching_files(
+        &mut self,
+        msg: &watch_matching_files_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
         info!("handling WatchMatchingFiles -> glob: {}", glob);
         let mut env = self.env.borrow_mut();
         env.last_subscription_id += 1;
         let sid = SubscriptionId::from_u64(env.last_subscription_id);
-        env.watches.add_watch(&sid, &self.sender.borrow().token(), &glob);
+        env.watches.add_watch(
+            &sid,
+            &self.sender.borrow().token(),
+            &glob,
+        );
         let mut sub_response = response.init_watch();
         sub_response.set_subscription_id(sid.to_u64());
         return Ok(());
     }
 
-    fn handle_unwatch(&mut self, msg: &unwatch_request::Reader,
-                      response: server_response::Builder)
-        -> Result<(), Box<Error>>
-    {
+    fn handle_unwatch(
+        &mut self,
+        msg: &unwatch_request::Reader,
+        response: server_response::Builder,
+    ) -> Result<(), Box<Error>> {
         let sid = SubscriptionId::from_u64(msg.get_subscription_id());
         {
             let mut env = self.env.borrow_mut();
@@ -368,9 +413,7 @@ impl<'e> Connection<'e> {
         return Ok(());
     }
 
-    fn on_change(&mut self, sid: &SubscriptionId, changes: &TreeChanges)
-        -> ws::Result<()>
-    {
+    fn on_change(&mut self, sid: &SubscriptionId, changes: &TreeChanges) -> ws::Result<()> {
         let mut builder = ::capnp::message::Builder::new_default();
         {
             let message = builder.init_root::<server_message::Builder>();
@@ -380,8 +423,7 @@ impl<'e> Connection<'e> {
             for (change_no, (data, paths)) in changes.iter().enumerate() {
                 let mut change_ref = changes_list.borrow().get(change_no as u32);
                 change_ref.set_data(data);
-                let mut path_list = change_ref
-                                                .init_paths(paths.len() as u32);
+                let mut path_list = change_ref.init_paths(paths.len() as u32);
                 for (i, path) in paths.iter().enumerate() {
                     path_list.set(i as u32, &path.to_str());
                 }
@@ -446,36 +488,48 @@ macro_rules! handle_client_request {
 impl<'e> ws::Handler for Connection<'e> {
     fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
         if !msg.is_binary() {
-            return self.sender.borrow_mut().close_with_reason(ws::CloseCode::Error,
-                                                              "did not expect TEXT messages");
+            return self.sender.borrow_mut().close_with_reason(
+                ws::CloseCode::Error,
+                "did not expect TEXT messages",
+            );
         }
 
         let message_data = msg.into_data();
         let message_reader = close_on_failure!(
-            capnp::serialize::read_message(&mut std::io::Cursor::new(message_data),
-                                           ::capnp::message::ReaderOptions::new()), self);
-        let message = close_on_failure!(
-            message_reader.get_root::<client_request::Reader>(), self);
+            capnp::serialize::read_message(
+                &mut std::io::Cursor::new(message_data),
+                ::capnp::message::ReaderOptions::new(),
+            ),
+            self
+        );
+        let message = close_on_failure!(message_reader.get_root::<client_request::Reader>(), self);
         let message_id = MessageId::from_u64(message.get_id());
-        handle_client_request!(message.which(), message_id, self,
-                               [(Ping              | handle_ping),
-                                (CreateFile        | handle_create_file),
-                                (CreateFormula     | handle_create_formula),
-                                (CreateDirectory   | handle_create_directory),
-                                (RemoveNode        | handle_remove_node),
-                                (GetFile           | handle_get_file),
-                                (GetMatchingFiles  | handle_get_matching_files),
-                                (SetFile           | handle_set_file),
-                                (SetMatchingFiles  | handle_set_matching_files),
-                                (ListDirectory     | handle_list_directory),
-                                (WatchMatchingFiles| handle_watch_matching_files),
-                                (Unwatch           | handle_unwatch)
-                               ]);
+        handle_client_request!(
+            message.which(),
+            message_id,
+            self,
+            [
+                (Ping | handle_ping),
+                (CreateFile | handle_create_file),
+                (CreateFormula | handle_create_formula),
+                (CreateDirectory | handle_create_directory),
+                (RemoveNode | handle_remove_node),
+                (GetFile | handle_get_file),
+                (GetMatchingFiles | handle_get_matching_files),
+                (SetFile | handle_set_file),
+                (SetMatchingFiles | handle_set_matching_files),
+                (ListDirectory | handle_list_directory),
+                (WatchMatchingFiles | handle_watch_matching_files),
+                (Unwatch | handle_unwatch),
+            ]
+        );
         return Ok(());
     }
 
     fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
         info!("socket closing for ({:?}) {}", code, reason);
-        self.env.borrow_mut().watches.remove_connection(&self.sender.borrow().token());
+        self.env.borrow_mut().watches.remove_connection(
+            &self.sender.borrow().token(),
+        );
     }
 }
