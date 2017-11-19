@@ -1,8 +1,8 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use path::Glob;
-use tree::TreeChanges;
+use yggdrasil::Glob;
+use yggdrasil::TreeChanges;
 use std::error::Error;
 use std::fmt;
 use ws::util::Token;

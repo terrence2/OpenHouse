@@ -4,25 +4,62 @@
 use path::{PathBuilder, Glob, Path, PathIter};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fmt;
 use ketos::{Builder, FromValue, Interpreter, Name};
 
-make_error_system!(
-    TreeErrorKind => TreeError => TreeResult {
-        DirectoryNotEmpty,
-        NoSuchNode,
-        NodeAlreadyExists,
-        NotDirectory,
-        NotFile,
-        FormulaExecutionFailure,
-        FormulaInputNotFound,
-        FormulaSyntaxError,
-        FormulaTypeError,
-        FormulaRemovalDisallowed
-    });
+mod errors {
+    error_chain! {
+        types {
+            TreeError, TreeErrorKind, TreeResultExt, TreeResult;
+        }
+
+        links {
+            PathError(::path::errors::PathError, ::path::errors::PathErrorKind);
+        }
+
+        errors {
+            DirectoryNotEmpty(d: String) {
+                description("directory not empty")
+                display("directory not empty: '{}'", d)
+            }
+            NotDirectory(p: ::path::Path) {
+                description("not a directory")
+                display("not a directory: '{}'", p)
+            }
+            NotFile(p: ::path::Path) {
+                description("not a file")
+                display("not a file: '{}'", p)
+            }
+            NoSuchNode(name: String) {
+                description("no such node")
+                display("no such node: '{}'", name)
+            }
+            NodeAlreadyExists(name: String) {
+                description("path already exists")
+                display("path already exists: '{}'", name)
+            }
+            FormulaRemovalDisallowed
+            FormulaExecutionFailure(error: String) {
+                description("formula execution failure")
+                display("formula execution failure: '{}'", error)
+            }
+            FormulaTypeError(error: String) {
+                description("formula type error")
+                display("formula type error: '{}'", error)
+            }
+            FormulaSyntaxError(error: String) {
+                description("formula syntax error")
+                display("formula syntax error: '{}'", error)
+            }
+            FormulaInputNotFound(error: String) {
+                description("formula input not found")
+                display("formula input not found: '{}'", error)
+            }
+        }
+    }
+}
+use ::tree::errors::{TreeError, TreeErrorKind, TreeResult};
 
 pub type TreeChanges = HashMap<String, Vec<Path>>;
-
 
 /// Each node contains a Directory of more nodes or some leaf data.
 enum Node {
@@ -44,7 +81,7 @@ impl Node {
             _ => {}
         }
         return match parts.next() {
-            Some(_) => Err(TreeError::NotDirectory(name)),
+            Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
             None => Ok(self)
         };
     }
@@ -62,7 +99,7 @@ impl Node {
             _ => {}
         }
         return match parts.next() {
-            Some(_) => Err(TreeError::NotDirectory(name)),
+            Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
             None => Ok(self)
         };
     }
@@ -150,7 +187,7 @@ impl FormulaData {
         }
         let program = format!("(define (__compiled__) {})", formula);
         if let Err(e) = interp.run_code(&program, None) {
-            return Err(TreeError::FormulaSyntaxError(e.description()));
+            return Err(TreeErrorKind::FormulaSyntaxError(e.description().into()).into());
         }
         return Ok(FormulaData {
             inputs: inputs.clone(),
@@ -162,8 +199,8 @@ impl FormulaData {
             let data = match tree.get_data_at(path) {
                 Ok(d) => d,
                 Err(e) => {
-                    return Err(TreeError::FormulaInputNotFound(
-                               &format!("{} - from: {}", path, e)));
+                    return Err(TreeErrorKind::FormulaInputNotFound(
+                               format!("{} - from: {}", path, e)).into());
                 }
             };
             self.interp.scope().add_value(*name, data.clone().into());
@@ -171,10 +208,10 @@ impl FormulaData {
 
         let result = self.interp.call("__compiled__", vec![]);
         return match result {
-            Err(e) => Err(TreeError::FormulaExecutionFailure(&format!("{:?}", e))),
+            Err(e) => Err(TreeErrorKind::FormulaExecutionFailure(format!("{:?}", e)).into()),
             Ok(v) => {
                 match String::from_value(v) {
-                    Err(e) => Err(TreeError::FormulaTypeError(&format!("{:?}", e))),
+                    Err(e) => Err(TreeErrorKind::FormulaTypeError(format!("{:?}", e)).into()),
                     Ok(s) => Ok(s)
                 }
             }
@@ -196,22 +233,22 @@ impl DirectoryData {
     // Find and return the given node regardless of type.
     fn lookup(&self, name: &str) -> TreeResult<&Node>
     {
-        return self.children.get(name).ok_or_else(||{
-                    TreeError::NoSuchNode(name)});
+        return self.children.get(name).ok_or_else(|| {
+                    TreeErrorKind::NoSuchNode(name.into()).into() });
     }
 
     // Find and return the given node regardless of type.
     fn lookup_mut(&mut self, name: &str) -> TreeResult<&mut Node>
     {
-        return self.children.get_mut(name).ok_or_else(||{
-                    TreeError::NoSuchNode(name)});
+        return self.children.get_mut(name).ok_or_else(|| {
+                    TreeErrorKind::NoSuchNode(name.into()).into() });
     }
 
     // Internal helper for add_foo.
     fn add_child(&mut self, name: &str, node: Node) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         if self.children.contains_key(name) {
-            return Err(TreeError::NodeAlreadyExists(name));
+            return Err(TreeErrorKind::NodeAlreadyExists(name.into()).into());
         }
         let result = self.children.insert(name.to_owned(), node);
         assert!(result.is_none());
@@ -232,15 +269,15 @@ impl DirectoryData {
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         try!(PathBuilder::validate_path_component(name));
         {
-            let child = try!(self.children.get(name).ok_or(
-                             TreeError::NoSuchNode(name)));
+            let child = self.children.get(name).ok_or(
+                             TreeErrorKind::NoSuchNode(name.into()))?;
             if let &Node::Directory(ref d) = child {
                 if !d.children.is_empty() {
-                    return Err(TreeError::DirectoryNotEmpty(name));
+                    bail!(TreeErrorKind::DirectoryNotEmpty(name.into()));
                 }
             } else if let &Node::Formula(_) = child {
                 // FIXME: move removal up a level so we can fixup the inputs hash.
-                return Err(TreeError::FormulaRemovalDisallowed(name));
+                bail!(TreeErrorKind::FormulaRemovalDisallowed);
             }
         }
         let result = self.children.remove(name);
@@ -277,8 +314,8 @@ impl Tree {
     {
         let node = try!(self.root.lookup_mut(&mut path.iter()));
         return match node {
-            &mut Node::File(_) => Err(TreeError::NotDirectory(&path.to_str())),
-            &mut Node::Formula(_) => Err(TreeError::NotDirectory(&path.to_str())),
+            &mut Node::File(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
+            &mut Node::Formula(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
             &mut Node::Directory(ref mut d) => Ok(d)
         };
     }
@@ -289,7 +326,7 @@ impl Tree {
         -> TreeResult<()>
     {
         // Add formula inputs to the hash for quick lookup.
-        let formula_path = try!(parent.slash(name));
+        let formula_path = parent.slash(name)?;
         for path in inputs.values() {
             if !self.formula_inputs.contains_key(path) {
                 self.formula_inputs.insert(path.clone(), HashSet::new());
@@ -313,7 +350,7 @@ impl Tree {
         return match node {
             &Node::File(ref f) => Ok(f.get_data()),
             &Node::Formula(ref f) => f.get_data(self),
-            &Node::Directory(_) => Err(TreeError::NotFile(&path.to_str()))
+            &Node::Directory(_) => Err(TreeErrorKind::NotFile(path.clone()).into())
         };
     }
 
@@ -325,7 +362,7 @@ impl Tree {
             let node = try!(self.root.lookup_mut(&mut path.iter()));
             match node {
                 &mut Node::File(ref mut f) => f.set_data(new_data),
-                _ => return Err(TreeError::NotFile(&path.to_str()))
+                _ => bail!(TreeErrorKind::NotFile(path.clone()))
             };
         }
         let mut paths = HashSet::new();
@@ -341,7 +378,7 @@ impl Tree {
             match node {
                 &Node::File(ref f) => pairs.push((path, f.get_data())),
                 &Node::Formula(ref f) => pairs.push((path, try!(f.get_data(self)))),
-                &Node::Directory(_) => return Err(TreeError::NotFile(&path.to_str()))
+                &Node::Directory(_) => bail!(TreeErrorKind::NotFile(path.clone()))
             }
         }
         return Ok(pairs);
@@ -357,7 +394,7 @@ impl Tree {
             for (path, node) in matching {
                 match node {
                     &mut Node::File(ref mut f) => f.set_data(new_data),
-                    _ => return Err(TreeError::NotFile(&path.to_str())),
+                    _ => bail!(TreeErrorKind::NotFile(path.clone())),
                 }
                 paths.insert(path);
             }
@@ -422,7 +459,6 @@ impl Tree {
 
 #[cfg(test)]
 mod tests {
-    extern crate env_logger;
     use super::*;
     use path::{Glob, Path, PathBuilder};
 
@@ -444,7 +480,6 @@ mod tests {
 
     #[test]
     fn test_recursive_tree() {
-        let _ = env_logger::init();
         let mut tree = Tree::new();
         {
             let root = tree.lookup_directory(&make_path("/")).unwrap();
@@ -461,7 +496,6 @@ mod tests {
 
     #[test]
     fn test_remove_node() {
-        let _ = env_logger::init();
         let mut tree = Tree::new();
         {
             let root = tree.lookup_directory(&make_path("/")).unwrap();

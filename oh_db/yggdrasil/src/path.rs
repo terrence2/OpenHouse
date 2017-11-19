@@ -1,22 +1,17 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use std::error::Error;
 use std::fmt;
 use std::str;
 
-make_error_system!(
-    PathErrorKind => PathError => PathResult {
-        Dotfile,
-        EmptyComponent,
-        InvalidCharacter,
-        InvalidControlCharacter,
-        InvalidGlobCharacter,
-        InvalidWhitespaceCharacter,
-        MismatchedBraces,
-        NonAbsolutePath,
-        UnreachablePattern
-    });
+pub mod errors {
+    error_chain! {
+        types {
+            PathError, PathErrorKind, PathResultExt, PathResult;
+        }
+    }
+}
+use ::path::errors::{PathResultExt, PathResult};
 
 
 /// OpenHouse paths have somewhat stricter rules than a typical filesystem. The
@@ -64,7 +59,7 @@ impl PathBuilder {
     /// if it cannot be a path or glob.
     pub fn new(raw: &str) -> PathResult<PathBuilder> {
         if !raw.starts_with('/') {
-            return Err(PathError::NonAbsolutePath(raw));
+            bail!("non absolute path");
         }
 
         // Split produces two empty strings for "/", so just handle it separately
@@ -95,21 +90,20 @@ impl PathBuilder {
     fn validate_path_or_glob_component(part: &str) -> PathResult<bool> {
         let mut contains_glob_chars = false;
         if part.len() == 0 {
-            return Err(PathError::EmptyComponent(""));
+            bail!("empty path component");
         }
         if part.starts_with(".") {
-            return Err(PathError::Dotfile(part));
+            bail!("path components must not start with .");
         }
         for c in part.chars() {
             if is_invalid_character(c) {
-                return Err(PathError::InvalidCharacter(
-                           &(part.to_owned() + " character: " + &c.to_string())));
+                bail!(format!("found invalid character: {}", c));
             }
             if c.is_control() {
-                return Err(PathError::InvalidControlCharacter(part));
+                bail!("invalid control character in path");
             }
             if c.is_whitespace() {
-                return Err(PathError::InvalidWhitespaceCharacter(part));
+                bail!("invalid whitespace character");
             }
 
             if is_glob_character(c) {
@@ -122,8 +116,10 @@ impl PathBuilder {
     /// Check that the given string is a valid path component. Returns an
     /// error if the part contains invalid characters, including glob characters.
     pub fn validate_path_component(part: &str) -> PathResult<()> {
-        if try!(PathBuilder::validate_path_or_glob_component(part)) {
-            return Err(PathError::InvalidGlobCharacter(part));
+        let is_glob = PathBuilder::validate_path_or_glob_component(part)
+            .chain_err(|| "invalid path component")?;
+        if is_glob {
+            bail!("unexpected glob characters in path component");
         }
         return Ok(());
     }
@@ -132,7 +128,7 @@ impl PathBuilder {
     /// an error.
     pub fn finish_path(self) -> PathResult<Path> {
         if self.contains_glob_chars {
-            return Err(PathError::InvalidGlobCharacter("unexpected glob character"));
+            bail!("unexpected glob characters in path component");
         }
         return Ok(Path {parts: self.parts});
     }
@@ -142,7 +138,8 @@ impl PathBuilder {
         // Construct Glob part matchers from our strings.
         let mut parts = Vec::new();
         for part in self.parts {
-            parts.push(try!(GlobComponent::new(&part)));
+            parts.push(GlobComponent::new(&part)
+                .chain_err(|| "failed to create glob component")?);
         }
 
         // Check that we do not have multiple RecursiveSequence in a row.
@@ -154,7 +151,7 @@ impl PathBuilder {
                 if a.tokens[0] == GlobToken::AnyRecursiveSequence &&
                    b.tokens[0] == GlobToken::AnyRecursiveSequence
                 {
-                    return Err(PathError::UnreachablePattern("**"));
+                    bail!("unreachable ** component");
                 }
             }
         }
@@ -186,7 +183,7 @@ impl Path {
     #[cfg(test)]
     pub fn parent(&self) -> PathResult<Path> {
         if self.parts.len() == 0 {
-            return Err(PathError::EmptyComponent("already at top"));
+            bail!("already at the top");
         }
         let mut parent_parts: Vec<String> = Vec::new();
         for part in self.parts.iter().take(self.parts.len() - 1) {
@@ -198,7 +195,7 @@ impl Path {
     #[cfg(test)]
     pub fn basename(&self) -> PathResult<String> {
         match self.parts.last() {
-            None => Err(PathError::EmptyComponent("the root has no name")),
+            None => bail!("the root node has no name"),
             Some(p) => Ok(p.clone())
         }
     }
@@ -360,8 +357,7 @@ impl GlobComponent {
                 '?' => {
                     // Detect *?; this would require backtracking so disallow.
                     if let Some(&GlobToken::AnySequence) = tokens.last() {
-                        return Err(PathError::InvalidGlobCharacter(
-                            "detected *?, which would require backtracking"));
+                        bail!("detected *?, which would require backtracking");
                     }
                     tokens.push(GlobToken::AnyChar);
                     i += 1;
@@ -369,14 +365,13 @@ impl GlobComponent {
                 '*' => {
                     // Detect ** not as whole part or, ***, ****, etc.
                     if chars.len() > i + 1 && chars[i + 1] == '*' {
-                        return Err(PathError::InvalidGlobCharacter("detected **"));
+                        bail!("** must be alone in a path component");
                     }
                     tokens.push(GlobToken::AnySequence);
                     i += 1;
                 }
                 '}' => {
-                    return Err(PathError::MismatchedBraces(
-                               "found closing { without an opening"));
+                    bail!("found closing { without an opening");
                 }
                 '{' => {
                     // Search for the closing }.
@@ -384,20 +379,17 @@ impl GlobComponent {
                     let start = i;
                     while i < chars.len() && chars[i] != '}' {
                         if chars[i] == '{' {
-                            return Err(PathError::MismatchedBraces(
-                                       "found second { before closing }"));
+                            bail!("found second { before closing }");
                         }
                         i += 1;
                     }
                     if i >= chars.len() {
-                        return Err(PathError::MismatchedBraces(
-                                   "string ends before matching } was found"));
+                        bail!("string ends before matching } was found");
                     }
                     // Split into options for matching.
                     let inner: String = chars[start..i].to_owned().into_iter().collect();
                     if inner.len() == 0 {
-                        return Err(PathError::MismatchedBraces(
-                                   "the braced content is empty"));
+                        bail!("the braced content is empty");
                     }
                     let parts: Vec<String> = inner.split(',').map(|p| p.to_owned()).collect();
                     tokens.push(GlobToken::AnyOf(parts));
@@ -520,7 +512,6 @@ impl<'a> Iterator for GlobIter<'a> {
 
 #[cfg(test)]
 mod tests {
-    extern crate env_logger;
     use super::*;
 
     fn make_path(p: &str) -> Path {
@@ -529,11 +520,11 @@ mod tests {
 
     // Ensure that various examples of bad paths fail with the right error code.
     macro_rules! make_badpath_tests {
-        ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
+        ( [ $( ($name:ident, $string:expr) ),* ] ) =>
         {
             $(
                 #[test]
-                #[should_panic(expected=$expect)]
+                #[should_panic]
                 fn $name() {
                     make_path($string);
                 }
@@ -541,31 +532,31 @@ mod tests {
         }
     }
     make_badpath_tests!([
-        ("NonAbsolutePath", test_empty_path, ""),
-        ("NonAbsolutePath", test_relative_path, "foo/bar"),
-        ("EmptyComponent", test_empty_component_root, "//"),
-        ("EmptyComponent", test_empty_component_front, "//foo"),
-        ("EmptyComponent", test_empty_component_back, "/foo/"),
-        ("EmptyComponent", test_empty_component_middle, "/foo//bar"),
-        ("Dotfile", test_dotfile_self, "/foo/."),
-        ("Dotfile", test_dotfile_self_middle, "/foo/./bar"),
-        ("Dotfile", test_dotfile_parent, "/foo/.."),
-        ("Dotfile", test_dotfile_parent_middle, "/foo/../bar"),
-        ("Dotfile", test_dotfile_hidden, "/foo/.bar"),
-        ("Dotfile", test_dotfile_hidden_middle, "/foo/.bar/baz"),
-        ("InvalidWhitespaceCharacter", test_whitespace_space, "/foo/a b/baz"),
-        ("InvalidWhitespaceCharacter", test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
-        ("InvalidControlCharacter", test_whitespace_tab, "/foo/a\tb/baz"),
-        ("InvalidControlCharacter", test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
-        ("InvalidControlCharacter", test_whitespace_newline, "/foo/a\nb/baz"),
-        ("InvalidControlCharacter", test_whitespace_carriage_return, "/foo/a\rb/baz"),
-        ("InvalidCharacter", test_invalid_backslash, "/foo/a\\b/baz"),
-        ("InvalidCharacter", test_invalid_colon, "/foo/a:b/baz"),
-        ("InvalidCharacter", test_invalid_open_bracket, "/foo/a[b/baz"),
-        ("InvalidCharacter", test_invalid_close_bracket, "/foo/a]b/baz"),
-        ("InvalidCharacter", test_invalid_exclamation, "/foo/a!b/baz"),
-        ("InvalidGlobCharacter", test_invalid_star, "/foo/a*b/baz"),
-        ("InvalidGlobCharacter", test_invalid_question, "/foo/a?b/baz")
+        (test_empty_path, ""),
+        (test_relative_path, "foo/bar"),
+        (test_empty_component_root, "//"),
+        (test_empty_component_front, "//foo"),
+        (test_empty_component_back, "/foo/"),
+        (test_empty_component_middle, "/foo//bar"),
+        (test_dotfile_self, "/foo/."),
+        (test_dotfile_self_middle, "/foo/./bar"),
+        (test_dotfile_parent, "/foo/.."),
+        (test_dotfile_parent_middle, "/foo/../bar"),
+        (test_dotfile_hidden, "/foo/.bar"),
+        (test_dotfile_hidden_middle, "/foo/.bar/baz"),
+        (test_whitespace_space, "/foo/a b/baz"),
+        (test_whitespace_nbsp, "/foo/a\u{A0}b/baz"),
+        (test_whitespace_tab, "/foo/a\tb/baz"),
+        (test_whitespace_vertical_tab, "/foo/a\x0Bb/baz"),
+        (test_whitespace_newline, "/foo/a\nb/baz"),
+        (test_whitespace_carriage_return, "/foo/a\rb/baz"),
+        (test_invalid_backslash, "/foo/a\\b/baz"),
+        (test_invalid_colon, "/foo/a:b/baz"),
+        (test_invalid_open_bracket, "/foo/a[b/baz"),
+        (test_invalid_close_bracket, "/foo/a]b/baz"),
+        (test_invalid_exclamation, "/foo/a!b/baz"),
+        (test_invalid_star, "/foo/a*b/baz"),
+        (test_invalid_question, "/foo/a?b/baz")
     ]);
 
     fn make_glob(p: &str) -> Glob {
@@ -574,11 +565,11 @@ mod tests {
 
     // Ensure that various examples of bad glob syntax fails with the right error.
     macro_rules! make_badglob_tests {
-        ( [ $( ($expect:expr, $name:ident, $string:expr) ),* ] ) =>
+        ( [ $( ($name:ident, $string:expr) ),* ] ) =>
         {
             $(
                 #[test]
-                #[should_panic(expected=$expect)]
+                #[should_panic]
                 fn $name() {
                     make_glob($string);
                 }
@@ -586,22 +577,22 @@ mod tests {
         }
     }
     make_badglob_tests!([
-        ("UnreachablePattern", test_unreachable_sole, "/**/**"),
-        ("UnreachablePattern", test_unreachable_end, "/a/**/**"),
-        ("UnreachablePattern", test_unreachable_prefix, "/**/**/b"),
-        ("UnreachablePattern", test_unreachable_middle, "/a/**/**/b"),
-        ("InvalidGlobCharacter", test_invalid_multistar2_start, "/a/**foo/b"),
-        ("InvalidGlobCharacter", test_invalid_multistar2_end, "/a/foo**/b"),
-        ("InvalidGlobCharacter", test_invalid_multistar2_middle, "/a/fo**oo/b"),
-        ("InvalidGlobCharacter", test_invalid_multistar3, "/a/***/b"),
-        ("InvalidGlobCharacter", test_invalid_multistar4, "/a/****/b"),
-        ("InvalidGlobCharacter", test_invalid_backtracking1, "/a/foo*?/b"),
-        ("InvalidGlobCharacter", test_invalid_backtracking2, "/a/*?foo/b"),
-        ("MismatchedBraces", test_mismatched_empty_braces, "/foo/{}/baz"),
-        ("MismatchedBraces", test_mismatched_no_closing, "/a/{foo,bar,baz"),
-        ("MismatchedBraces", test_mismatched_no_opening1, "/a/foo,bar,baz}"),
-        ("MismatchedBraces", test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
-        ("MismatchedBraces", test_mismatched_no_recursion, "/a/{{}")
+        (test_unreachable_sole, "/**/**"),
+        (test_unreachable_end, "/a/**/**"),
+        (test_unreachable_prefix, "/**/**/b"),
+        (test_unreachable_middle, "/a/**/**/b"),
+        (test_invalid_multistar2_start, "/a/**foo/b"),
+        (test_invalid_multistar2_end, "/a/foo**/b"),
+        (test_invalid_multistar2_middle, "/a/fo**oo/b"),
+        (test_invalid_multistar3, "/a/***/b"),
+        (test_invalid_multistar4, "/a/****/b"),
+        (test_invalid_backtracking1, "/a/foo*?/b"),
+        (test_invalid_backtracking2, "/a/*?foo/b"),
+        (test_mismatched_empty_braces, "/foo/{}/baz"),
+        (test_mismatched_no_closing, "/a/{foo,bar,baz"),
+        (test_mismatched_no_opening1, "/a/foo,bar,baz}"),
+        (test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
+        (test_mismatched_no_recursion, "/a/{{}")
     ]);
 
     // Generic glob construction test to make sure that sane combinations don't crash.
@@ -681,4 +672,14 @@ mod tests {
                                             "/Xa/bar", "/Xb/bar",
                                             "/foo/Xa", "/bar/Xb"])
     ]);
+
+    #[test]
+    fn test_path_manipulation() {
+        let root = Path::root();
+        assert_eq!(root.to_str(), "/");
+        let abc = root.slash("a").unwrap().slash("b").unwrap().slash("c").unwrap();
+        assert_eq!(abc.to_str(), "/a/b/c");
+        assert_eq!(abc.basename().unwrap(), "c");
+        assert_eq!(abc.parent().unwrap().to_str(), "/a/b")
+    }
 }

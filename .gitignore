@@ -6,3 +6,4 @@ __pycache__
 oh_*/build/
 oh_*/node_modules/
 log/
+Cargo.lock

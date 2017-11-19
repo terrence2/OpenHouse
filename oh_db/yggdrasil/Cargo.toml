@@ -1,0 +1,11 @@
+# This Source Code Form is subject to the terms of the GNU General Public
+# License, version 3. If a copy of the GPL was not distributed with this file,
+# You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+[package]
+name = "yggdrasil"
+version = "0.1.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+error-chain = "0.11"
+ketos = "=0.10"

@@ -8,11 +8,10 @@ extern crate ketos;
 #[macro_use] extern crate log;
 extern crate rand;
 extern crate ws;
+extern crate yggdrasil;
 
 #[macro_use] mod utility;
-mod path;
 mod subscriptions;
-mod tree;
 
 pub mod messages_capnp {
     include!(concat!(env!("OUT_DIR"), "/messages_capnp.rs"));
@@ -25,8 +24,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
-use tree::{Tree, TreeChanges};
-use path::PathBuilder;
+use yggdrasil::{Tree, TreeChanges};
+use yggdrasil::PathBuilder;
 use subscriptions::Watches;
 
 
