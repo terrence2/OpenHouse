@@ -76,7 +76,7 @@ fn run_server(port: u16) -> ws::Result<()> {
     settings.masking_strict = true;
     settings.key_strict = true;
 
-    let template = try!(ws::Builder::new().with_settings(settings).build(
+    let template = ws::Builder::new().with_settings(settings).build(
         move |sock| {
             let conn = Connection {
                 sender: Rc::new(RefCell::new(sock)),
@@ -88,10 +88,10 @@ fn run_server(port: u16) -> ws::Result<()> {
             );
             return conn;
         },
-    ));
+    )?;
 
     info!("Starting server on 127.0.0.1:{}", port);
-    try!(template.listen(("127.0.0.1", port)));
+    template.listen(("127.0.0.1", port))?;
     info!("SERVER: listen ended");
     return Ok(());
 }
@@ -177,7 +177,7 @@ impl<'e> Connection<'e> {
         msg: &ping_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let data = try!(msg.get_data());
+        let data = msg.get_data()?;
         info!("handling Ping -> {}", data);
         let mut pong = response.init_ping();
         pong.set_pong(data);
@@ -189,8 +189,8 @@ impl<'e> Connection<'e> {
         msg: &create_file_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
-        let name = try!(msg.get_name());
+        let parent_path = PathBuilder::new(msg.get_parent_path()?)?.finish_path()?;
+        let name = msg.get_name()?;
         info!(
             "handling CreateFile -> parent: {},  name: {}",
             parent_path,
@@ -199,8 +199,8 @@ impl<'e> Connection<'e> {
         let mut env = self.env.borrow_mut();
         {
             let db = &mut env.db;
-            let parent = try!(db.lookup_directory(&parent_path));
-            try!(parent.add_file(&name));
+            let parent = db.lookup_directory(&parent_path)?;
+            parent.add_file(&name)?;
         }
         response.init_ok();
         return Ok(());
@@ -211,13 +211,13 @@ impl<'e> Connection<'e> {
         msg: &create_formula_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
-        let name = try!(msg.get_name());
-        let formula = try!(msg.get_formula());
+        let parent_path = PathBuilder::new(msg.get_parent_path()?)?.finish_path()?;
+        let name = msg.get_name()?;
+        let formula = msg.get_formula()?;
         let mut inputs = HashMap::new();
-        for input in try!(msg.get_inputs()).iter() {
-            let input_path = try!(try!(PathBuilder::new(try!(input.get_path()))).finish_path());
-            inputs.insert(try!(input.get_name()).to_owned(), input_path);
+        for input in msg.get_inputs()?.iter() {
+            let input_path = PathBuilder::new(input.get_path()?)?.finish_path()?;
+            inputs.insert(input.get_name()?.to_owned(), input_path);
         }
         info!(
             "handling CreateFormula: parent: {}, name: {}, inputs: {:?}, formula: {}",
@@ -230,7 +230,7 @@ impl<'e> Connection<'e> {
             let mut env = self.env.borrow_mut();
             {
                 let db = &mut env.db;
-                try!(db.create_formula(&parent_path, &name, &inputs, &formula));
+                db.create_formula(&parent_path, &name, &inputs, &formula)?;
             }
         }
         response.init_ok();
@@ -242,8 +242,8 @@ impl<'e> Connection<'e> {
         msg: &create_directory_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
-        let name = try!(msg.get_name());
+        let parent_path = PathBuilder::new(msg.get_parent_path()?)?.finish_path()?;
+        let name = msg.get_name()?;
         info!(
             "handling Createdirectory -> parent: {}, name: {}",
             parent_path,
@@ -253,8 +253,8 @@ impl<'e> Connection<'e> {
             let mut env = self.env.borrow_mut();
             {
                 let db = &mut env.db;
-                let parent = try!(db.lookup_directory(&parent_path));
-                try!(parent.add_directory(&name));
+                let parent = db.lookup_directory(&parent_path)?;
+                parent.add_directory(&name)?;
             }
         }
         response.init_ok();
@@ -266,8 +266,8 @@ impl<'e> Connection<'e> {
         msg: &remove_node_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let parent_path = try!(try!(PathBuilder::new(try!(msg.get_parent_path()))).finish_path());
-        let name = try!(msg.get_name());
+        let parent_path = PathBuilder::new(msg.get_parent_path()?)?.finish_path()?;
+        let name = msg.get_name()?;
         info!(
             "handling RemoveNode-> parent: {}, name: {}",
             parent_path,
@@ -277,8 +277,8 @@ impl<'e> Connection<'e> {
             let mut env = self.env.borrow_mut();
             {
                 let db = &mut env.db;
-                let parent = try!(db.lookup_directory(&parent_path));
-                try!(parent.remove_child(&name));
+                let parent = db.lookup_directory(&parent_path)?;
+                parent.remove_child(&name)?;
             }
         }
         response.init_ok();
@@ -290,10 +290,10 @@ impl<'e> Connection<'e> {
         msg: &list_directory_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
+        let path = PathBuilder::new(msg.get_path()?)?.finish_path()?;
         info!("handling ListDirectory -> path: {}", path);
         let db = &mut self.env.borrow_mut().db;
-        let directory = try!(db.lookup_directory(&path));
+        let directory = db.lookup_directory(&path)?;
         let children = directory.list_directory();
 
         // Build the response.
@@ -310,12 +310,12 @@ impl<'e> Connection<'e> {
         msg: &get_file_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
+        let path = PathBuilder::new(msg.get_path()?)?.finish_path()?;
         info!("handling GetFile -> path: {}", path);
         let mut cat_response = response.init_get_file();
         {
             let db = &mut self.env.borrow_mut().db;
-            let data = try!(db.get_data_at(&path));
+            let data = db.get_data_at(&path)?;
             cat_response.set_data(&data);
         }
         return Ok(());
@@ -326,12 +326,12 @@ impl<'e> Connection<'e> {
         msg: &get_matching_files_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
+        let glob = PathBuilder::new(msg.get_glob()?)?.finish_glob()?;
         info!("handling GetMatchingFiles -> glob: {}", glob);
         let cat_response = response.init_get_matching_files();
         {
             let db = &mut self.env.borrow_mut().db;
-            let matches = try!(db.get_data_matching(&glob));
+            let matches = db.get_data_matching(&glob)?;
             let mut cat_data = cat_response.init_data(matches.len() as u32);
             for (i, &ref match_pair) in matches.iter().enumerate() {
                 cat_data.borrow().get(i as u32).set_path(
@@ -348,13 +348,13 @@ impl<'e> Connection<'e> {
         msg: &set_file_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let path = try!(try!(PathBuilder::new(try!(msg.get_path()))).finish_path());
-        let data = try!(msg.get_data());
+        let path = PathBuilder::new(msg.get_path()?)?.finish_path()?;
+        let data = msg.get_data()?;
         info!("handling SetFile -> path: {}, data: {}", path, data);
         let changes;
         {
             let db = &mut self.env.borrow_mut().db;
-            changes = try!(db.set_data_at(&path, &data));
+            changes = db.set_data_at(&path, &data)?;
         }
         self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
@@ -366,14 +366,14 @@ impl<'e> Connection<'e> {
         msg: &set_matching_files_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
-        let data = try!(msg.get_data());
+        let glob = PathBuilder::new(msg.get_glob()?)?.finish_glob()?;
+        let data = msg.get_data()?;
         info!(
             "handling SetMatchingFiles -> glob: {}, data: {}",
             glob,
             data
         );
-        let changes = try!(self.env.borrow_mut().db.set_data_matching(&glob, data));
+        let changes = self.env.borrow_mut().db.set_data_matching(&glob, data)?;
         self.env.borrow_mut().notify_subscriptions_glob(&changes);
         response.init_ok();
         return Ok(());
@@ -384,7 +384,7 @@ impl<'e> Connection<'e> {
         msg: &watch_matching_files_request::Reader,
         response: server_response::Builder,
     ) -> Result<(), Box<Error>> {
-        let glob = try!(try!(PathBuilder::new(try!(msg.get_glob()))).finish_glob());
+        let glob = PathBuilder::new(msg.get_glob()?)?.finish_glob()?;
         info!("handling WatchMatchingFiles -> glob: {}", glob);
         let mut env = self.env.borrow_mut();
         env.last_subscription_id += 1;
@@ -407,7 +407,7 @@ impl<'e> Connection<'e> {
         let sid = SubscriptionId::from_u64(msg.get_subscription_id());
         {
             let mut env = self.env.borrow_mut();
-            try!(env.watches.remove_watch(&sid));
+            env.watches.remove_watch(&sid)?;
         }
         response.init_ok();
         return Ok(());
@@ -430,7 +430,7 @@ impl<'e> Connection<'e> {
             }
         }
         let mut buf = Vec::new();
-        try!(capnp::serialize::write_message(&mut buf, &builder));
+        capnp::serialize::write_message(&mut buf, &builder)?;
         return self.sender.borrow_mut().send(buf.as_slice());
     }
 }
@@ -474,7 +474,7 @@ macro_rules! handle_client_request {
                     };
 
                     let mut buf = Vec::new();
-                    try!(capnp::serialize::write_message(&mut buf, &builder));
+                    capnp::serialize::write_message(&mut buf, &builder)?;
                     return $conn.sender.borrow_mut().send(buf.as_slice());
                 }
             ),*
