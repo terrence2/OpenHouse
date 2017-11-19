@@ -3,7 +3,6 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use path::{PathBuilder, Glob, Path, PathIter};
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use ketos::{Builder, FromValue, Interpreter, Name};
 
 mod errors {
@@ -57,7 +56,7 @@ mod errors {
         }
     }
 }
-use ::tree::errors::{TreeError, TreeErrorKind, TreeResult};
+use ::tree::errors::{TreeErrorKind, TreeResult};
 
 pub type TreeChanges = HashMap<String, Vec<Path>>;
 
@@ -77,7 +76,7 @@ impl Node {
             None => return Ok(self)
         };
         match self {
-            &Node::Directory(ref d) => return try!(d.lookup(name)).lookup(parts),
+            &Node::Directory(ref d) => return d.lookup(name)?.lookup(parts),
             _ => {}
         }
         return match parts.next() {
@@ -95,7 +94,7 @@ impl Node {
         };
         match self {
             &mut Node::Directory(ref mut d) =>
-                return try!(d.lookup_mut(name)).lookup_mut(parts),
+                return d.lookup_mut(name)?.lookup_mut(parts),
             _ => {}
         }
         return match parts.next() {
@@ -112,8 +111,8 @@ impl Node {
         match self {
             &Node::Directory(ref d) => {
                 for (child_name, child_node) in d.children.iter() {
-                    let child_path = try!(own_path.slash(child_name));
-                    let matching = try!(child_node.find(&child_path, glob));
+                    let child_path = own_path.slash(child_name)?;
+                    let matching = child_node.find(&child_path, glob)?;
                     acc.extend(matching);
                 }
             },
@@ -139,8 +138,8 @@ impl Node {
         match self {
             &mut Node::Directory(ref mut d) => {
                 for (child_name, child_node) in d.children.iter_mut() {
-                    let child_path = try!(own_path.slash(child_name));
-                    let matching = try!(child_node.find_mut(&child_path, glob));
+                    let child_path = own_path.slash(child_name)?;
+                    let matching = child_node.find_mut(&child_path, glob)?;
                     acc.extend(matching);
                 }
             },
@@ -246,7 +245,7 @@ impl DirectoryData {
 
     // Internal helper for add_foo.
     fn add_child(&mut self, name: &str, node: Node) -> TreeResult<()> {
-        try!(PathBuilder::validate_path_component(name));
+        PathBuilder::validate_path_component(name)?;
         if self.children.contains_key(name) {
             return Err(TreeErrorKind::NodeAlreadyExists(name.into()).into());
         }
@@ -267,7 +266,7 @@ impl DirectoryData {
 
     /// Remove the given name from the tree.
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
-        try!(PathBuilder::validate_path_component(name));
+        PathBuilder::validate_path_component(name)?;
         {
             let child = self.children.get(name).ok_or(
                              TreeErrorKind::NoSuchNode(name.into()))?;
@@ -312,7 +311,7 @@ impl Tree {
     pub fn lookup_directory(&mut self, path: &Path)
         -> TreeResult<&mut DirectoryData>
     {
-        let node = try!(self.root.lookup_mut(&mut path.iter()));
+        let node = self.root.lookup_mut(&mut path.iter())?;
         return match node {
             &mut Node::File(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
             &mut Node::Formula(_) => Err(TreeErrorKind::NotDirectory(path.clone()).into()),
@@ -338,15 +337,15 @@ impl Tree {
         }
 
         // Add the formula to the tree.
-        let parent = try!(self.lookup_directory(parent));
-        let formula = Node::Formula(try!(FormulaData::new(inputs, formula)));
+        let parent = self.lookup_directory(parent)?;
+        let formula = Node::Formula(FormulaData::new(inputs, formula)?);
         return parent.add_child(name, formula);
     }
 
     /// Returns the data at the given node.
     pub fn get_data_at(&self, path: &Path) -> TreeResult<String>
     {
-        let node = try!(self.root.lookup(&mut path.iter()));
+        let node = self.root.lookup(&mut path.iter())?;
         return match node {
             &Node::File(ref f) => Ok(f.get_data()),
             &Node::Formula(ref f) => f.get_data(self),
@@ -359,7 +358,7 @@ impl Tree {
         -> TreeResult<TreeChanges>
     {
         {
-            let node = try!(self.root.lookup_mut(&mut path.iter()));
+            let node = self.root.lookup_mut(&mut path.iter())?;
             match node {
                 &mut Node::File(ref mut f) => f.set_data(new_data),
                 _ => bail!(TreeErrorKind::NotFile(path.clone()))
@@ -372,12 +371,12 @@ impl Tree {
 
     /// Get all nodes that match the given glob and return their data.
     pub fn get_data_matching(&self, glob: &Glob) -> TreeResult<Vec<(Path, String)>> {
-        let matching = try!(self.root.find(&Path::root(), glob));
+        let matching = self.root.find(&Path::root(), glob)?;
         let mut pairs = Vec::new();
         for (path, node) in matching {
             match node {
                 &Node::File(ref f) => pairs.push((path, f.get_data())),
-                &Node::Formula(ref f) => pairs.push((path, try!(f.get_data(self)))),
+                &Node::Formula(ref f) => pairs.push((path, f.get_data(self)?)),
                 &Node::Directory(_) => bail!(TreeErrorKind::NotFile(path.clone()))
             }
         }
@@ -390,7 +389,7 @@ impl Tree {
     {
         let mut paths = HashSet::new();
         {
-            let matching = try!(self.root.find_mut(&Path::root(), glob));
+            let matching = self.root.find_mut(&Path::root(), glob)?;
             for (path, node) in matching {
                 match node {
                     &mut Node::File(ref mut f) => f.set_data(new_data),
@@ -446,7 +445,7 @@ impl Tree {
         let mut changes = HashMap::new();
         changes.insert(new_data.to_owned(), paths.to_owned().into_iter().collect::<Vec<_>>());
         for path in &affected {
-            let data = try!(self.get_data_at(path));
+            let data = self.get_data_at(path)?;
             if !changes.contains_key(&data) {
                 changes.insert(data.clone(), Vec::new());
             }

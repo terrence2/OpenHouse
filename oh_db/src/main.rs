@@ -132,7 +132,7 @@ impl<'e> Environment<'e> {
     {
         let matching = self.watches.filter_changes_for_each_watch(changes);
         for (matching_changes, matching_conn, matching_sid) in  matching {
-            let mut conn = self.connections.get_mut(&matching_conn).unwrap();
+            let conn = self.connections.get_mut(&matching_conn).unwrap();
             conn.on_change(&matching_sid, &matching_changes).ok();
         }
     }
