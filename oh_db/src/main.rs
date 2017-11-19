@@ -520,7 +520,7 @@ impl<'e> ws::Handler for Connection<'e> {
                 (SetMatchingFiles | handle_set_matching_files),
                 (ListDirectory | handle_list_directory),
                 (WatchMatchingFiles | handle_watch_matching_files),
-                (Unwatch | handle_unwatch),
+                (Unwatch | handle_unwatch)
             ]
         );
         return Ok(());
