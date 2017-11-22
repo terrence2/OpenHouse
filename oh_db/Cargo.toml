@@ -10,6 +10,7 @@ argparse = "0.2"
 env_logger = "0.3.5"
 log = "0.3"
 rand = "0.3"
+error-chain = "0.11"
 capnp = "=0.8.10"
 ketos = "=0.10"
 

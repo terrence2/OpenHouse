@@ -3,16 +3,14 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use yggdrasil::Glob;
 use yggdrasil::TreeChanges;
-use std::error::Error;
-use std::fmt;
 use ws::util::Token;
 use SubscriptionId;
 use std::collections::HashMap;
 
-make_error_system!(
-    SubscriptionErrorKind => SubscriptionError => SubscriptionResult {
-        NoSuchSubscription
-    });
+pub mod errors {
+    error_chain!{}
+}
+use subscriptions::errors::Result;
 
 #[derive(Debug, Clone)]
 struct Watch {
@@ -43,14 +41,14 @@ impl Watches {
         });
     }
 
-    pub fn remove_watch(&mut self, sid: &SubscriptionId) -> SubscriptionResult<()> {
+    pub fn remove_watch(&mut self, sid: &SubscriptionId) -> Result<()> {
         let next_watches: Vec<Watch> = self.watches
             .iter()
             .filter(|w| w.sid != *sid)
             .map(|w| w.clone())
             .collect::<Vec<_>>();
         if next_watches.len() == self.watches.len() {
-            return Err(SubscriptionError::NoSuchSubscription(&format!("{}", *sid)));
+            bail!(format!("no such subscription: {}", *sid));
         }
         self.watches = next_watches;
         return Ok(());

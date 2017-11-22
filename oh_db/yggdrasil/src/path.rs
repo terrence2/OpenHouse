@@ -168,6 +168,11 @@ pub struct Path {
 }
 
 impl Path {
+    pub fn parse(raw: &str) -> PathResult<Self> {
+        let builder = PathBuilder::new(raw).chain_err(|| "pathbuilder new")?;
+        return Ok(builder.finish_path().chain_err(|| "finish path")?);
+    }
+
     // Build a new String containing the canonical representation of this path.
     pub fn to_str(&self) -> String {
         return "/".to_owned() + &self.parts.join("/");
@@ -246,6 +251,11 @@ pub struct Glob {
 }
 
 impl Glob {
+    pub fn parse(raw: &str) -> PathResult<Self> {
+        let builder = PathBuilder::new(raw).chain_err(|| "pathbuilder new")?;
+        return Ok(builder.finish_glob().chain_err(|| "finish glob")?);
+    }
+
     /// Produce the components of a glob, one at a time.
     pub fn iter(&self) -> GlobIter {
         GlobIter {
