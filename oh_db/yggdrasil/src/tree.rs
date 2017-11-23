@@ -74,13 +74,9 @@ impl Node {
             Some(name) => name,
             None => return Ok(self),
         };
-        match self {
-            &Node::Directory(ref d) => return d.lookup(name)?.lookup(parts),
-            _ => {}
-        }
-        return match parts.next() {
-            Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
-            None => Ok(self),
+        return match self {
+            &Node::Directory(ref d) => d.lookup(name)?.lookup(parts),
+            _ => Err(TreeErrorKind::NoSuchNode(name.into()).into())
         };
     }
 
@@ -90,13 +86,9 @@ impl Node {
             Some(name) => name,
             None => return Ok(self),
         };
-        match self {
-            &mut Node::Directory(ref mut d) => return d.lookup_mut(name)?.lookup_mut(parts),
-            _ => {}
-        }
-        return match parts.next() {
-            Some(part) => Err(TreeErrorKind::NoSuchNode(part.into()).into()),
-            None => Ok(self),
+        return match self {
+            &mut Node::Directory(ref mut d) => d.lookup_mut(name)?.lookup_mut(parts),
+            _ => Err(TreeErrorKind::NoSuchNode(name.into()).into())
         };
     }
 
