@@ -565,7 +565,7 @@ mod tests {
                 "/?",
                 ["/d"],
                 ["/a", "/b", "/c", "/aa", "/bb", "/cc", "/d/a"],
-                ["/a", "/b", "/c"],
+                ["/a", "/b", "/c"]
             ),
             (
                 test_match_one_char_subdir,
@@ -582,9 +582,9 @@ mod tests {
                     "/f/a",
                     "/f/X",
                     "/f/g/a",
-                    "/f/g/X",
+                    "/f/g/X"
                 ],
-                ["/d/a", "/e/a", "/f/a"],
+                ["/d/a", "/e/a", "/f/a"]
             ),
             (
                 test_match_star,
@@ -599,9 +599,9 @@ mod tests {
                     "/cc",
                     "/d/a",
                     "/d/b",
-                    "/d/c",
+                    "/d/c"
                 ],
-                ["/a", "/b", "/c", "/aa", "/bb", "/cc"],
+                ["/a", "/b", "/c", "/aa", "/bb", "/cc"]
             ),
             (
                 test_match_complex,
@@ -621,7 +621,7 @@ mod tests {
                     "/room/b/hue-light/b-desk",
                     "/room/b/hue-light/b-table",
                     "/room/b/hue-livingcolor/b-desk",
-                    "/room/b/hue-livingcolor/b-table",
+                    "/room/b/hue-livingcolor/b-table"
                 ],
                 [
                     "/room/a/hue-light/a-desk/color",
@@ -631,7 +631,7 @@ mod tests {
                     "/room/b/hue-light/b-desk/color",
                     "/room/b/hue-light/b-table/color",
                     "/room/b/hue-livingcolor/b-desk/color",
-                    "/room/b/hue-livingcolor/b-table/color",
+                    "/room/b/hue-livingcolor/b-table/color"
                 ],
                 [
                     "/room/a/hue-light/a-desk/color",
@@ -641,9 +641,9 @@ mod tests {
                     "/room/b/hue-light/b-desk/color",
                     "/room/b/hue-light/b-table/color",
                     "/room/b/hue-livingcolor/b-desk/color",
-                    "/room/b/hue-livingcolor/b-table/color",
-                ],
-            ),
+                    "/room/b/hue-livingcolor/b-table/color"
+                ]
+            )
         ]
     );
 }

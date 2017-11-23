@@ -584,7 +584,7 @@ mod tests {
             (test_invalid_close_bracket, "/foo/a]b/baz"),
             (test_invalid_exclamation, "/foo/a!b/baz"),
             (test_invalid_star, "/foo/a*b/baz"),
-            (test_invalid_question, "/foo/a?b/baz"),
+            (test_invalid_question, "/foo/a?b/baz")
         ]
     );
 
@@ -622,7 +622,7 @@ mod tests {
             (test_mismatched_no_closing, "/a/{foo,bar,baz"),
             (test_mismatched_no_opening1, "/a/foo,bar,baz}"),
             (test_mismatched_no_opening2, "/a/{foo,bar,baz}}"),
-            (test_mismatched_no_recursion, "/a/{{}"),
+            (test_mismatched_no_recursion, "/a/{{}")
         ]
     );
 
@@ -671,38 +671,38 @@ mod tests {
                 test_q_middle,
                 "/a?b",
                 ["/aXb", "/a.b"],
-                ["/XaXb", "/aXXb", "/aXbX"],
+                ["/XaXb", "/aXXb", "/aXbX"]
             ),
             (
                 test_s_start,
                 "/*a",
                 ["/a", "/Xa", "/XXa", "/XXXXXXXa", "/ABCDEFa"],
-                ["/aX", "/XXaX"],
+                ["/aX", "/XXaX"]
             ),
             (
                 test_s_end,
                 "/a*",
                 ["/a", "/aX", "/aXXXXX", "/aABCDEF"],
-                ["/Xa", "/XaXXXXX", "/XaABCDEF"],
+                ["/Xa", "/XaXXXXX", "/XaABCDEF"]
             ),
             (
                 test_s_middle,
                 "/a*b",
                 ["/ab", "/aXb", "/aXXXXXb", "/aABCDEFb"],
-                ["/Xab", "/abX", "/XaXb", "/aXbX"],
+                ["/Xab", "/abX", "/XaXb", "/aXbX"]
             ),
             (test_ss, "/**", ["/", "/X", "/X/Y", "/X/Y/Z"], []),
             (
                 test_ss_start,
                 "/**/foo",
                 ["/foo", "/X/foo", "/X/Y/foo", "/X/Y/Z/foo"],
-                ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"],
+                ["/foo/X", "/X/foo/X", "/X/Y/Z/bar"]
             ),
             (
                 test_ss_end,
                 "/foo/**",
                 ["/foo", "/foo/X", "/foo/X/Y", "/foo/X/Y/Z"],
-                ["/X/foo", "/X/foo/X", "/X/foo/X/Y"],
+                ["/X/foo", "/X/foo/X", "/X/foo/X/Y"]
             ),
             (
                 test_ss_middle,
@@ -712,8 +712,8 @@ mod tests {
                     "/X/foo/bar",
                     "/foo/bar/X",
                     "/X/foo/X/Y/bar",
-                    "/foo/X/Y/bar/Z",
-                ],
+                    "/foo/X/Y/bar/Z"
+                ]
             ),
             (
                 test_any_seq0,
@@ -732,8 +732,8 @@ mod tests {
                     "/a/bar",
                     "/b/bar",
                     "/foo/a",
-                    "/foo/b",
-                ],
+                    "/foo/b"
+                ]
             ),
             (
                 test_any_seq1,
@@ -753,8 +753,8 @@ mod tests {
                     "/Xa/bar",
                     "/Xb/bar",
                     "/foo/Xa",
-                    "/bar/Xb",
-                ],
+                    "/bar/Xb"
+                ]
             ),
             (
                 test_any_seq2,
@@ -774,9 +774,9 @@ mod tests {
                     "/Xa/bar",
                     "/Xb/bar",
                     "/foo/Xa",
-                    "/bar/Xb",
-                ],
-            ),
+                    "/bar/Xb"
+                ]
+            )
         ]
     );
 
