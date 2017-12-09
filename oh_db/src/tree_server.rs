@@ -98,6 +98,9 @@ pub struct TreeServer {
     gen_server: GenServer<CastRequest, CallRequest, Response>
 }
 
+unsafe impl Send for TreeServer {}
+unsafe impl Sync for TreeServer {}
+
 impl TreeServer {
     pub fn start_link() -> Result<TreeServer> {
         Ok(TreeServer {gen_server: Worker::start_link().chain_err(|| "start_link wrapper")?})
