@@ -147,10 +147,10 @@ impl FileData {
     fn new() -> FileData {
         FileData { data: "".to_owned() }
     }
-    fn set_data(&mut self, new_data: &str) {
+    pub fn set_data(&mut self, new_data: &str) {
         self.data = new_data.to_owned();
     }
-    fn get_data(&self) -> String {
+    pub fn get_data(&self) -> String {
         return self.data.clone();
     }
 }
@@ -163,7 +163,7 @@ pub struct FormulaData {
     interp: Interpreter,
 }
 impl FormulaData {
-    fn new(raw_inputs: &HashMap<String, Path>, formula: &str) -> TreeResult<FormulaData> {
+    pub fn new(raw_inputs: &HashMap<String, Path>, formula: &str) -> TreeResult<FormulaData> {
         let builder = Builder::new().name("__formula__");
         let interp = builder.finish();
         let mut inputs = HashMap::<Name, Path>::new();
@@ -248,13 +248,28 @@ impl DirectoryData {
     }
 
     /// Returns the directory that was just created.
-    pub fn add_directory(&mut self, name: &str) -> TreeResult<()> {
-        return self.add_child(name, Node::Directory(DirectoryData::new()));
+    pub fn add_directory(&mut self, name: &str) -> TreeResult<&mut DirectoryData> {
+        self.add_child(name, Node::Directory(DirectoryData::new()))?;
+        return match self.lookup_mut(name)? {
+            &mut Node::Directory(ref mut dir) => Ok(dir),
+            &mut Node::Formula(_) => bail!("expected directory node"),
+            &mut Node::File(_) => bail!("expected directory node")
+        };
     }
 
     /// Adds a file to this directory at |name|.
-    pub fn add_file(&mut self, name: &str) -> TreeResult<()> {
-        return self.add_child(name, Node::File(FileData::new()));
+    pub fn add_file(&mut self, name: &str) -> TreeResult<&mut FileData> {
+        self.add_child(name, Node::File(FileData::new()))?;
+        return match self.lookup_mut(name)? {
+            &mut Node::File(ref mut file) => Ok(file),
+            &mut Node::Formula(_) => bail!("expected file node"),
+            &mut Node::Directory(_) => bail!("expected file node")
+        };
+    }
+
+    /// Add an existing formula at the given name.
+    pub fn graft_formula(&mut self, name: &str, formula: FormulaData) -> TreeResult<()> {
+        self.add_child(name, Node::Formula(formula))
     }
 
     /// Remove the given name from the tree.
@@ -279,11 +294,7 @@ impl DirectoryData {
     }
 
     pub fn list_directory(&mut self) -> Vec<String> {
-        let mut out = Vec::new();
-        for name in self.children.keys() {
-            out.push(name.clone());
-        }
-        return out;
+        self.children.keys().map(|name| { name.clone() }).collect::<Vec<String>>()
     }
 }
 

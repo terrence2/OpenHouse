@@ -6,12 +6,12 @@ extern crate capnp;
 extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
-extern crate ketos;
 #[macro_use]
 extern crate log;
 extern crate otp;
 extern crate rand;
 extern crate ws;
+extern crate yaml_rust;
 extern crate yggdrasil;
 
 #[macro_use]
@@ -47,6 +47,7 @@ fn run() -> Result<()> {
     let mut log_level = "DEBUG".to_string();
     let mut log_target = "events.log".to_string();
     let mut port = 8182;
+    let mut seed_file = "".to_string();
     {
         let mut ap = argparse::ArgumentParser::new();
         ap.set_description("The OpenHouse central database.");
@@ -65,6 +66,11 @@ fn run() -> Result<()> {
             argparse::Store,
             "The port to listen on. (default 8182)",
         );
+        ap.refer(&mut seed_file).add_option(
+            &["-s", "--seed"],
+            argparse::Store,
+            "A yaml file to load into the database. (default none)",
+        );
         ap.parse_args_or_exit();
     }
 
@@ -73,6 +79,9 @@ fn run() -> Result<()> {
     info!("oh_db Version {}", env!("CARGO_PKG_VERSION"));
 
     let db_server = Arc::new(TreeServer::start_link().chain_err(|| "start tree server")?);
+    if seed_file.bytes().len() > 0 {
+        db_server.seed(seed_file).chain_err(|| "seeding db")?;
+    }
     let proto_handle = ProtoServer::run_server(port, db_server).chain_err(|| "start proto server")?;
     match proto_handle.join() {
         Ok(_) => (),

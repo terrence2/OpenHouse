@@ -71,9 +71,10 @@ class OpenHouseDatabase:
         self.name = 'oh_db'
         self.command = [
             './oh_db/target/release/oh_db',
-            '-l', 'debug' if args.verbosity >= 3 else 'info',
-            '-L', args.logdir + '/oh_db.log',
-            '-b', str(args.db_port),
+            '--log-level', 'debug' if args.verbosity >= 3 else 'info',
+            '--log-target', args.logdir + '/oh_db.log',
+            '--bind', str(args.db_port),
+            '--seed', str(args.config),
         ]
         self.show_command = args.verbosity >= 1
 
@@ -220,7 +221,6 @@ def main():
     processes = [
         GenericProcess('compile-oh_db', 'cargo build --release', Path('./oh_db'), args),
         OpenHouseDatabase(args),
-        OpenHouseProcess('oh_populate', ['--config', args.config], args),
     ] + [OpenHouseDaemon('oh_' + name, args) for name in Daemons]
 
     managed = loop.run_until_complete(spawn(processes))

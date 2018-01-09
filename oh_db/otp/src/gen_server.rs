@@ -1,7 +1,7 @@
 use std::thread;
 use std::thread::JoinHandle;
 use std::marker::Send;
-use std::sync::{Arc, Barrier, Condvar, Mutex};
+use std::sync::{Arc, Barrier, Mutex};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub mod errors {

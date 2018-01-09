@@ -9,7 +9,7 @@ mod path;
 mod tree;
 
 pub use path::{Glob, Path, PathBuilder};
-pub use tree::{Tree, TreeChanges};
+pub use tree::{DirectoryData, FileData, FormulaData, Tree, TreeChanges};
 
 mod errors {
     error_chain!{}

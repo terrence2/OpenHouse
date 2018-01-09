@@ -1,8 +1,11 @@
 use otp::gen_server::{GenServer, GenServerWorker};
 use otp::gen_server::errors::{Result as GenServerResult, ResultExt};
 use std::collections::HashMap;
-use yggdrasil::{Tree, TreeChanges};
-use yggdrasil::{Glob, Path};
+use std::fs::File;
+use std::io::prelude::*;
+use yaml_rust::{Yaml, YamlLoader};
+use yggdrasil::{DirectoryData, FormulaData, Tree, TreeChanges};
+use yggdrasil::{Glob, Path, PathBuilder};
 
 pub mod errors {
     error_chain!{
@@ -26,6 +29,7 @@ pub enum CallRequest {
     GetMatchingFiles(Glob),
     SetFile(Path, String),
     SetMatchingFiles(Glob, String),
+    SeedDatabase(String),
 }
 
 pub enum Response {
@@ -33,10 +37,91 @@ pub enum Response {
     FileData(String),
     MatchingFileData(Vec<(Path, String)>),
     Changes(TreeChanges),
+    SeedStatus(Result<()>)
 }
 
 pub struct Worker {
     tree: Tree
+}
+
+impl Worker {
+    fn seed_tree(&mut self, path: String) -> Result<()> {
+        let mut file = File::open(path).chain_err(|| "open file")?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).chain_err(|| "read file")?;
+        let docs = YamlLoader::load_from_str(&contents).chain_err(|| "parse yaml")?;
+        let doc = &docs[0];
+        let root = self.tree.lookup_directory(&Path::root()).chain_err(|| "lookup root")?;
+        ensure!(0 == root.list_directory().len(), "tree is not empty");
+        Self::_seed_layer(root, Self::_hash_to_map(doc).chain_err(|| "hash to map")?).chain_err(|| "seed root layer")?;
+        return Ok(());
+    }
+
+    fn _hash_to_map(yaml: &Yaml) -> Result<HashMap<String, &Yaml>> {
+        ensure!(yaml.as_hash().is_some(), "encountered non-hash");
+        let mut out = HashMap::new();
+        for (k, v) in yaml.as_hash().unwrap() {
+            ensure!(k.as_str().is_some(), "encounted non-string key");
+            out.insert(k.as_str().unwrap().to_owned(), v);
+        }
+        return Ok(out);
+    }
+
+    fn _array_to_map(yaml: &Yaml) -> Result<HashMap<String, &Yaml>> {
+        ensure!(yaml.as_vec().is_some(), "encountered non-array");
+        let mut out = HashMap::new();
+        for (e, v) in yaml.as_vec().unwrap().iter().enumerate() {
+            out.insert(format!("{}", e), v);
+        }
+        return Ok(out);
+
+    }
+
+    fn _seed_layer(dir_node: &mut DirectoryData, map: HashMap<String, &Yaml>) -> Result<()> {
+        for (name, value) in map {
+            if let Some(formula) = Self::_build_formula(value).chain_err(|| "build formula")? {
+                dir_node.graft_formula(&name, formula).chain_err(|| "graft formula")?;
+            } else if value.as_hash().is_some() {
+                let child_dir = dir_node.add_directory(&name).chain_err(|| "add directory")?;
+                Self::_seed_layer(child_dir, Self::_hash_to_map(value).chain_err(|| "hash to map")?).chain_err(|| "seed child layer")?;
+            } else if value.as_vec().is_some() {
+                let child_dir = dir_node.add_directory(&name).chain_err(|| "add directory")?;
+                Self::_seed_layer(child_dir, Self::_array_to_map(value).chain_err(|| "array to map")?).chain_err(|| "seed child layer")?;
+            } else {
+                let child_file = dir_node.add_file(&name).chain_err(|| "add file")?;
+                let fmt = match value {
+                    &Yaml::String(ref s) => s.to_owned(),
+                    &Yaml::Real(ref s) => s.to_owned(),
+                    &Yaml::Integer(i) => format!("{}", i),
+                    &Yaml::Boolean(b) => format!("{}", b),
+                    &Yaml::Null => "null".to_owned(),
+                    &Yaml::BadValue => bail!("unexpected badvalue"),
+                    &Yaml::Hash(_) => bail!("unexpected hash "),
+                    &Yaml::Array(_) => bail!("unexpected array"),
+                    &Yaml::Alias(_) => bail!("do not know how to handle alias value"),
+                };
+                child_file.set_data(&fmt);
+            }
+        }
+        return Ok(());
+    }
+
+    fn _build_formula(map: &Yaml) -> Result<Option<FormulaData>> {
+        if map["formula"].is_badvalue() || map["where"].is_badvalue() {
+            return Ok(None);
+        }
+        ensure!(map["where"].as_hash().is_some(), "expected where to be a hash");
+        let mut inputs: HashMap<String, Path> = HashMap::new();
+        for (key, value) in map["where"].as_hash().unwrap().iter() {
+            ensure!(key.as_str().is_some(), "expected string names in input");
+            ensure!(value.as_str().is_some(), "expected a path as input source");
+            let name = key.as_str().unwrap();
+            let path = PathBuilder::new(value.as_str().unwrap()).chain_err(|| "new path builder")?.finish_path().chain_err(|| "finish path")?;
+            inputs.insert(name.to_owned(), path);
+        }
+        ensure!(map["formula"].as_str().is_some(), "expected formula to be a string");
+        return Ok(Some(FormulaData::new(&inputs, map["formula"].as_str().unwrap()).chain_err(|| "FormulaData new")?));
+    }
 }
 
 impl GenServerWorker for Worker {
@@ -89,6 +174,8 @@ impl GenServerWorker for Worker {
                 Response::Changes(state.tree.set_data_at(&path, &content).chain_err(|| "set_file_data")?),
             CallRequest::SetMatchingFiles(glob, content) =>
                 Response::Changes(state.tree.set_data_matching(&glob, &content).chain_err(|| "set_data_matching")?),
+            CallRequest::SeedDatabase(path) =>
+                Response::SeedStatus(state.seed_tree(path))
         };
         return Ok((response, state));
     }
@@ -150,5 +237,11 @@ impl TreeServer {
         let response = self.gen_server.call(CallRequest::SetMatchingFiles(glob, data.to_owned())).chain_err(|| "call")?;
         if let Response::Changes(changes) = response { return Ok(changes); }
         bail!("wrong response type for set_matching_data");
+    }
+
+    pub fn seed(&self, path: String) -> Result<()> {
+        let response = self.gen_server.call(CallRequest::SeedDatabase(path)).chain_err(|| "call)")?;
+        if let Response::SeedStatus(result) = response { return result; }
+        bail!("wrong response type for seed");
     }
 }
