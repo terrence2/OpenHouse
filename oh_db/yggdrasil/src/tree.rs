@@ -267,11 +267,6 @@ impl DirectoryData {
         };
     }
 
-    /// Add an existing formula at the given name.
-    pub fn graft_formula(&mut self, name: &str, formula: FormulaData) -> TreeResult<()> {
-        self.add_child(name, Node::Formula(formula))
-    }
-
     /// Remove the given name from the tree.
     pub fn remove_child(&mut self, name: &str) -> TreeResult<()> {
         PathBuilder::validate_path_component(name)?;

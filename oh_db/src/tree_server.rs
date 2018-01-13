@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use yaml_rust::{Yaml, YamlLoader};
-use yggdrasil::{DirectoryData, FormulaData, Tree, TreeChanges};
+use yggdrasil::{DirectoryData, Tree, TreeChanges};
 use yggdrasil::{Glob, Path, PathBuilder};
 
 pub mod errors {
@@ -51,9 +51,15 @@ impl Worker {
         file.read_to_string(&mut contents).chain_err(|| "read file")?;
         let docs = YamlLoader::load_from_str(&contents).chain_err(|| "parse yaml")?;
         let doc = &docs[0];
-        let root = self.tree.lookup_directory(&Path::root()).chain_err(|| "lookup root")?;
-        ensure!(0 == root.list_directory().len(), "tree is not empty");
-        Self::_seed_layer(root, Self::_hash_to_map(doc).chain_err(|| "hash to map")?).chain_err(|| "seed root layer")?;
+        let formulas;
+        {
+            let root = self.tree.lookup_directory(&Path::root()).chain_err(|| "lookup root")?;
+            ensure!(0 == root.list_directory().len(), "tree is not empty");
+            formulas = Self::_seed_layer(Path::root(), root, Self::_hash_to_map(doc).chain_err(|| "hash to map")?).chain_err(|| "seed root layer")?;
+        }
+        for (parent, name, inputs, formula) in formulas {
+            self.tree.create_formula(&parent, &name, &inputs, &formula).chain_err(|| "create formula")?;
+        }
         return Ok(());
     }
 
@@ -69,24 +75,24 @@ impl Worker {
 
     fn _array_to_map(yaml: &Yaml) -> Result<HashMap<String, &Yaml>> {
         ensure!(yaml.as_vec().is_some(), "encountered non-array");
-        let mut out = HashMap::new();
-        for (e, v) in yaml.as_vec().unwrap().iter().enumerate() {
-            out.insert(format!("{}", e), v);
-        }
-        return Ok(out);
-
+        Ok(yaml.as_vec().unwrap().iter().enumerate()
+            .map(|(i, v)| {(format!("{}", i), v)})
+            .collect::<HashMap<_, _>>())
     }
 
-    fn _seed_layer(dir_node: &mut DirectoryData, map: HashMap<String, &Yaml>) -> Result<()> {
+    fn _seed_layer(path: Path, dir_node: &mut DirectoryData, map: HashMap<String, &Yaml>) -> Result<Vec<(Path, String, HashMap<String, Path>, String)>> {
+        let mut formulas = Vec::new();
         for (name, value) in map {
-            if let Some(formula) = Self::_build_formula(value).chain_err(|| "build formula")? {
-                dir_node.graft_formula(&name, formula).chain_err(|| "graft formula")?;
+            if let Some((inputs, formula)) = Self::_build_formula(value).chain_err(|| "build formula")? {
+                formulas.push((path.clone(), name, inputs, formula));
             } else if value.as_hash().is_some() {
                 let child_dir = dir_node.add_directory(&name).chain_err(|| "add directory")?;
-                Self::_seed_layer(child_dir, Self::_hash_to_map(value).chain_err(|| "hash to map")?).chain_err(|| "seed child layer")?;
+                let f = Self::_seed_layer(path.slash(&name).chain_err(|| "slash")?, child_dir, Self::_hash_to_map(value).chain_err(|| "hash to map")?).chain_err(|| "seed child layer")?;
+                formulas.extend(f);
             } else if value.as_vec().is_some() {
                 let child_dir = dir_node.add_directory(&name).chain_err(|| "add directory")?;
-                Self::_seed_layer(child_dir, Self::_array_to_map(value).chain_err(|| "array to map")?).chain_err(|| "seed child layer")?;
+                let f = Self::_seed_layer(path.slash(&name).chain_err(|| "slash")?, child_dir, Self::_array_to_map(value).chain_err(|| "array to map")?).chain_err(|| "seed child layer")?;
+                formulas.extend(f);
             } else {
                 let child_file = dir_node.add_file(&name).chain_err(|| "add file")?;
                 let fmt = match value {
@@ -103,10 +109,10 @@ impl Worker {
                 child_file.set_data(&fmt);
             }
         }
-        return Ok(());
+        return Ok(formulas);
     }
 
-    fn _build_formula(map: &Yaml) -> Result<Option<FormulaData>> {
+    fn _build_formula(map: &Yaml) -> Result<Option<(HashMap<String, Path>, String)>> {
         if map["formula"].is_badvalue() || map["where"].is_badvalue() {
             return Ok(None);
         }
@@ -120,7 +126,7 @@ impl Worker {
             inputs.insert(name.to_owned(), path);
         }
         ensure!(map["formula"].as_str().is_some(), "expected formula to be a string");
-        return Ok(Some(FormulaData::new(&inputs, map["formula"].as_str().unwrap()).chain_err(|| "FormulaData new")?));
+        return Ok(Some((inputs, map["formula"].as_str().unwrap().to_owned())));
     }
 }
 
