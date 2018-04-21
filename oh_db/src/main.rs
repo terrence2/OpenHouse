@@ -13,6 +13,8 @@ extern crate rand;
 extern crate ws;
 extern crate yaml_rust;
 extern crate yggdrasil;
+#[macro_use]
+extern crate tree;
 
 #[macro_use]
 mod utility;
@@ -36,11 +38,10 @@ pub mod errors {
         }
     }
 }
-use errors::{ResultExt, Result};
+use errors::{Result, ResultExt};
 
 make_identifier!(MessageId);
 make_identifier!(SubscriptionId);
-
 
 quick_main!(run);
 fn run() -> Result<()> {
@@ -85,7 +86,7 @@ fn run() -> Result<()> {
     let proto_handle = ProtoServer::run_server(port, db_server).chain_err(|| "start proto server")?;
     match proto_handle.join() {
         Ok(_) => (),
-        Err(e) => bail!("join proto server failure: {}", format!("{:?}", e))
+        Err(e) => bail!("join proto server failure: {}", format!("{:?}", e)),
     };
     return Ok(());
 }
