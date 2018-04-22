@@ -2,9 +2,15 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 #[macro_use]
+extern crate approx;
+#[macro_use]
 extern crate failure;
 
+mod parser;
+mod physical;
+
 use failure::Error;
+use physical::Dimension2;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub struct Tree {
@@ -33,6 +39,13 @@ impl Tree {
         }
         return self.root.lookup(relative);
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DataSource {
+    Literal(String),
+    Indirect(String),
+    Sensor(String),
 }
 
 #[derive(Clone)]
@@ -68,19 +81,65 @@ impl NodeRef {
         return Ok(child);
     }
 
-    pub fn location(&self) -> Option<i32> {
+    pub fn location(&self) -> Option<Dimension2> {
         self.0.borrow().location
     }
 
-    pub fn set_location(&self, loc: i32) {
+    pub fn set_location(&self, loc: Dimension2) {
         self.0.borrow_mut().location = Some(loc);
+    }
+
+    pub fn source(&self) -> Option<DataSource> {
+        self.0.borrow().source.clone()
+    }
+
+    pub fn set_indirect_source(&self, from: &str) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().source.is_none(),
+            "source has already been set"
+        );
+        self.0.borrow_mut().source = Some(DataSource::Indirect(from.to_owned()));
+        return Ok(());
+    }
+
+    pub fn set_literal_source(&self, content: &str) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().source.is_none(),
+            "source has already been set"
+        );
+        self.0.borrow_mut().source = Some(DataSource::Literal(content.to_owned()));
+        return Ok(());
+    }
+
+    pub fn set_sensor_source(&self, from: &str) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().source.is_none(),
+            "source has already been set"
+        );
+        self.0.borrow_mut().source = Some(DataSource::Sensor(from.to_owned()));
+        return Ok(());
+    }
+
+    pub fn target(&self) -> Option<String> {
+        self.0.borrow().target.clone()
+    }
+
+    pub fn set_target(&self, tgt: &str) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().target.is_none(),
+            "target has already been set"
+        );
+        self.0.borrow_mut().target = Some(tgt.to_owned());
+        return Ok(());
     }
 }
 
 pub struct Node {
     children: HashMap<String, NodeRef>,
-    location: Option<i32>,
-    //value: Option<String>,
+    location: Option<Dimension2>,
+    dimensions: Option<Dimension2>,
+    source: Option<DataSource>,
+    target: Option<String>,
 }
 
 impl Node {
@@ -88,6 +147,9 @@ impl Node {
         Node {
             children: HashMap::new(),
             location: None,
+            dimensions: None,
+            source: None,
+            target: None,
         }
     }
 
@@ -127,18 +189,24 @@ mod tests {
         let tree = Tree::new();
         assert_eq!(None, tree.root().location());
 
+        let d10 = Dimension2::from_str("@10x10").unwrap();
+        let d20 = Dimension2::from_str("@20x20").unwrap();
+
         let child = tree.lookup("/").unwrap().add_child("foopy").unwrap();
-        child.set_location(10);
-        assert_eq!(10, child.location().unwrap());
+        child.set_location(d10.clone());
+        assert_eq!(d10, child.location().unwrap());
 
         let child = tree.lookup("/foopy").unwrap().add_child("barmy").unwrap();
-        child.set_location(20);
-        assert_eq!(20, child.location().unwrap());
+        child.set_location(d20.clone());
+        assert_eq!(d20, child.location().unwrap());
 
-        assert_eq!(10, tree.lookup("/foopy").unwrap().location().unwrap());
-        assert_eq!(20, tree.lookup("/foopy/barmy").unwrap().location().unwrap());
+        assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
         assert_eq!(
-            20,
+            d20,
+            tree.lookup("/foopy/barmy").unwrap().location().unwrap()
+        );
+        assert_eq!(
+            d20,
             tree.lookup("/foopy/barmy")
                 .unwrap()
                 .lookup(".")
@@ -147,7 +215,7 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(
-            10,
+            d10,
             tree.lookup("/foopy/barmy")
                 .unwrap()
                 .lookup("..")
