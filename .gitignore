@@ -7,3 +7,4 @@ oh_*/build/
 oh_*/node_modules/
 log/
 Cargo.lock
+target/
