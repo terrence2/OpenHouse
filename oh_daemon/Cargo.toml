@@ -1,0 +1,16 @@
+# This Source Code Form is subject to the terms of the GNU General Public
+# License, version 3. If a copy of the GPL was not distributed with this file,
+# You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+[package]
+name = "open_house"
+version = "2.0.0"
+authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+
+[dependencies]
+actix = "^0.5"
+actix-web = "0.5"
+approx = "0.1"
+failure = "0.1"
+log = "0.4"
+simplelog = "0.5"
+structopt = "0.2"
