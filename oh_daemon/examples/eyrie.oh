@@ -1,10 +1,10 @@
 template hue-light
     $hue
-    <- /palette/[./color]/light
+    <- /palette/{./color}/light
 
 template hue-highlight
     $hue
-    <- /palette/[./color]/highlight
+    <- /palette/{./color}/highlight
 
 meta
     hue-bridge
@@ -30,8 +30,8 @@ palette
         highlight <- "bhs(255, 47000, 255)"
 
     colorswirl
-        light     <- "bhs(255, " + ([/time/seconds] % 65535) + ", 255)"
-        highlight <- "bhs(255, " + ([/time/seconds] % 65535) + ", 255)"
+        light     <- "bhs(255, " + (/time/seconds % 65535) + ", 255)"
+        highlight <- "bhs(255, " + (/time/seconds % 65535) + ", 255)"
 
 
 Office @0'x0' !virtual-switch
@@ -41,16 +41,16 @@ Office @0'x0' !virtual-switch
 
     motion-color
         <-\
-            if [./motion-node] > 0:
-                if [/time/now] >= [/meta/bedtime] || [/time/now] <= [/meta/wakeup]:
-                    "moonlight"
-                else:
-                    "on"
-            else:
-                [/palette/[color]/light]
+            #if ./motion-node > 0:
+            #    if /time/now >= /meta/bedtime || /time/now <= /meta/wakeup:
+            #        "moonlight"
+            #    else:
+            #        "on"
+            #else:
+            /palette/{./color}/light
 
     color
-        <- ./switch-values/[./switch-node]
+        <- ./switch-values/{./switch-node}
     
     switch-values
         0 <- "off"

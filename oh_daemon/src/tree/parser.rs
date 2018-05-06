@@ -1,25 +1,10 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use tree::{physical::Dimension2, tree::{Node, NodeRef, Tree}};
+use tree::{physical::Dimension2, tokenizer::{Token, TreeTokenizer}, tree::{Node, NodeRef, Tree}};
 use failure::Error;
 use std::{collections::HashMap, fs::File, path::Path};
 use std::io::prelude::*;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum Token {
-    Location(Dimension2),
-    Literal(String),
-    ComesFromInline(String),
-    ComesFromBlock(String),
-    Source(String),
-    Sink(String),
-    UseTemplate(String),
-    Name(String),
-    Newline,
-    Indent,
-    Dedent,
-}
 
 pub struct TreeParser {
     verbosity: u8,
@@ -39,7 +24,7 @@ impl TreeParser {
     pub fn from_str(s: &str, verbosity: u8) -> Result<Tree, Error> {
         let sanitized = s.replace('\t', "    ");
 
-        let tokens = Self::tokenize(&sanitized)?;
+        let tokens = TreeTokenizer::tokenize(&sanitized)?;
         if verbosity >= 3 {
             println!("Tokens:");
             for tok in tokens.iter() {
@@ -63,7 +48,7 @@ impl TreeParser {
     fn consume_root(&mut self, root: &NodeRef) -> Result<(), Error> {
         while !self.out_of_input() {
             match self.peek()? {
-                Token::Name(n) => {
+                Token::NameTerm(n) => {
                     if n == "template" {
                         self.consume_template()?;
                     } else {
@@ -117,7 +102,7 @@ impl TreeParser {
         self.consume_block_suite(&child)?;
         while !self.out_of_input() {
             match self.peek()? {
-                Token::Name(ref _s) => self.consume_tree(&child)?,
+                Token::NameTerm(ref _s) => self.consume_tree(&child)?,
                 Token::Dedent => {
                     self.pop()?;
                     return Ok(());
@@ -148,7 +133,7 @@ impl TreeParser {
     fn consume_block_suite(&mut self, node: &NodeRef) -> Result<(), Error> {
         while !self.out_of_input() {
             match self.peek()? {
-                Token::Name(ref _s) => return Ok(()),
+                Token::NameTerm(ref _s) => return Ok(()),
                 Token::Dedent => return Ok(()),
                 Token::Indent => bail!("parse error: expected to find a sigil-delimited token"),
                 _ => {
@@ -171,7 +156,7 @@ impl TreeParser {
         }
         match self.pop()? {
             Token::Location(dim) => node.set_location(dim)?,
-            Token::Literal(ref s) => node.set_literal(s)?,
+            Token::StringTerm(ref s) => node.set_literal(s)?,
             Token::Source(ref s) => node.set_source(s)?,
             //Token::ComesFrom(ref s) => node.add_comes_from(s)?,
             Token::Sink(ref s) => node.set_sink(s)?,
@@ -192,7 +177,7 @@ impl TreeParser {
             "parse error: no tokens to consume when looking for name"
         );
         match self.pop()? {
-            Token::Name(s) => Ok(s),
+            Token::NameTerm(s) => Ok(s),
             _ => bail!("parse error: did not find a name in expected position"),
         }
     }
@@ -217,279 +202,18 @@ impl TreeParser {
     }
 
     fn peek_name(&self) -> Result<String, Error> {
-        let name = if let Token::Name(n) = self.peek()? {
+        let name = if let Token::NameTerm(n) = self.peek()? {
             n.clone()
         } else {
             bail!("parse error: expected template to have a name");
         };
         return Ok(name);
     }
-
-    fn tokenize(s: &str) -> Result<Vec<Token>, Error> {
-        let mut tokens = Vec::new();
-
-        let all_chars = s.chars().collect::<Vec<char>>();
-        let mut indent = vec![0];
-        for line_raw in s.lines() {
-            let line = Self::trim_comment(line_raw);
-            if line.is_empty() {
-                continue;
-            }
-
-            let last_level = *indent.last().unwrap();
-            let current_level = Self::leading_whitespace(&line);
-            if current_level > last_level {
-                indent.push(current_level);
-                tokens.push(Token::Indent);
-            } else if current_level < last_level {
-                if let Ok(offset) = indent.binary_search(&current_level) {
-                    let cnt = indent.len() - offset - 1;
-                    for _ in 0..cnt {
-                        indent.pop();
-                        tokens.push(Token::Dedent);
-                    }
-                } else {
-                    bail!("dedent not aligned with a prior indent level");
-                }
-            }
-
-            let chars = line.chars().collect::<Vec<char>>();
-            let mut offset = 0;
-            while offset < chars.len() {
-                match chars[offset] {
-                    ' ' => offset += 1,
-                    'a'...'z' | 'A'...'Z' => tokens.push(Self::tokenize_name(&chars, &mut offset)?),
-                    '^' => tokens.push(Self::tokenize_source(&chars, &mut offset)?),
-                    '$' => tokens.push(Self::tokenize_sink(&chars, &mut offset)?),
-                    '!' => tokens.push(Self::tokenize_use_template(&chars, &mut offset)?),
-                    '@' => tokens.push(Self::tokenize_location(&chars, &mut offset)?),
-                    '"' => tokens.push(Self::tokenize_literal(&chars, &mut offset)?),
-                    '<' => tokens.push(Self::tokenize_comes_from(&chars, &mut offset)?),
-                    _ => bail!("tokenize error: expected a sigil or name"),
-                }
-            }
-            tokens.push(Token::Newline);
-        }
-
-        return Ok(tokens);
-    }
-
-    fn tokenize_name(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        return Ok(Token::Name(Self::tokenize_identifier(chars, offset)?));
-    }
-
-    fn tokenize_source(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        return Ok(Token::Source(Self::tokenize_identifier(chars, offset)?));
-    }
-
-    fn tokenize_sink(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        return Ok(Token::Sink(Self::tokenize_identifier(chars, offset)?));
-    }
-
-    fn tokenize_use_template(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        return Ok(Token::UseTemplate(Self::tokenize_identifier(
-            chars,
-            offset,
-        )?));
-    }
-
-    fn tokenize_location(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        let start = *offset;
-        while *offset < chars.len() {
-            if chars[*offset].is_whitespace() {
-                break;
-            }
-            *offset += 1;
-        }
-        let span = chars[start..*offset].iter().collect::<String>();
-        return Ok(Token::Location(Dimension2::from_str(&span)?));
-    }
-
-    fn tokenize_literal(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        ensure!(
-            chars[*offset] == '"',
-            "tokenize_error: expected literal to start with \""
-        );
-        let mut out = Vec::new();
-        *offset += 1;
-        let start = *offset;
-        while *offset < chars.len() {
-            match chars[*offset] {
-                '\\' => {
-                    ensure!(
-                        *offset + 1 < chars.len(),
-                        "tokenize error: quoted literals must be on one line"
-                    );
-                    ensure!(
-                        chars[*offset + 1] == '"',
-                        "tokenize error: unsupported \\ escape"
-                    );
-
-                    // Skip the following quote.
-                    out.push('"');
-                    *offset += 1;
-                }
-                '"' => {
-                    break;
-                }
-                c @ _ => out.push(c),
-            }
-            *offset += 1;
-        }
-        ensure!(
-            *offset < chars.len() && chars[*offset] == '"',
-            "tokenize error: unclosed \""
-        );
-        *offset += 1;
-        return Ok(Token::Literal(out.iter().collect::<String>()));
-    }
-
-    fn tokenize_comes_from(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        ensure!(
-            *offset + 2 < chars.len(),
-            "tokenize error: <- sigil must not cross lines"
-        );
-        return Ok(match chars[*offset + 2] {
-            '.' | '/' => Self::tokenize_comes_from_path(chars, offset)?,
-            '{' => Self::tokenize_comes_from_block(chars, offset)?,
-            _ => bail!("tokenize error: <- sigil must be followed immediately by one of . / or {"),
-        });
-    }
-
-    fn tokenize_comes_from_path(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        let start = *offset;
-        while *offset < chars.len() {
-            // Note: this is tokenize_literal + /
-            match chars[*offset] {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '/' => *offset += 1,
-                _ => break,
-            }
-        }
-        return Ok(Token::ComesFromInline(
-            chars[start..*offset].iter().collect::<String>(),
-        ));
-    }
-
-    fn tokenize_comes_from_block(chars: &Vec<char>, offset: &mut usize) -> Result<Token, Error> {
-        bail!("unimplemented");
-    }
-
-    fn tokenize_identifier(chars: &Vec<char>, offset: &mut usize) -> Result<String, Error> {
-        let start = *offset;
-        while *offset < chars.len() {
-            match chars[*offset] {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' => *offset += 1,
-                _ => break,
-            }
-        }
-        return Ok(chars[start..*offset].iter().collect::<String>());
-    }
-
-    fn trim_comment(line_raw: &str) -> String {
-        let mut line = line_raw.to_owned();
-        if let Some(offset) = line_raw.find('#') {
-            line.truncate(offset);
-        }
-        return line.trim_right().to_owned();
-    }
-
-    fn leading_whitespace(s: &str) -> usize {
-        let mut cnt = 0;
-        for c in s.chars() {
-            if c != ' ' {
-                break;
-            }
-            cnt += 1;
-        }
-        return cnt;
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_tokenize_dedent1() {
-        let s = "
-a
-    b
-        c
-    d
-    e
-f";
-        assert_eq!(
-            TreeParser::tokenize(s).unwrap(),
-            vec![
-                Token::Name("a".to_owned()),
-                Token::Newline,
-                Token::Indent,
-                Token::Name("b".to_owned()),
-                Token::Newline,
-                Token::Indent,
-                Token::Name("c".to_owned()),
-                Token::Newline,
-                Token::Dedent,
-                Token::Name("d".to_owned()),
-                Token::Newline,
-                Token::Name("e".to_owned()),
-                Token::Newline,
-                Token::Dedent,
-                Token::Name("f".to_owned()),
-                Token::Newline,
-            ]
-        )
-    }
-
-    #[test]
-    fn test_tokenize_dedent2() {
-        let s = "
-a
-    b
-        c
-d";
-        assert_eq!(
-            TreeParser::tokenize(s).unwrap(),
-            vec![
-                Token::Name("a".to_owned()),
-                Token::Newline,
-                Token::Indent,
-                Token::Name("b".to_owned()),
-                Token::Newline,
-                Token::Indent,
-                Token::Name("c".to_owned()),
-                Token::Newline,
-                Token::Dedent,
-                Token::Dedent,
-                Token::Name("d".to_owned()),
-                Token::Newline,
-            ]
-        )
-    }
-
-    #[test]
-    fn test_tokenize_literal_simple() {
-        assert_eq!(
-            TreeParser::tokenize(r#""a b c d""#).unwrap(),
-            vec![Token::Literal("a b c d".to_owned()), Token::Newline]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_literal_empty() {
-        assert_eq!(
-            TreeParser::tokenize(r#""""#).unwrap(),
-            vec![Token::Literal("".to_owned()), Token::Newline]
-        );
-    }
-
-    #[test]
-    fn test_tokenize_literal_quotes() {
-        assert_eq!(
-            TreeParser::tokenize(r#""\"\"""#).unwrap(),
-            vec![Token::Literal(r#""""#.to_owned()), Token::Newline]
-        );
-    }
 
     #[test]
     fn test_parse_siblings() {

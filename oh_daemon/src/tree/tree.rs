@@ -460,37 +460,37 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_run_tree() {
-        TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
-        let sys = System::new("test");
+    // #[test]
+    // fn test_run_tree() {
+    //     TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+    //     let sys = System::new("test");
 
-        let mut tree = Tree::new();
-        let a = tree.root().add_child("a").unwrap();
-        a.set_sink("foo").unwrap();
-        //a.add_comes_from("/b").unwrap();
-        let b = tree.root().add_child("b").unwrap();
-        b.set_source("bar").unwrap();
-        tree.build_flow_graph();
-        let tree_addr: Addr<Syn, _> = tree.start();
+    //     let mut tree = Tree::new();
+    //     let a = tree.root().add_child("a").unwrap();
+    //     a.set_sink("foo").unwrap();
+    //     //a.add_comes_from("/b").unwrap();
+    //     let b = tree.root().add_child("b").unwrap();
+    //     b.set_source("bar").unwrap();
+    //     tree.build_flow_graph();
+    //     let tree_addr: Addr<Syn, _> = tree.start();
 
-        let sink = TestSink { count: 0 };
-        let sink_addr: Addr<Syn, _> = sink.start();
-        let result = tree_addr.send(AddSinkHandler::new("foo", sink_addr.recipient()));
+    //     let sink = TestSink { count: 0 };
+    //     let sink_addr: Addr<Syn, _> = sink.start();
+    //     let result = tree_addr.send(AddSinkHandler::new("foo", sink_addr.recipient()));
 
-        tree_addr.send(SourceEvent::new("/b"));
+    //     tree_addr.send(SourceEvent::new("/b"));
 
-        // Arbiter::handle().spawn(
-        //     result
-        //         .map(|res| match res {
-        //             Ok(result) => println!("Got result: {}", result),
-        //             Err(err) => println!("Got error: {}", err),
-        //         })
-        //         .map_err(|e| {
-        //             println!("Actor is probably died: {}", e);
-        //         }),
-        // );
+    //     // Arbiter::handle().spawn(
+    //     //     result
+    //     //         .map(|res| match res {
+    //     //             Ok(result) => println!("Got result: {}", result),
+    //     //             Err(err) => println!("Got error: {}", err),
+    //     //         })
+    //     //         .map_err(|e| {
+    //     //             println!("Actor is probably died: {}", e);
+    //     //         }),
+    //     // );
 
-        sys.run();
-    }
+    //     sys.run();
+    // }
 }
