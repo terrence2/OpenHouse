@@ -3,8 +3,8 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::prelude::*;
 use failure::Error;
-use tree::physical::Dimension2;
 use std::{fmt, cell::RefCell, collections::HashMap, rc::Rc};
+use tree::{physical::Dimension2, script::{Script, ScriptPath}, tokenizer::RawPath};
 
 pub struct Tree {
     root: NodeRef,
@@ -36,32 +36,32 @@ impl Tree {
     }
 
     pub fn build_flow_graph(&mut self) -> Result<(), Error> {
-        // For every, sink, for every comes-from: convert the comes-from into a goes-to with the real node(s) mapped by name.
-        // This will let us walk quickly outward from a source to all possible sinks when we get an event on a source.
-        let mut sinks = HashMap::new();
-        self.root
-            .find_matching("", &mut sinks, &|node: &NodeRef| node.sink().is_some())?;
+        // // For every, sink, for every comes-from: convert the comes-from into a goes-to with the real node(s) mapped by name.
+        // // This will let us walk quickly outward from a source to all possible sinks when we get an event on a source.
+        // let mut sinks = HashMap::new();
+        // self.root
+        //     .find_matching("", &mut sinks, &|node: &NodeRef| node.sink().is_some())?;
 
-        //let mut visited_sources = Vec::new();
-        for (_, sink) in sinks.iter() {
-            for comes_from in sink.comes_froms().iter() {
-                for reference in comes_from.references.iter() {
-                    let referencing_node = self.lookup(&reference)?;
-                    referencing_node.add_goes_to(sink)?;
-                }
-            }
-        }
+        // //let mut visited_sources = Vec::new();
+        // for (_, sink) in sinks.iter() {
+        //     for comes_from in sink.comes_froms().iter() {
+        //         for reference in comes_from.references.iter() {
+        //             let referencing_node = self.lookup(&reference)?;
+        //             referencing_node.add_goes_to(sink)?;
+        //         }
+        //     }
+        // }
 
-        // Invert the map above so that we can go from any source to all sinks that might be affected.
-        // When changes occur on a source, this will let us re-pull all sinks value
+        // // Invert the map above so that we can go from any source to all sinks that might be affected.
+        // // When changes occur on a source, this will let us re-pull all sinks value
 
-        // Get the set of all sources and compare that to the keys in our effects map; warn about any
-        // sources that do not map to any sinks.
-        let mut all_sources = HashMap::new();
-        self.root
-            .find_matching("", &mut all_sources, &|node: &NodeRef| {
-                node.source().is_some()
-            })?;
+        // // Get the set of all sources and compare that to the keys in our effects map; warn about any
+        // // sources that do not map to any sinks.
+        // let mut all_sources = HashMap::new();
+        // self.root
+        //     .find_matching("", &mut all_sources, &|node: &NodeRef| {
+        //         node.source().is_some()
+        //     })?;
 
         return Ok(());
     }
@@ -93,6 +93,10 @@ impl NodeRef {
 
     pub fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
         self.0.borrow().lookup(path)
+    }
+
+    pub fn realpath(&self, relpath: &RawPath) -> Result<ScriptPath, Error> {
+        self.0.borrow().realpath(relpath)
     }
 
     pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
@@ -162,40 +166,27 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn comes_froms(&self) -> Vec<ComesFrom> {
-        self.0.borrow().comes_froms.clone()
-    }
+    // pub fn comes_froms(&self) -> Vec<ComesFrom> {
+    //     self.0.borrow().comes_froms.clone()
+    // }
 
-    pub fn add_comes_from(&self, from: &ComesFrom) -> Result<(), Error> {
-        ensure!(
-            self.0.borrow().source.is_none(),
-            "source has already been set"
-        );
-        self.0.borrow_mut().comes_froms.push(from.to_owned());
-        return Ok(());
-    }
+    // pub fn add_comes_from(&self, from: &ComesFrom) -> Result<(), Error> {
+    //     ensure!(
+    //         self.0.borrow().source.is_none(),
+    //         "source has already been set"
+    //     );
+    //     self.0.borrow_mut().comes_froms.push(from.to_owned());
+    //     return Ok(());
+    // }
 
-    pub fn add_goes_to(&self, to: &NodeRef) -> Result<(), Error> {
-        ensure!(
-            self.0.borrow().source.is_none(),
-            "source has already been set"
-        );
-        self.0.borrow_mut().goes_to.push(to.to_owned());
-        return Ok(());
-    }
-
-    pub fn literal(&self) -> Option<String> {
-        self.0.borrow().literal.clone()
-    }
-
-    pub fn set_literal(&self, content: &str) -> Result<(), Error> {
-        ensure!(
-            self.0.borrow().source.is_none(),
-            format!("source has already been set: {:?}", self.source().clone())
-        );
-        self.0.borrow_mut().literal = Some(content.to_owned());
-        return Ok(());
-    }
+    // pub fn add_goes_to(&self, to: &NodeRef) -> Result<(), Error> {
+    //     ensure!(
+    //         self.0.borrow().source.is_none(),
+    //         "source has already been set"
+    //     );
+    //     self.0.borrow_mut().goes_to.push(to.to_owned());
+    //     return Ok(());
+    // }
 
     pub fn sink(&self) -> Option<String> {
         self.0.borrow().sink.clone()
@@ -205,6 +196,23 @@ impl NodeRef {
         ensure!(self.0.borrow().sink.is_none(), "sink has already been set");
         self.0.borrow_mut().sink = Some(tgt.to_owned());
         return Ok(());
+    }
+
+    pub fn set_script(&self, script: Script) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().script.is_none(),
+            "script has already been set"
+        );
+        for path in script.inputs.iter() {
+            println!("INP: {:?}", path);
+        }
+        self.0.borrow_mut().script = Rc::new(Some(script));
+        return Ok(());
+    }
+
+    pub fn script(&self) -> Result<Rc<Option<Script>>, Error> {
+        ensure!(self.0.borrow().script.is_some(), "script not set");
+        return Ok(self.0.borrow().script.clone());
     }
 
     pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
@@ -235,31 +243,36 @@ impl ComesFrom {
 }
 
 pub struct Node {
+    // The tree structure.
     name: String,
+    children: HashMap<String, NodeRef>,
+
+    // Simple sigils.
     location: Option<Dimension2>,
     dimensions: Option<Dimension2>,
 
-    goes_to: Vec<NodeRef>,
-    comes_froms: Vec<ComesFrom>,
-    literal: Option<String>,
+    // Data binding to external systems.
     source: Option<String>,
     sink: Option<String>,
 
-    children: HashMap<String, NodeRef>,
+    // The i/o transform function.
+    script: Rc<Option<Script>>,
+    // goes_to: Vec<NodeRef>,
+    // comes_froms: Vec<ComesFrom>,
 }
 
 impl Node {
     pub fn new(name: &str) -> Self {
         Node {
             name: name.to_owned(),
+            children: HashMap::new(),
             location: None,
             dimensions: None,
-            goes_to: Vec::new(),
-            comes_froms: Vec::new(),
-            literal: None,
+            script: Rc::new(None),
             source: None,
             sink: None,
-            children: HashMap::new(),
+            // goes_to: Vec::new(),
+            // comes_froms: Vec::new(),
         }
     }
 
@@ -281,6 +294,13 @@ impl Node {
             2 => child.lookup(parts[1]),
             _ => unreachable!(),
         };
+    }
+
+    pub fn realpath(&self, relpath: &RawPath) -> Result<ScriptPath, Error> {
+        Ok(match relpath {
+            RawPath::Absolute(rel) => bail!("not impl"),
+            RawPath::Relative(_) => bail!("not impl"),
+        })
     }
 
     fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {

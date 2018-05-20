@@ -13,7 +13,8 @@ from lib.certificate_authority import\
 SERVERS = [
     "oh_db",
     "oh_tree",
-    "oh_home"
+    "oh_home",
+    "stunnel_server_proxy",
 ]
 
 CLIENTS = [
@@ -26,6 +27,7 @@ CLIENTS = [
     "oh_populate",
     "oh_rest",
     "oh_supervisor",
+    "stunnel_client_proxy",
 ]
 
 def main():

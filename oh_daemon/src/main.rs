@@ -8,7 +8,10 @@ extern crate approx;
 #[macro_use]
 extern crate failure;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
+extern crate openssl;
 extern crate simplelog;
 #[macro_use]
 extern crate structopt;
@@ -18,10 +21,11 @@ mod web;
 
 use actix::prelude::*;
 use failure::Error;
+use simplelog::{Config, LevelFilter, TermLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
-use simplelog::{Config, LevelFilter, TermLogger};
 use tree::TreeParser;
+use web::server::build_server;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "open_house")]
@@ -47,7 +51,10 @@ fn run(opt: Opt) -> Result<(), Error> {
     let sys = System::new("open_house");
 
     let tree = TreeParser::from_file(&opt.config, opt.verbose)?;
-    let tree_addr: Addr<Unsync, _> = tree.start();
+    let _tree_addr: Addr<Unsync, _> = tree.start();
+
+    let server = build_server("openhouse.eyrie", "127.0.0.1", 8089)?;
+    let _server_addr: Addr<Syn, _> = server.start();
 
     //tree_addr.send(AddHandler())
 

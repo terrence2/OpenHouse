@@ -4,8 +4,9 @@
 mod float;
 mod parser;
 mod physical;
+mod script;
 mod tokenizer;
 mod tree;
 
-pub use self::tree::Tree;
 pub use self::parser::TreeParser;
+pub use self::tree::Tree;

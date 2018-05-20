@@ -1,20 +1,107 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use tree::{float::Float, physical::Dimension2, tree::{Node, NodeRef, Tree}};
 use failure::Error;
+use tree::{float::Float, physical::Dimension2};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PathComponent {
     Current, // .
     Parent,  // ..
     Name(String),
+    Lookup(RawPath),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Path {
+pub enum RawPath {
     Relative(Vec<PathComponent>),
     Absolute(Vec<PathComponent>),
+}
+
+impl RawPath {
+    fn from_str(s: &str) -> Result<Self, Error> {
+        let path = if s.starts_with('/') {
+            RawPath::Absolute(Self::parse_parts(&s[1..])?)
+        } else {
+            RawPath::Relative(Self::parse_parts(s)?)
+        };
+        return path.validate();
+    }
+
+    fn parse_parts(s: &str) -> Result<Vec<PathComponent>, Error> {
+        let parts = Self::tokenize_path(s)?;
+        let mut components = Vec::new();
+        for part in parts.iter() {
+            components.push(Self::parse_part(part)?);
+        }
+        return Ok(components);
+    }
+
+    fn parse_part(part: &str) -> Result<PathComponent, Error> {
+        Ok(match part {
+            "" => bail!("parse error: empty path component"),
+            "." => PathComponent::Current,
+            ".." => PathComponent::Parent,
+            s => {
+                if s.starts_with('{') && s.ends_with('}') {
+                    PathComponent::Lookup(Self::from_str(&s[1..s.len() - 1])?)
+                } else {
+                    ensure!(!s.contains('{'), "parse error: found { in path part");
+                    ensure!(!s.contains('}'), "parse error: found } in path part");
+                    PathComponent::Name(s.to_owned())
+                }
+            }
+        })
+    }
+
+    fn tokenize_path(s: &str) -> Result<Vec<String>, Error> {
+        let mut brace_depth = 0;
+        let mut part_start = 0;
+        let mut offset = 0;
+        let mut parts = Vec::new();
+        for c in s.chars() {
+            match c {
+                '/' => {
+                    if brace_depth == 0 {
+                        parts.push(s[part_start..offset].chars().collect::<String>());
+                        part_start = offset + 1;
+                    }
+                }
+                '{' => {
+                    brace_depth += 1;
+                }
+                '}' => {
+                    brace_depth -= 1;
+                }
+                _ => {}
+            }
+            offset += 1;
+        }
+        ensure!(
+            brace_depth == 0,
+            "parse error: mismatched braces in path '{}'",
+            s
+        );
+        parts.push(s[part_start..offset].chars().collect::<String>());
+        return Ok(parts);
+    }
+
+    fn validate(self) -> Result<Self, Error> {
+        match &self {
+            &RawPath::Absolute(ref parts) => {
+                for part in parts.iter() {
+                    if let PathComponent::Current = part {
+                        bail!("parse error: found . in absolute path")
+                    }
+                    if let PathComponent::Parent = part {
+                        bail!("parse error: found .. in absolute path")
+                    }
+                }
+            }
+            _ => {}
+        }
+        return Ok(self);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,23 +121,28 @@ pub enum Token {
 
     // Operators
     Add,                 // +
+    And,                 // &&
     Subtract,            // -
-    Divide,              // '/'; shared with path
+    Divide,              // '/' shared with path
     Multiply,            // *
     Modulo,              // %
     Equals,              // ==
-    NotEquals,           // !=; shared with use-template
-    LessThan,            // <;  shared with comes-from
-    LessThanOrEquals,    // <=; shared with comes-from
+    NotEquals,           // != shared with use-template
+    LessThan,            // <  shared with comes-from
+    LessThanOrEquals,    // <= shared with comes-from
     GreaterThan,         // >
     GreaterThanOrEquals, // >=
+    Or,                  // ||
+    LeftParen,           // (
+    RightParen,          // )
 
     // Terminals
     NameTerm(String),   // [a-zA-Z][a-zA-Z0-9]*
     StringTerm(String), // ""
     IntegerTerm(i64),   // [0-9]+
-    FloatTerm(Float),
-    PathTerm(Path), // (\.\.?)?(/identifier)+
+    FloatTerm(Float),   // [0-9.]+
+    BooleanTerm(bool),  // true|false
+    PathTerm(RawPath),  // (\.\.?)?(/identifier)+
 }
 
 pub struct TreeTokenizer {
@@ -109,21 +201,42 @@ impl TreeTokenizer {
     fn tokenize_one(&mut self) -> Result<Token, Error> {
         return match self.peek(0)? {
             'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword(),
-            //'0'...'9' => self.tokenize_int_or_float(&chars, &mut offset)?,
+            '0'...'9' => self.tokenize_int_or_float(),
             '/' => self.tokenize_absolute_path_or_division(),
-            '.' => self.tokenize_relative_path(),
+            '.' => self.tokenize_path(),
             '^' => self.tokenize_source(),
             '$' => self.tokenize_sink(),
             '!' => self.tokenize_use_template_or_not_eq(),
             '@' => self.tokenize_location(),
             '"' => self.tokenize_string(),
-            //'=' => tokens.push(self.tokenize_equals()?),
             '<' => self.tokenize_comes_from_or_less_than(),
-            //'>' => tokens.push(self.tokenize_greater_than()?),
-            // '+' => tokens.push(),
-            // '-' => tokens.push(),
-            // '*' => tokens.push(),
-            // '%' => tokens.push(),
+            '>' => self.tokenize_greater_than(),
+            '|' | '&' => self.tokenize_operator_2(),
+            //'=' => tokens.push(self.tokenize_equals()?),
+            '(' => {
+                self.offset += 1;
+                Ok(Token::LeftParen)
+            }
+            ')' => {
+                self.offset += 1;
+                Ok(Token::RightParen)
+            }
+            '+' => {
+                self.offset += 1;
+                Ok(Token::Add)
+            }
+            '-' => {
+                self.offset += 1;
+                Ok(Token::Subtract)
+            }
+            '*' => {
+                self.offset += 1;
+                Ok(Token::Multiply)
+            }
+            '%' => {
+                self.offset += 1;
+                Ok(Token::Modulo)
+            }
             _ => bail!(
                 "tokenize error: expected a sigil or name, found: {}",
                 self.chars[self.offset]
@@ -132,7 +245,34 @@ impl TreeTokenizer {
     }
 
     fn tokenize_name_or_keyword(&mut self) -> Result<Token, Error> {
-        return Ok(Token::NameTerm(self.tokenize_identifier()?));
+        let s = self.tokenize_identifier()?;
+        if s == "true" {
+            return Ok(Token::BooleanTerm(true));
+        } else if s == "false" {
+            return Ok(Token::BooleanTerm(false));
+        } else {
+            return Ok(Token::NameTerm(s));
+        }
+    }
+
+    fn tokenize_int_or_float(&mut self) -> Result<Token, Error> {
+        let start = self.offset;
+        let mut contains_dot = false;
+        while !self.is_empty() {
+            match self.peek(0)? {
+                '0'...'9' => self.offset += 1,
+                '.' => {
+                    self.offset += 1;
+                    contains_dot = true;
+                }
+                _ => break,
+            }
+        }
+        let s = self.chars[start..self.offset].iter().collect::<String>();
+        if contains_dot {
+            return Ok(Token::FloatTerm(Float::new(s.parse::<f64>()?)?));
+        }
+        return Ok(Token::IntegerTerm(s.parse::<i64>()?));
     }
 
     fn tokenize_source(&mut self) -> Result<Token, Error> {
@@ -151,41 +291,13 @@ impl TreeTokenizer {
         assert!(self.peek(0)? == '/');
         return match self.maybe_peek(1) {
             None | Some(' ') => self.tokenize_division(),
-            _ => self.tokenize_absolute_path(),
+            _ => self.tokenize_path(),
         };
     }
 
     fn tokenize_division(&mut self) -> Result<Token, Error> {
         self.offset += 1;
         return Ok(Token::Divide);
-    }
-
-    fn tokenize_absolute_path(&mut self) -> Result<Token, Error> {
-        assert!(self.peek(0)? == '/');
-        self.offset += 1;
-        let components = self.tokenize_path_components()?;
-        return Ok(Token::PathTerm(Path::Absolute(components)));
-    }
-
-    fn tokenize_relative_path(&mut self) -> Result<Token, Error> {
-        assert!(self.peek(0)? == '.');
-        let components = self.tokenize_path_components()?;
-        return Ok(Token::PathTerm(Path::Relative(components)));
-    }
-
-    fn tokenize_path_components(&mut self) -> Result<Vec<PathComponent>, Error> {
-        let full_path = self.tokenize_path()?;
-        let parts = full_path.split('/');
-        let mut components = Vec::new();
-        for part in parts {
-            components.push(match part {
-                "" => bail!("tokenize error: empty path component"),
-                "." => PathComponent::Current,
-                ".." => PathComponent::Parent,
-                s => PathComponent::Name(s.to_owned()),
-            });
-        }
-        return Ok(components);
     }
 
     fn tokenize_use_template_or_not_eq(&mut self) -> Result<Token, Error> {
@@ -261,17 +373,45 @@ impl TreeTokenizer {
         }
     }
 
-    fn tokenize_path(&mut self) -> Result<String, Error> {
-        // Note: this is identifier with / and . included. It is up to the user to
+    fn tokenize_greater_than(&mut self) -> Result<Token, Error> {
+        assert!(self.peek(0)? == '>');
+        if self.peek(1)? == '=' {
+            return Ok(Token::GreaterThanOrEquals);
+        }
+        return Ok(Token::GreaterThan);
+    }
+
+    fn tokenize_operator_2(&mut self) -> Result<Token, Error> {
+        let t = match self.peek(1)? {
+            '&' => {
+                assert!(self.peek(0)? == '&');
+                Token::And
+            }
+            '|' => {
+                assert!(self.peek(0)? == '|');
+                Token::Or
+            }
+            _ => bail!("tokenize error: expected && or ||"),
+        };
+        self.offset += 2;
+        return Ok(t);
+    }
+
+    fn tokenize_path(&mut self) -> Result<Token, Error> {
+        // Note: this is identifier with [/.{}] included. It is up to the user to
         //       build a real, well-formed path from this.
         let start = self.offset;
         while !self.is_empty() {
             match self.peek(0)? {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '/' | '.' => self.offset += 1,
+                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '/' | '.' | '{' | '}' => {
+                    self.offset += 1
+                }
                 _ => break,
             }
         }
-        return Ok(self.chars[start..self.offset].iter().collect::<String>());
+        let content = self.chars[start..self.offset].iter().collect::<String>();
+        let path = RawPath::from_str(&content)?;
+        return Ok(Token::PathTerm(path));
     }
 
     fn tokenize_identifier(&mut self) -> Result<String, Error> {
@@ -322,7 +462,7 @@ impl TreeTokenizer {
 
 #[cfg(test)]
 mod test {
-    use super::{Dimension2, Path, PathComponent, Token, TreeTokenizer as TT};
+    use super::{Dimension2, PathComponent, RawPath, Token, TreeTokenizer as TT};
 
     #[test]
     fn test_tokenize_dedent1() {
@@ -529,14 +669,14 @@ d";
         assert_eq!(
             TT::tokenize("/foo/bar").unwrap(),
             vec![
-                Token::PathTerm(Path::Absolute(to_path(vec!["foo", "bar"]))),
+                Token::PathTerm(RawPath::Absolute(to_path(vec!["foo", "bar"]))),
                 Token::Newline,
             ]
         );
         assert_eq!(
             TT::tokenize("/foo/0/bar").unwrap(),
             vec![
-                Token::PathTerm(Path::Absolute(to_path(vec!["foo", "0", "bar"]))),
+                Token::PathTerm(RawPath::Absolute(to_path(vec!["foo", "0", "bar"]))),
                 Token::Newline,
             ]
         );
@@ -547,14 +687,122 @@ d";
         assert_eq!(
             TT::tokenize("./foo/bar").unwrap(),
             vec![
-                Token::PathTerm(Path::Relative(to_path(vec![".", "foo", "bar"]))),
+                Token::PathTerm(RawPath::Relative(to_path(vec![".", "foo", "bar"]))),
                 Token::Newline,
             ]
         );
         assert_eq!(
             TT::tokenize("../foo/bar").unwrap(),
             vec![
-                Token::PathTerm(Path::Relative(to_path(vec!["..", "foo", "bar"]))),
+                Token::PathTerm(RawPath::Relative(to_path(vec!["..", "foo", "bar"]))),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_add() {
+        assert_eq!(
+            TT::tokenize("0 + 0").unwrap(),
+            vec![
+                Token::IntegerTerm(0),
+                Token::Add,
+                Token::IntegerTerm(0),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_sub() {
+        assert_eq!(
+            TT::tokenize("0 - 0").unwrap(),
+            vec![
+                Token::IntegerTerm(0),
+                Token::Subtract,
+                Token::IntegerTerm(0),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_current() {
+        TT::tokenize("/foo/./bar").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_parent() {
+        TT::tokenize("/foo/../bar").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_embedded_parent() {
+        TT::tokenize("/foo/{/baz/./bep}/bar").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_embedded_empty() {
+        TT::tokenize("/foo/{/baz//bep}/bar").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_mismatched_open() {
+        TT::tokenize("/foo/{/baz/bep").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_tokenize_invalid_path_mismatched_close() {
+        TT::tokenize("/foo/{/baz/bep}}").unwrap();
+    }
+
+    #[test]
+    fn test_tokenize_nested_path() {
+        assert_eq!(
+            TT::tokenize("/foo/{/baz/{/fip/fop}/bep}/bar").unwrap(),
+            vec![
+                Token::PathTerm(RawPath::Absolute(vec![
+                    PathComponent::Name("foo".to_owned()),
+                    PathComponent::Lookup(RawPath::Absolute(vec![
+                        PathComponent::Name("baz".to_owned()),
+                        PathComponent::Lookup(RawPath::Absolute(vec![
+                            PathComponent::Name("fip".to_owned()),
+                            PathComponent::Name("fop".to_owned()),
+                        ])),
+                        PathComponent::Name("bep".to_owned()),
+                    ])),
+                    PathComponent::Name("bar".to_owned()),
+                ])),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_nested_mismatched() {
+        assert_eq!(
+            TT::tokenize("/foo/{../baz/{./fip/fop}/bep}/bar").unwrap(),
+            vec![
+                Token::PathTerm(RawPath::Absolute(vec![
+                    PathComponent::Name("foo".to_owned()),
+                    PathComponent::Lookup(RawPath::Relative(vec![
+                        PathComponent::Parent,
+                        PathComponent::Name("baz".to_owned()),
+                        PathComponent::Lookup(RawPath::Relative(vec![
+                            PathComponent::Current,
+                            PathComponent::Name("fip".to_owned()),
+                            PathComponent::Name("fop".to_owned()),
+                        ])),
+                        PathComponent::Name("bep".to_owned()),
+                    ])),
+                    PathComponent::Name("bar".to_owned()),
+                ])),
                 Token::Newline,
             ]
         );

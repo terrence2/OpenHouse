@@ -24,7 +24,7 @@ Daemons = [
     'button',
     'color',
     'hue',
-    'panic_sink'
+#    'panic_sink'
 ]
 DebugDaemons = [
     'rest',

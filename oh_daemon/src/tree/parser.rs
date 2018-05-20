@@ -1,10 +1,9 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use tree::{physical::Dimension2, tokenizer::{Token, TreeTokenizer}, tree::{Node, NodeRef, Tree}};
 use failure::Error;
-use std::{collections::HashMap, fs::File, path::Path};
-use std::io::prelude::*;
+use std::{fs, collections::HashMap, path::Path};
+use tree::{script::Script, tokenizer::{Token, TreeTokenizer}, tree::{Node, NodeRef, Tree}};
 
 pub struct TreeParser {
     verbosity: u8,
@@ -15,9 +14,7 @@ pub struct TreeParser {
 
 impl TreeParser {
     pub fn from_file(path: &Path, verbosity: u8) -> Result<Tree, Error> {
-        let mut file = File::open(path)?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+        let contents = fs::read_to_string(path)?;
         return Self::from_str(&contents, verbosity);
     }
 
@@ -116,6 +113,7 @@ impl TreeParser {
         return Ok(());
     }
 
+    // After name up to the newline.
     fn consume_inline_suite(&mut self, node: &NodeRef) -> Result<(), Error> {
         while !self.out_of_input() {
             match self.peek()? {
@@ -130,12 +128,13 @@ impl TreeParser {
         return Ok(());
     }
 
+    // after name + inline_suite + indent up to dedent.
     fn consume_block_suite(&mut self, node: &NodeRef) -> Result<(), Error> {
         while !self.out_of_input() {
             match self.peek()? {
                 Token::NameTerm(ref _s) => return Ok(()),
                 Token::Dedent => return Ok(()),
-                Token::Indent => bail!("parse error: expected to find a sigil-delimited token"),
+                Token::Indent => bail!("parse error: expected a sigil before another indent"),
                 _ => {
                     self.consume_sigil(node)?;
                     ensure!(
@@ -150,16 +149,31 @@ impl TreeParser {
         return Ok(());
     }
 
+    fn find_next_token(&self, tok: Token) -> Result<usize, Error> {
+        let mut i = self.position;
+        while i < self.tokens.len() {
+            if self.tokens[i] == tok {
+                return Ok(i);
+            }
+            i += 1;
+        }
+        bail!("Did not find a matching token for: {:?}", tok);
+    }
+
     fn consume_sigil(&mut self, node: &NodeRef) -> Result<(), Error> {
         if self.verbosity >= 3 {
             println!("Consuming sigil: {:?}", self.peek()?);
         }
         match self.pop()? {
             Token::Location(dim) => node.set_location(dim)?,
-            Token::StringTerm(ref s) => node.set_literal(s)?,
             Token::Source(ref s) => node.set_source(s)?,
-            //Token::ComesFrom(ref s) => node.add_comes_from(s)?,
             Token::Sink(ref s) => node.set_sink(s)?,
+            Token::ComesFromInline => {
+                let end = self.find_next_token(Token::Newline)?;
+                let s = Script::inline_from_tokens(&self.tokens[self.position..end + 1], node)?;
+                self.position = end + 1;
+                node.set_script(s)?
+            }
             Token::UseTemplate(ref s) => {
                 let template: &NodeRef = self.templates
                     .get(s)
@@ -169,6 +183,10 @@ impl TreeParser {
             _ => bail!("parse error: expected to find a sigil-delimited token"),
         }
         return Ok(());
+    }
+
+    fn consume_comes_from_inline(&mut self) -> Result<Script, Error> {
+        bail!("not imple")
     }
 
     fn consume_name(&mut self) -> Result<String, Error> {
@@ -214,6 +232,13 @@ impl TreeParser {
 #[cfg(test)]
 mod test {
     use super::*;
+    use tree::physical::Dimension2;
+
+    #[test]
+    fn test_parse_minimal() {
+        let tree = TreeParser::from_str("a", 5).unwrap();
+        assert!(tree.lookup("/a").unwrap().location().is_none());
+    }
 
     #[test]
     fn test_parse_siblings() {
@@ -342,14 +367,20 @@ b !bar
     }
 
     #[test]
-    #[should_panic]
-    fn test_parse_indirect() {
-        let s = "
-a ^foo
-b <-/a
-";
+    fn test_parse_script() {
+        let s = "a <- 2 + 2";
         let tree = TreeParser::from_str(s, 5).unwrap();
-        assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
-        //tree.send_event("foo", HashMap::new()).unwrap();
+        tree.lookup("/a").unwrap().script().unwrap();
     }
+
+    //     #[test]
+    //     #[should_panic]
+    //     fn test_parse_indirect() {
+    //         let s = "
+    // a ^foo
+    // b <-/a
+    // ";
+    //         let tree = TreeParser::from_str(s, 5).unwrap();
+    //         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+    //     }
 }
