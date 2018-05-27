@@ -3,6 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 mod float;
 mod parser;
+mod path;
 mod physical;
 mod script;
 mod tokenizer;

@@ -4,7 +4,8 @@
 use actix::prelude::*;
 use failure::Error;
 use std::{fmt, cell::RefCell, collections::HashMap, rc::Rc};
-use tree::{physical::Dimension2, script::{Script, ScriptPath}, tokenizer::RawPath};
+use tree::{path::{PathComponent, ScriptPath}, physical::Dimension2,
+           script::{Script, Value, ValueType}};
 
 pub struct Tree {
     root: NodeRef,
@@ -14,7 +15,7 @@ pub struct Tree {
 impl Tree {
     pub fn new() -> Self {
         Tree {
-            root: NodeRef::new(Node::new("(root)")),
+            root: NodeRef::new(Node::new("", "")),
             sink_handlers: HashMap::new(),
         }
     }
@@ -35,35 +36,26 @@ impl Tree {
         return self.root.lookup(relative);
     }
 
-    pub fn build_flow_graph(&mut self) -> Result<(), Error> {
-        // // For every, sink, for every comes-from: convert the comes-from into a goes-to with the real node(s) mapped by name.
-        // // This will let us walk quickly outward from a source to all possible sinks when we get an event on a source.
-        // let mut sinks = HashMap::new();
-        // self.root
-        //     .find_matching("", &mut sinks, &|node: &NodeRef| node.sink().is_some())?;
+    pub fn lookup_path(&self, path: &ScriptPath) -> Result<NodeRef, Error> {
+        self.root.lookup_path(&path.components[0..], self)
+    }
 
-        // //let mut visited_sources = Vec::new();
-        // for (_, sink) in sinks.iter() {
-        //     for comes_from in sink.comes_froms().iter() {
-        //         for reference in comes_from.references.iter() {
-        //             let referencing_node = self.lookup(&reference)?;
-        //             referencing_node.add_goes_to(sink)?;
-        //         }
-        //     }
-        // }
+    // After the tree has been built, visit all nodes looking up references and
+    // storing those references directly in the inputs list per script.
+    pub fn link_inputs(self) -> Result<Tree, Error> {
+        self.root.link_inputs(&self)?;
+        return Ok(self);
+    }
 
-        // // Invert the map above so that we can go from any source to all sinks that might be affected.
-        // // When changes occur on a source, this will let us re-pull all sinks value
+    // After inputs are connected, visit all nodes in the tree computiing the type
+    // of all scripts and propogating those types through our inputs.
+    pub fn check_types(self) -> Result<Tree, Error> {
+        self.root.typecheck()?;
+        return Ok(self);
+    }
 
-        // // Get the set of all sources and compare that to the keys in our effects map; warn about any
-        // // sources that do not map to any sinks.
-        // let mut all_sources = HashMap::new();
-        // self.root
-        //     .find_matching("", &mut all_sources, &|node: &NodeRef| {
-        //         node.source().is_some()
-        //     })?;
-
-        return Ok(());
+    pub fn invert_flows(self) -> Result<Tree, Error> {
+        Ok(self)
     }
 }
 
@@ -91,12 +83,16 @@ impl NodeRef {
         return self_ref;
     }
 
+    pub fn path(&self) -> String {
+        return self.0.borrow().path.clone();
+    }
+
     pub fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
         self.0.borrow().lookup(path)
     }
 
-    pub fn realpath(&self, relpath: &RawPath) -> Result<ScriptPath, Error> {
-        self.0.borrow().realpath(relpath)
+    pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
+        self.0.borrow().lookup_path(parts, tree)
     }
 
     pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
@@ -118,27 +114,103 @@ impl NodeRef {
         self.0.borrow().name.clone()
     }
 
-    pub fn find_matching<MF>(
-        &self,
-        path: &str,
-        matches: &mut HashMap<String, NodeRef>,
-        match_func: &MF,
-    ) -> Result<(), Error>
-    where
-        MF: Fn(&NodeRef) -> bool,
-    {
-        if match_func(&self) {
-            matches.insert(path.to_owned(), self.clone());
+    fn link_inputs(&self, tree: &Tree) -> Result<(), Error> {
+        // Collect input maps while borrowed read-only, so that we can find children.
+        let mut maps = Vec::new();
+        for script in self.0.borrow().scripts.iter() {
+            let input_map = script.build_input_map(tree)?;
+            maps.push(input_map);
         }
+
+        // Re-borrow read-write to install the input maps we built above.
+        for (script, input_map) in self.0.borrow_mut().scripts.iter_mut().zip(maps.drain(..)) {
+            script.install_input_map(input_map)?;
+        }
+
+        // Recurse into our children.
         for (name, child) in self.0.borrow().children.iter() {
-            if name.starts_with(".") {
+            if name == "." || name == ".." {
                 continue;
             }
-            let child_path = format!("{}/{}", path, name);
-            child.find_matching(&child_path, matches, match_func)?;
+            child.link_inputs(tree)?;
         }
+
         return Ok(());
     }
+
+    pub fn has_value(&self) -> bool {
+        self.source().is_some() ^ (self.0.borrow().scripts.len() > 0)
+    }
+
+    pub fn typecheck(&self) -> Result<(), Error> {
+        // Not all nodes are part of an i/o chain: e.g. root; just walk past them.
+        if self.has_value() {
+            // We may have already typechecked this node via an input, so skip it in that case.
+            if let Some(nodetype) = self.0.borrow().nodetype {
+                return Ok(());
+            }
+
+            let nodetype = if let Some(source) = self.source() {
+                // FIXME: right now we can just force all inputs to be provided as strings.
+                Some(ValueType::STRING)
+            } else {
+                let mut nodetype = None;
+                for script in self.0.borrow_mut().scripts.iter_mut() {
+                    let t = Some(script.typecheck()?);
+                    ensure!(
+                        nodetype == None || nodetype == t,
+                        "typecheck error: all scripts attached to a node must have the same type"
+                    );
+                    nodetype = t;
+                }
+                nodetype
+            };
+            self.0.borrow_mut().nodetype = nodetype;
+        }
+
+        for (name, child) in self.0.borrow().children.iter() {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.typecheck()?;
+        }
+
+        return Ok(());
+    }
+
+    pub fn nodetype(&self) -> Result<ValueType, Error> {
+        ensure!(
+            self.has_value(),
+            "typecheck error: nodetype request on a node with no value"
+        );
+        if let Some(nodetype) = self.0.borrow().nodetype {
+            return Ok(nodetype);
+        }
+        self.typecheck()?;
+        return Ok(self.0.borrow().nodetype.unwrap());
+    }
+
+    // pub fn find_matching<MF>(
+    //     &self,
+    //     path: &str,
+    //     matches: &mut HashMap<String, NodeRef>,
+    //     match_func: &MF,
+    // ) -> Result<(), Error>
+    // where
+    //     MF: Fn(&NodeRef) -> bool,
+    // {
+    //     if match_func(&self) {
+    //         matches.insert(path.to_owned(), self.clone());
+    //     }
+    //     for (name, child) in self.0.borrow().children.iter() {
+    //         if name.starts_with(".") {
+    //             continue;
+    //         }
+    //         let child_path = format!("{}/{}", path, name);
+    //         child.find_matching(&child_path, matches, match_func)?;
+    //     }
+    //     return Ok(());
+    // }
 
     pub fn location(&self) -> Option<Dimension2> {
         self.0.borrow().location
@@ -166,28 +238,6 @@ impl NodeRef {
         return Ok(());
     }
 
-    // pub fn comes_froms(&self) -> Vec<ComesFrom> {
-    //     self.0.borrow().comes_froms.clone()
-    // }
-
-    // pub fn add_comes_from(&self, from: &ComesFrom) -> Result<(), Error> {
-    //     ensure!(
-    //         self.0.borrow().source.is_none(),
-    //         "source has already been set"
-    //     );
-    //     self.0.borrow_mut().comes_froms.push(from.to_owned());
-    //     return Ok(());
-    // }
-
-    // pub fn add_goes_to(&self, to: &NodeRef) -> Result<(), Error> {
-    //     ensure!(
-    //         self.0.borrow().source.is_none(),
-    //         "source has already been set"
-    //     );
-    //     self.0.borrow_mut().goes_to.push(to.to_owned());
-    //     return Ok(());
-    // }
-
     pub fn sink(&self) -> Option<String> {
         self.0.borrow().sink.clone()
     }
@@ -199,20 +249,12 @@ impl NodeRef {
     }
 
     pub fn set_script(&self, script: Script) -> Result<(), Error> {
-        ensure!(
-            self.0.borrow().script.is_none(),
-            "script has already been set"
-        );
-        for path in script.inputs.iter() {
-            println!("INP: {:?}", path);
-        }
-        self.0.borrow_mut().script = Rc::new(Some(script));
+        self.0.borrow_mut().scripts.push(script);
         return Ok(());
     }
 
-    pub fn script(&self) -> Result<Rc<Option<Script>>, Error> {
-        ensure!(self.0.borrow().script.is_some(), "script not set");
-        return Ok(self.0.borrow().script.clone());
+    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+        self.0.borrow().compute(tree)
     }
 
     pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
@@ -229,22 +271,10 @@ impl fmt::Debug for NodeRef {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ComesFrom {
-    references: Vec<String>,
-}
-
-impl ComesFrom {
-    pub fn new() -> Self {
-        ComesFrom {
-            references: Vec::new(),
-        }
-    }
-}
-
 pub struct Node {
     // The tree structure.
     name: String,
+    path: String,
     children: HashMap<String, NodeRef>,
 
     // Simple sigils.
@@ -256,24 +286,31 @@ pub struct Node {
     sink: Option<String>,
 
     // The i/o transform function.
-    script: Rc<Option<Script>>,
-    // goes_to: Vec<NodeRef>,
-    // comes_froms: Vec<ComesFrom>,
+    scripts: Vec<Script>,
+    nodetype: Option<ValueType>,
+    cache: (usize, Option<Value>),
 }
 
 impl Node {
-    pub fn new(name: &str) -> Self {
-        Node {
+    pub fn new(parent: &str, name: &str) -> Self {
+        assert!(name.find('/').is_none());
+        let path = if parent == "/" {
+            format!("/{}", name)
+        } else {
+            format!("{}/{}", parent, name)
+        };
+        return Node {
             name: name.to_owned(),
+            path,
             children: HashMap::new(),
             location: None,
             dimensions: None,
-            script: Rc::new(None),
             source: None,
             sink: None,
-            // goes_to: Vec::new(),
-            // comes_froms: Vec::new(),
-        }
+            scripts: Vec::new(),
+            nodetype: None,
+            cache: (0, None),
+        };
     }
 
     fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
@@ -296,15 +333,24 @@ impl Node {
         };
     }
 
-    pub fn realpath(&self, relpath: &RawPath) -> Result<ScriptPath, Error> {
-        Ok(match relpath {
-            RawPath::Absolute(rel) => bail!("not impl"),
-            RawPath::Relative(_) => bail!("not impl"),
-        })
+    pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
+        let child_name = match &parts[0] {
+            PathComponent::Name(n) => n.to_owned(),
+            PathComponent::Lookup(p) => tree.lookup_path(p)?.compute(tree)?.as_path_component()?,
+        };
+        ensure!(
+            self.children.contains_key(&child_name),
+            format!("invalid path: did not find path component: {}", child_name)
+        );
+        let child = self.children.get(&child_name).unwrap();
+        if parts.len() == 1 {
+            return Ok(child.to_owned());
+        }
+        return Ok(child.lookup_path(&parts[1..], tree)?);
     }
 
     fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {
-        let child = NodeRef::new(Node::new(name));
+        let child = NodeRef::new(Node::new(&self.path, name));
         self.children.insert(name.to_owned(), child.clone());
         return Ok(child);
     }
@@ -318,6 +364,15 @@ impl Node {
             cnt += 1;
         }
         return Ok(cnt);
+    }
+
+    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+        // FIXME: pull from all and take latest; assert there are no two with same timestamp
+        return Ok(self.scripts[0].compute(tree)?);
+        // bail!(
+        //     "runtime error: attempted to read from the value-less path at: {}",
+        //     self.path
+        // )
     }
 }
 

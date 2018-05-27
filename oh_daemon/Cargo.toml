@@ -9,11 +9,12 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 [dependencies]
 actix = "^0.5"
 actix-web = { git="https://github.com/actix/actix-web.git", rev="9b7ea836d0a0d850b03ad693c25578697c922076", features=["alpn", "flate2-rust"] }
-openssl = { version=">=0.10", features = ["v110"] }
 approx = "0.1"
+bitflags = "1.0"
 failure = "0.1"
 failure_derive = "0.1"
 lazy_static = "*"
 log = "0.4"
+openssl = { version=">=0.10", features = ["v110"] }
 simplelog = "0.5"
 structopt = "0.2"

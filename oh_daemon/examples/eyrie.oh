@@ -68,13 +68,13 @@ Office @0'x0' !virtual-switch
         <-./office-motiondetector0
 
     office-switch-desk @6'x2'
-        ^http
+        ^legacy-mcu
 
     office-switch-east @12'x12'
-        ^http
+        ^legacy-mcu
 
     office-switch-west @0'x12'
-        ^http
+        ^legacy-mcu
 
     office-motiondetector0 @2'x12'
         $rp-motiondetector

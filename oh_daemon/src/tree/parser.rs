@@ -18,6 +18,21 @@ impl TreeParser {
         return Self::from_str(&contents, verbosity);
     }
 
+    // Parsing strategy:
+    //   (1) Tokenize:
+    //          - keeps indent state and emits indent and dedent events with tokens
+    //          - LL(1) or thereabouts
+    //   (2) Parse:
+    //          - manual recursive descent
+    //          - LL(1) exactly
+    //          - Separate sub-parsers for scripts, paths, and expressions
+    //   (3) Link inputs
+    //          - Walk tree and look up all paths attaching the referenced Node as inputs to scripts.
+    //   (4) Type checking
+    //          - Find all scripts and walk them from values up, asserting that all types match up.
+    //   (5) Data flow
+    //          - Invert the comes-from in order to build a goes-to set for each node.
+    //
     pub fn from_str(s: &str, verbosity: u8) -> Result<Tree, Error> {
         let sanitized = s.replace('\t', "    ");
 
@@ -29,7 +44,7 @@ impl TreeParser {
             }
         }
 
-        let mut tree = Tree::new();
+        let tree = Tree::new();
         let mut parser = TreeParser {
             verbosity,
             templates: HashMap::new(),
@@ -38,8 +53,7 @@ impl TreeParser {
         };
         parser.consume_root(&tree.root())?;
 
-        tree.build_flow_graph();
-        return Ok(tree);
+        return tree.link_inputs()?.check_types()?.invert_flows();
     }
 
     fn consume_root(&mut self, root: &NodeRef) -> Result<(), Error> {
@@ -68,7 +82,7 @@ impl TreeParser {
         if self.verbosity >= 3 {
             println!("Consuming template: {}", name);
         }
-        let template_root = NodeRef::new(Node::new("template-root"));
+        let template_root = NodeRef::new(Node::new("", "template-root"));
         self.consume_tree(&template_root)?;
         self.templates
             .insert(name.clone(), template_root.lookup(&name)?);
@@ -170,7 +184,8 @@ impl TreeParser {
             Token::Sink(ref s) => node.set_sink(s)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
-                let s = Script::inline_from_tokens(&self.tokens[self.position..end + 1], node)?;
+                let s =
+                    Script::inline_from_tokens(node.path(), &self.tokens[self.position..end + 1])?;
                 self.position = end + 1;
                 node.set_script(s)?
             }
@@ -233,6 +248,7 @@ impl TreeParser {
 mod test {
     use super::*;
     use tree::physical::Dimension2;
+    use tree::script::Value;
 
     #[test]
     fn test_parse_minimal() {
@@ -370,17 +386,19 @@ b !bar
     fn test_parse_script() {
         let s = "a <- 2 + 2";
         let tree = TreeParser::from_str(s, 5).unwrap();
-        tree.lookup("/a").unwrap().script().unwrap();
+        assert_eq!(
+            tree.lookup("/a").unwrap().compute(&tree).unwrap(),
+            Value::Integer(4)
+        );
     }
 
-    //     #[test]
-    //     #[should_panic]
-    //     fn test_parse_indirect() {
-    //         let s = "
-    // a ^foo
-    // b <-/a
-    // ";
-    //         let tree = TreeParser::from_str(s, 5).unwrap();
-    //         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
-    //     }
+    #[test]
+    fn test_parse_reify_absolute() {
+        let s = "
+a ^foo
+b <-/a
+";
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+    }
 }
