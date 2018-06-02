@@ -370,6 +370,8 @@ b !bar
 
     #[test]
     fn test_parse_script() {
+        // use simplelog::*;
+        // let _ = TermLogger::init(LevelFilter::Trace, Config::default());
         let s = "a <- 2 + 2";
         let tree = TreeParser::from_str(s, 5).unwrap();
         assert_eq!(
@@ -486,8 +488,6 @@ y
 
     #[test]
     fn test_parse_indirect_computed() {
-        use simplelog::*;
-        let _ = TermLogger::init(LevelFilter::Trace, Config::default());
         let s = r#"
 a <- "y"
 b <- /a + "z"

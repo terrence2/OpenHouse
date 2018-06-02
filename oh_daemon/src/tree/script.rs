@@ -40,28 +40,6 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn add(&self, other: &Value, t: &Tree) -> Result<Value, Error> {
-        let result = match self {
-            Value::Integer(i0) => Value::Integer(i0 + other.as_integer()?),
-            Value::Float(f0) => Value::Float(f0.checked_add(&other.as_float()?)?),
-            Value::String(s0) => Value::String(format!("{}{}", s0, other.as_string()?)),
-            Value::Boolean(_) => bail!("runtime error: attempt to add two boolean values"),
-            Value::Path(p) => t.lookup_path(p)?.compute(t)?,
-        };
-        return Ok(result);
-    }
-
-    pub fn subtract(&self, other: &Value, t: &Tree) -> Result<Value, Error> {
-        let result = match self {
-            Value::Integer(i0) => Value::Integer(i0 - other.as_integer()?),
-            Value::Float(f0) => Value::Float(f0.checked_sub(&other.as_float()?)?),
-            Value::String(_) => bail!("runtime error: attempt to subtract two string values"),
-            Value::Boolean(_) => bail!("runtime error: attempt to subtract two boolean values"),
-            Value::Path(p) => t.lookup_path(p)?.compute(t)?,
-        };
-        return Ok(result);
-    }
-
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         trace!("Value::virtually_compute_for_path({})", self);
         if let Value::Path(p) = self {
@@ -71,9 +49,15 @@ impl Value {
         return Ok(vec![self.to_owned()]);
     }
 
-    // Since this is only called for virtually_compute, we can assert some
-    // sanity on our inputs.
-    pub fn virtual_apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
+    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+        if let Value::Path(p) = self {
+            let noderef = tree.lookup_path(p)?;
+            return noderef.compute(tree);
+        }
+        return Ok(self.to_owned());
+    }
+
+    pub fn apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
         ensure!(
             !self.is_path(),
             "runtime error: attempting to apply a non-path"
@@ -89,7 +73,7 @@ impl Value {
             Value::Integer(i0) => Self::apply_integer(tok, *i0, other.as_integer()?)?,
             Value::Float(f0) => Self::apply_float(tok, *f0, other.as_float()?)?,
             Value::String(s0) => Value::String(Self::apply_string(tok, s0, &other.as_string()?)?),
-            _ => bail!("in prog"),
+            _ => bail!("runtime error: apply reached a path node"),
         });
     }
 
@@ -222,40 +206,6 @@ impl Value {
             Value::Path(p) => panic!("typecheck error: we already filtered out path"),
         });
     }
-
-    // fn find_inputs_in_path(
-    //     path: &ScriptPath,
-    //     tree: &Tree,
-    //     out: &mut Vec<ConcretePath>,
-    // ) -> Result<(), Error> {
-    //     trace!("Value::find_inputs_in_path({})", path);
-    //     if path.is_dynamic() {
-    //         //Self::find_all_concrete_inputs(path, tree, out)?;
-    //         //out.append(&mut path.devirtualize(tree)?);
-    //     } else {
-
-    //     }
-    //     return Ok(());
-    // }
-
-    // // Recurse through all dynamic paths, recording all leafs that are already concrete.
-    // fn find_all_concrete_inputs(
-    //     path: &ScriptPath,
-    //     tree: &Tree,
-    //     out: &mut Vec<ConcretePath>,
-    // ) -> Result<(), Error> {
-    //     assert!(path.is_dynamic());
-    //     trace!("Value::find_all_concrete_inputs({})", path);
-    //     for component in path.components.iter() {
-    //         match component {
-    //             PathComponent::Name(_) => {}
-    //             PathComponent::Lookup(sub_path) => {
-    //                 Self::find_inputs_in_path(&sub_path, tree, out)?;
-    //             }
-    //         }
-    //     }
-    //     return Ok(());
-    // }
 }
 
 impl fmt::Display for Value {
@@ -342,17 +292,16 @@ macro_rules! map_values {
 }
 
 impl Expr {
-    pub fn compute(&self, t: &Tree) -> Result<Value, Error> {
-        println!("in expr: {:?}", self);
-        Ok(match self {
-            Expr::Value(v) => v.to_owned(),
-            Expr::Add(a, b) => a.compute(t)?.add(&b.compute(t)?, t)?,
-            Expr::Subtract(a, b) => a.compute(t)?.subtract(&b.compute(t)?, t)?,
-            // Expr::Multiply(a, b) => a.compute(t)?.multiply(&b.compute(t)?, t)?,
-            // Expr::Divide(a, b) => a.compute(t)?.divide(&b.compute(t)?, t)?,
-            //Expr::And(a, b) =>
-            _ => bail!("not impl"),
-        })
+    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+        map_values!(
+            self,
+            compute,
+            |tok, mut lhs: Value, mut rhs: Value| {
+                trace!("compute: reduce {:?} {:?} {:?}", lhs, tok, rhs);
+                lhs.apply(&tok, &rhs)
+            },
+            tree
+        )
     }
 
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
@@ -365,7 +314,7 @@ impl Expr {
                 for a in lhs.iter() {
                     for b in rhs.iter() {
                         trace!("vcomp: reduce1 {:?} {:?} {:?}", a, tok, b);
-                        out.push(a.virtual_apply(&tok, b)?);
+                        out.push(a.apply(&tok, b)?);
                     }
                 }
                 Ok(out)
@@ -396,7 +345,6 @@ impl Expr {
 #[derive(Debug, Eq, PartialEq)]
 enum CompilationPhase {
     NeedInputMap,
-    NeedTypeCheck,
     Ready,
 }
 
@@ -446,27 +394,17 @@ impl Script {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         self.input_map = input_map.0;
         self.produces_type = Some(input_map.1);
-        self.phase = CompilationPhase::NeedTypeCheck;
+        self.phase = CompilationPhase::Ready;
         return Ok(());
     }
 
-    pub fn node_type_or_die(&self) -> ValueType {
-        if self.produces_type.is_none() {
-            panic!("typecheck error: querying node type before ready");
-        }
-        return self.produces_type.unwrap();
+    pub fn node_type(&self) -> Result<ValueType, Error> {
+        ensure!(
+            self.produces_type.is_some(),
+            "typecheck error: querying node type before ready"
+        );
+        return Ok(self.produces_type.unwrap());
     }
-
-    // pub fn typecheck(&mut self) -> Result<ValueType, Error> {
-    //     assert!(
-    //         self.phase == CompilationPhase::NeedTypeCheck || self.phase == CompilationPhase::Ready
-    //     );
-    //     if self.produces_type.is_none() {
-    //         self.produces_type = Some(self.suite.typecheck(&self.input_map)?);
-    //         self.phase = CompilationPhase::Ready;
-    //     }
-    //     return Ok(self.produces_type.unwrap());
-    // }
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         ensure!(

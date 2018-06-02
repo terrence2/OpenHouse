@@ -130,33 +130,27 @@ impl NodeRef {
             return Ok(());
         }
 
-        // Collect input maps while borrowed read-only, so that we can find children.
-        let mut maps = Vec::new();
-        for script in self.0.borrow().scripts.iter() {
-            let input_map = script.build_input_map(tree)?;
-            maps.push(input_map);
-        }
+        if self.0.borrow().script.is_some() {
+            // Collect input map while borrowed read-only, so that we can find children.
+            let data = if let Some(ref script) = self.0.borrow().script {
+                script.build_input_map(tree)?
+            } else {
+                bail!("do not pass go")
+            };
+            //let data = self.0.borrow().script.unwrap().build_input_map(tree)?;
 
-        // Re-borrow read-write to install the input maps we built above.
-        for (script, input_map) in self.0.borrow_mut().scripts.iter_mut().zip(maps.drain(..)) {
-            script.install_input_map(input_map)?;
-        }
+            // Re-borrow read-write to install the input map we built above.
+            let nodetype = data.1;
+            if let Some(ref mut script) = self.0.borrow_mut().script {
+                script.install_input_map(data)?;
+            }
 
-        // Validate that the types of all scripts are the same.
-        let all_types = self.0
-            .borrow()
-            .scripts
-            .iter()
-            .map(|script| script.node_type_or_die())
-            .collect::<Vec<_>>();
-        if !all_types.is_empty() {
-            let ty = ensure_same_types(&all_types)?;
-            trace!(
-                "NodeRef::link_and_validate_input assigned type {:?} at {}",
-                ty,
-                self.0.borrow().path
-            );
-            self.0.borrow_mut().nodetype = Some(ty);
+            // And store it on the node
+            // FIXME: we can just store this in the script.
+            // let nodetype = self.0.borrow().script.unwrap().node_type()?;
+            self.0.borrow_mut().nodetype = Some(nodetype);
+        } else if self.source().is_some() {
+            bail!("dont know how to treat sources yet")
         }
 
         // Recurse into our children.
@@ -175,7 +169,7 @@ impl NodeRef {
     }
 
     pub fn has_value(&self) -> bool {
-        self.source().is_some() ^ (self.0.borrow().scripts.len() > 0)
+        self.source().is_some() || self.0.borrow().script.is_some()
     }
 
     pub fn get_node_type(&self, tree: &Tree) -> Result<Option<ValueType>, Error> {
@@ -267,7 +261,7 @@ impl NodeRef {
     }
 
     pub fn set_script(&self, script: Script) -> Result<(), Error> {
-        self.0.borrow_mut().scripts.push(script);
+        self.0.borrow_mut().script = Some(script);
         return Ok(());
     }
 
@@ -308,7 +302,7 @@ pub struct Node {
     sink: Option<String>,
 
     // The i/o transform function.
-    scripts: Vec<Script>,
+    script: Option<Script>,
     nodetype: Option<ValueType>,
     cache: (usize, Option<Value>),
 }
@@ -329,7 +323,7 @@ impl Node {
             dimensions: None,
             source: None,
             sink: None,
-            scripts: Vec::new(),
+            script: None,
             nodetype: None,
             cache: (0, None),
         };
@@ -356,7 +350,7 @@ impl Node {
     }
 
     pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
-        println!("at {} looking up {:?}", self.path, parts);
+        trace!("Node::lookup_path @ {}, looking up {:?}", self.path, parts);
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
             PathComponent::Lookup(p) => tree.lookup_path(p)?.compute(tree)?.as_path_component()?,
@@ -401,21 +395,27 @@ impl Node {
     }
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
-        // FIXME: pull from all and take latest; assert there are no two with same timestamp
-        bail!("not ready yet");
-        return Ok(self.scripts[0].compute(tree)?);
-        // bail!(
-        //     "runtime error: attempted to read from the value-less path at: {}",
-        //     self.path
-        // )
+        ensure!(
+            self.script.is_some(),
+            "runtime error: computing a non-script path @ {}",
+            self.path
+        );
+        if let Some(ref script) = self.script {
+            return Ok(script.compute(tree)?);
+        }
+        unreachable!()
     }
 
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
-        let mut out = Vec::new();
-        for script in self.scripts.iter() {
-            out.append(&mut script.virtually_compute_for_path(tree)?);
+        ensure!(
+            self.script.is_some(),
+            "typeflow error: reading input from non-script path {}",
+            self.path
+        );
+        if let Some(ref script) = self.script {
+            return Ok(script.virtually_compute_for_path(tree)?);
         }
-        return Ok(out);
+        unreachable!()
     }
 }
 
