@@ -99,7 +99,8 @@ impl TreeTokenizer {
     }
 
     fn tokenize_one(&mut self) -> Result<Token, Error> {
-        return match self.peek(0)? {
+        let c = self.peek(0)?;
+        let tok = match c {
             'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword(),
             '0'...'9' => self.tokenize_int_or_float(),
             '/' => self.tokenize_absolute_path_or_division(),
@@ -141,7 +142,9 @@ impl TreeTokenizer {
                 "tokenize error: expected a sigil or name, found: {}",
                 self.chars[self.offset]
             ),
-        };
+        }?;
+        trace!("tokenize: {} => {:?}", c, tok);
+        return Ok(tok);
     }
 
     fn tokenize_name_or_keyword(&mut self) -> Result<Token, Error> {
@@ -310,7 +313,6 @@ impl TreeTokenizer {
             }
         }
         let content = self.chars[start..self.offset].iter().collect::<String>();
-        //let path = RawPath::from_str(&content)?;
         return Ok(Token::PathTerm(content));
     }
 
@@ -552,54 +554,6 @@ d";
         );
     }
 
-    // fn to_path(mut vs: Vec<&str>) -> Vec<PathComponent> {
-    //     let mut out = Vec::new();
-    //     for s in vs.drain(..) {
-    //         match s {
-    //             "." => out.push(PathComponent::Current),
-    //             ".." => out.push(PathComponent::Parent),
-    //             _ => out.push(PathComponent::Name(s.to_owned())),
-    //         }
-    //     }
-    //     return out;
-    // }
-
-    // #[test]
-    // fn test_tokenize_absolute_path() {
-    //     assert_eq!(
-    //         TT::tokenize("/foo/bar").unwrap(),
-    //         vec![
-    //             Token::PathTerm(RawPath::Absolute(to_path(vec!["foo", "bar"]))),
-    //             Token::Newline,
-    //         ]
-    //     );
-    //     assert_eq!(
-    //         TT::tokenize("/foo/0/bar").unwrap(),
-    //         vec![
-    //             Token::PathTerm(RawPath::Absolute(to_path(vec!["foo", "0", "bar"]))),
-    //             Token::Newline,
-    //         ]
-    //     );
-    // }
-
-    // #[test]
-    // fn test_tokenize_relative_path() {
-    //     assert_eq!(
-    //         TT::tokenize("./foo/bar").unwrap(),
-    //         vec![
-    //             Token::PathTerm(RawPath::Relative(to_path(vec![".", "foo", "bar"]))),
-    //             Token::Newline,
-    //         ]
-    //     );
-    //     assert_eq!(
-    //         TT::tokenize("../foo/bar").unwrap(),
-    //         vec![
-    //             Token::PathTerm(RawPath::Relative(to_path(vec!["..", "foo", "bar"]))),
-    //             Token::Newline,
-    //         ]
-    //     );
-    // }
-
     #[test]
     fn test_tokenize_add() {
         assert_eq!(
@@ -625,5 +579,4 @@ d";
             ]
         );
     }
-
 }

@@ -37,13 +37,6 @@ impl TreeParser {
         let sanitized = s.replace('\t', "    ");
 
         let tokens = TreeTokenizer::tokenize(&sanitized)?;
-        if verbosity >= 3 {
-            println!("Tokens:");
-            for tok in tokens.iter() {
-                println!("\t{:?}", tok);
-            }
-        }
-
         let tree = Tree::new();
         let mut parser = TreeParser {
             verbosity,
@@ -53,7 +46,7 @@ impl TreeParser {
         };
         parser.consume_root(&tree.root())?;
 
-        return tree.link_inputs()?.check_types()?.invert_flows();
+        return tree.link_and_validate_inputs()?.invert_flow_graph();
     }
 
     fn consume_root(&mut self, root: &NodeRef) -> Result<(), Error> {
@@ -79,9 +72,7 @@ impl TreeParser {
             "parse error: expected template to start with 'template'"
         );
         let name = self.peek_name()?;
-        if self.verbosity >= 3 {
-            println!("Consuming template: {}", name);
-        }
+        trace!("Consuming template: {}", name);
         let template_root = NodeRef::new(Node::new("", "template-root"));
         self.consume_tree(&template_root)?;
         self.templates
@@ -91,20 +82,15 @@ impl TreeParser {
 
     fn consume_tree(&mut self, parent: &NodeRef) -> Result<(), Error> {
         let name = self.consume_name()?;
-        if self.verbosity >= 2 {
-            println!(
-                "Consuming tree at: {} under parent: {}",
-                name,
-                parent.name()
-            );
-        }
-
+        trace!(
+            "Consuming tree at: {} under parent: {}",
+            name,
+            parent.name()
+        );
         let child = parent.add_child(&name)?;
         self.consume_inline_suite(&child)?;
         if self.out_of_input() || self.peek()? != Token::Indent {
-            if self.verbosity >= 3 {
-                println!("finished tree {}", name);
-            }
+            trace!("finished tree {}", name);
             return Ok(());
         }
 
@@ -129,6 +115,10 @@ impl TreeParser {
 
     // After name up to the newline.
     fn consume_inline_suite(&mut self, node: &NodeRef) -> Result<(), Error> {
+        trace!(
+            "consuming inline suite at: {:?}",
+            &self.tokens[self.position..]
+        );
         while !self.out_of_input() {
             match self.peek()? {
                 Token::Newline => {
@@ -175,18 +165,15 @@ impl TreeParser {
     }
 
     fn consume_sigil(&mut self, node: &NodeRef) -> Result<(), Error> {
-        if self.verbosity >= 3 {
-            println!("Consuming sigil: {:?}", self.peek()?);
-        }
+        trace!("Consuming sigil: {:?}", self.peek()?);
         match self.pop()? {
             Token::Location(dim) => node.set_location(dim)?,
             Token::Source(ref s) => node.set_source(s)?,
             Token::Sink(ref s) => node.set_sink(s)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
-                let s =
-                    Script::inline_from_tokens(node.path(), &self.tokens[self.position..end + 1])?;
-                self.position = end + 1;
+                let s = Script::inline_from_tokens(node.path(), &self.tokens[self.position..end])?;
+                self.position = end;
                 node.set_script(s)?
             }
             Token::UseTemplate(ref s) => {
@@ -247,8 +234,7 @@ impl TreeParser {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::physical::Dimension2;
-    use tree::script::Value;
+    use tree::{physical::Dimension2, script::{Value, ValueType}};
 
     #[test]
     fn test_parse_minimal() {
@@ -400,5 +386,170 @@ b <-/a
 ";
         let tree = TreeParser::from_str(s, 5).unwrap();
         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
     }
+
+    #[test]
+    fn test_parse_reify_relative() {
+        let s = "
+a ^foo
+b <-./a
+";
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+    }
+
+    #[test]
+    fn test_parse_child_to_parent() {
+        let s = "
+a ^foo
+b <-./a
+    c <-../b
+";
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b/c").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+    }
+
+    #[test]
+    fn test_parse_parent_to_child() {
+        let s = "
+a ^foo
+b <-./b/c
+    c <-../a
+";
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b/c").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+    }
+
+    #[test]
+    fn test_parse_indirect() {
+        let s = r#"
+a <- "y"
+b <-/{./a}/v
+y
+    v <- 2
+"#;
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        //assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::INTEGER
+        );
+        assert_eq!(
+            tree.lookup("/y/v").unwrap().nodetype().unwrap(),
+            ValueType::INTEGER
+        );
+    }
+
+    #[test]
+    fn test_parse_indirect_computed() {
+        use simplelog::*;
+        let _ = TermLogger::init(LevelFilter::Trace, Config::default());
+        let s = r#"
+a <- "y"
+b <- /a + "z"
+c <-/{./b}/v
+y
+    v <- 2
+yz
+    v <- 3
+"#;
+        let tree = TreeParser::from_str(s, 5).unwrap();
+        //assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+        assert_eq!(
+            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            ValueType::STRING
+        );
+        assert_eq!(
+            tree.lookup("/y/v").unwrap().nodetype().unwrap(),
+            ValueType::INTEGER
+        );
+        assert_eq!(
+            tree.lookup("/yz/v").unwrap().nodetype().unwrap(),
+            ValueType::INTEGER
+        );
+        assert_eq!(
+            tree.lookup("/c").unwrap().nodetype().unwrap(),
+            ValueType::INTEGER
+        );
+        assert_eq!(
+            tree.lookup("/c").unwrap().compute(&tree).unwrap(),
+            Value::Integer(3)
+        );
+    }
+
+    //     #[test]
+    //     fn test_parse_indirect_latching() {
+    //         let s = r#"
+    // a <- "y"
+    // b <- "z"
+    // c
+    //     <- latch(/{./a}/v, /{./b}/v)
+    // y
+    //     v <- 2
+    // z
+    //     v <- 3
+    // "#;
+    //         let tree = TreeParser::from_str(s, 5).unwrap();
+    //         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
+    //         assert_eq!(
+    //             tree.lookup("/a").unwrap().nodetype().unwrap(),
+    //             ValueType::STRING
+    //         );
+    //         assert_eq!(
+    //             tree.lookup("/b").unwrap().nodetype().unwrap(),
+    //             ValueType::INTEGER
+    //         );
+    //         assert_eq!(
+    //             tree.lookup("/b/c").unwrap().nodetype().unwrap(),
+    //             ValueType::INTEGER
+    //         );
+    //     }
 }

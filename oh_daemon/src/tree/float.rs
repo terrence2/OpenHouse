@@ -2,7 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
-use std::{cmp::Ordering, ops::{Add, Div, Mul, Neg, Sub}};
+use std::{fmt, cmp::Ordering, ops::{Add, Div, Mul, Neg, Sub}};
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct Float {
@@ -77,6 +77,12 @@ impl Sub for Float {
     type Output = Float;
     fn sub(self, rhs: Float) -> Self::Output {
         return self.checked_sub(&rhs).unwrap();
+    }
+}
+
+impl fmt::Display for Float {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 

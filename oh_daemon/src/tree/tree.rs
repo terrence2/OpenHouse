@@ -4,8 +4,8 @@
 use actix::prelude::*;
 use failure::Error;
 use std::{fmt, cell::RefCell, collections::HashMap, rc::Rc};
-use tree::{path::{PathComponent, ScriptPath}, physical::Dimension2,
-           script::{Script, Value, ValueType}};
+use tree::{path::{ConcretePath, PathComponent, ScriptPath}, physical::Dimension2,
+           script::{ensure_same_types, Script, Value, ValueType}};
 
 pub struct Tree {
     root: NodeRef,
@@ -40,21 +40,18 @@ impl Tree {
         self.root.lookup_path(&path.components[0..], self)
     }
 
+    pub fn lookup_c_path(&self, path: &ConcretePath) -> Result<NodeRef, Error> {
+        self.root.lookup_c_path(&path.components[0..])
+    }
+
     // After the tree has been built, visit all nodes looking up references and
     // storing those references directly in the inputs list per script.
-    pub fn link_inputs(self) -> Result<Tree, Error> {
-        self.root.link_inputs(&self)?;
+    pub fn link_and_validate_inputs(self) -> Result<Tree, Error> {
+        self.root.link_and_validate_inputs(&self)?;
         return Ok(self);
     }
 
-    // After inputs are connected, visit all nodes in the tree computiing the type
-    // of all scripts and propogating those types through our inputs.
-    pub fn check_types(self) -> Result<Tree, Error> {
-        self.root.typecheck()?;
-        return Ok(self);
-    }
-
-    pub fn invert_flows(self) -> Result<Tree, Error> {
+    pub fn invert_flow_graph(self) -> Result<Tree, Error> {
         Ok(self)
     }
 }
@@ -95,6 +92,13 @@ impl NodeRef {
         self.0.borrow().lookup_path(parts, tree)
     }
 
+    pub fn lookup_c_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
+        if parts.is_empty() {
+            return Ok(self.to_owned());
+        }
+        return self.0.borrow().lookup_c_path(parts);
+    }
+
     pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
         let child = self.0.borrow_mut().add_child(name)?;
         child
@@ -114,7 +118,18 @@ impl NodeRef {
         self.0.borrow().name.clone()
     }
 
-    fn link_inputs(&self, tree: &Tree) -> Result<(), Error> {
+    fn link_and_validate_inputs(&self, tree: &Tree) -> Result<(), Error> {
+        trace!(
+            "+++NodeRef::link_and_validate_input({})",
+            self.0.borrow().path
+        );
+
+        // If nodetype is already set, we've either already recursed through
+        // this node, or it has no scripts, so it doesn't matter.
+        if self.0.borrow().nodetype.is_some() {
+            return Ok(());
+        }
+
         // Collect input maps while borrowed read-only, so that we can find children.
         let mut maps = Vec::new();
         for script in self.0.borrow().scripts.iter() {
@@ -127,14 +142,35 @@ impl NodeRef {
             script.install_input_map(input_map)?;
         }
 
+        // Validate that the types of all scripts are the same.
+        let all_types = self.0
+            .borrow()
+            .scripts
+            .iter()
+            .map(|script| script.node_type_or_die())
+            .collect::<Vec<_>>();
+        if !all_types.is_empty() {
+            let ty = ensure_same_types(&all_types)?;
+            trace!(
+                "NodeRef::link_and_validate_input assigned type {:?} at {}",
+                ty,
+                self.0.borrow().path
+            );
+            self.0.borrow_mut().nodetype = Some(ty);
+        }
+
         // Recurse into our children.
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
                 continue;
             }
-            child.link_inputs(tree)?;
+            child.link_and_validate_inputs(tree)?;
         }
 
+        trace!(
+            "---NodeRef::link_and_validate_input({})",
+            self.0.borrow().path
+        );
         return Ok(());
     }
 
@@ -142,40 +178,22 @@ impl NodeRef {
         self.source().is_some() ^ (self.0.borrow().scripts.len() > 0)
     }
 
-    pub fn typecheck(&self) -> Result<(), Error> {
-        // Not all nodes are part of an i/o chain: e.g. root; just walk past them.
-        if self.has_value() {
-            // We may have already typechecked this node via an input, so skip it in that case.
-            if let Some(nodetype) = self.0.borrow().nodetype {
-                return Ok(());
-            }
-
-            let nodetype = if let Some(source) = self.source() {
-                // FIXME: right now we can just force all inputs to be provided as strings.
-                Some(ValueType::STRING)
-            } else {
-                let mut nodetype = None;
-                for script in self.0.borrow_mut().scripts.iter_mut() {
-                    let t = Some(script.typecheck()?);
-                    ensure!(
-                        nodetype == None || nodetype == t,
-                        "typecheck error: all scripts attached to a node must have the same type"
-                    );
-                    nodetype = t;
-                }
-                nodetype
-            };
-            self.0.borrow_mut().nodetype = nodetype;
+    pub fn get_node_type(&self, tree: &Tree) -> Result<Option<ValueType>, Error> {
+        // If we have already validated this node, return the type.
+        if let Some(nodetype) = self.0.borrow().nodetype {
+            return Ok(Some(nodetype));
         }
 
-        for (name, child) in self.0.borrow().children.iter() {
-            if name == "." || name == ".." {
-                continue;
-            }
-            child.typecheck()?;
+        // Not all nodes have a value.
+        if !self.has_value() {
+            return Ok(None);
         }
 
-        return Ok(());
+        // We need to recurse in order to typecheck the current node.
+        self.link_and_validate_inputs(tree)?;
+
+        // Note: unwrap and then rewrap so that we will panic if we don't have a type after link_and_validate.
+        return Ok(Some(self.0.borrow().nodetype.unwrap()));
     }
 
     pub fn nodetype(&self) -> Result<ValueType, Error> {
@@ -183,10 +201,10 @@ impl NodeRef {
             self.has_value(),
             "typecheck error: nodetype request on a node with no value"
         );
-        if let Some(nodetype) = self.0.borrow().nodetype {
-            return Ok(nodetype);
-        }
-        self.typecheck()?;
+        ensure!(
+            self.0.borrow().nodetype != None,
+            "typecheck error: nodetype request on a node that has not been validated"
+        );
         return Ok(self.0.borrow().nodetype.unwrap());
     }
 
@@ -255,6 +273,10 @@ impl NodeRef {
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         self.0.borrow().compute(tree)
+    }
+
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+        self.0.borrow().virtually_compute_for_path(tree)
     }
 
     pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
@@ -334,6 +356,7 @@ impl Node {
     }
 
     pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
+        println!("at {} looking up {:?}", self.path, parts);
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
             PathComponent::Lookup(p) => tree.lookup_path(p)?.compute(tree)?.as_path_component()?,
@@ -347,6 +370,17 @@ impl Node {
             return Ok(child.to_owned());
         }
         return Ok(child.lookup_path(&parts[1..], tree)?);
+    }
+
+    pub fn lookup_c_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
+        if let Some(child) = self.children.get(&parts[0]) {
+            return child.lookup_c_path(&parts[1..]);
+        }
+        bail!(
+            "runtime error: lookup on path that does not exist; at {} -> {:?}",
+            self.path,
+            parts
+        );
     }
 
     fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {
@@ -368,11 +402,20 @@ impl Node {
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         // FIXME: pull from all and take latest; assert there are no two with same timestamp
+        bail!("not ready yet");
         return Ok(self.scripts[0].compute(tree)?);
         // bail!(
         //     "runtime error: attempted to read from the value-less path at: {}",
         //     self.path
         // )
+    }
+
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+        let mut out = Vec::new();
+        for script in self.scripts.iter() {
+            out.append(&mut script.virtually_compute_for_path(tree)?);
+        }
+        return Ok(out);
     }
 }
 
@@ -476,7 +519,6 @@ impl Handler<SourceEvent> for Tree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use simplelog::*;
 
     #[test]
     fn test_build_tree() {

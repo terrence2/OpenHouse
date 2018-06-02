@@ -2,15 +2,31 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
-use std::collections::HashMap;
-use tree::{float::Float, path::ScriptPath, tokenizer::Token, tree::{NodeRef, Tree}};
+use std::{fmt, collections::HashMap};
+use tree::{float::Float, path::{ConcretePath, PathComponent, ScriptPath}, tokenizer::Token,
+           tree::{NodeRef, Tree}};
+
+pub fn ensure_same_types(types: &Vec<ValueType>) -> Result<ValueType, Error> {
+    ensure!(
+        !types.is_empty(),
+        "typecheck error: trying to reify empty type list"
+    );
+    let expect_type = types[0];
+    for ty in &types[1..] {
+        ensure!(
+            *ty == expect_type,
+            "typecheck error: mismatched types in ensure_same_types"
+        );
+    }
+    return Ok(expect_type);
+}
 
 bitflags! {
     pub struct ValueType : usize {
         const BOOLEAN = 0b0001;
         const FLOAT   = 0b0010;
-        const INTEGER = 0b0011;
-        const STRING  = 0b0100;
+        const INTEGER = 0b0100;
+        const STRING  = 0b1000;
     }
 }
 
@@ -46,17 +62,91 @@ impl Value {
         return Ok(result);
     }
 
-    fn typecheck(&self, input_map: &HashMap<ScriptPath, NodeRef>) -> Result<ValueType, Error> {
-        Ok(match self {
-            Value::Boolean(_) => ValueType::BOOLEAN,
-            Value::Float(_) => ValueType::FLOAT,
-            Value::Integer(_) => ValueType::INTEGER,
-            Value::String(_) => ValueType::STRING,
-            Value::Path(p) => {
-                let noderef = &input_map[p];
-                noderef.nodetype()?
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+        trace!("Value::virtually_compute_for_path({})", self);
+        if let Value::Path(p) = self {
+            let noderef = tree.lookup_path(p)?;
+            return noderef.virtually_compute_for_path(tree);
+        }
+        return Ok(vec![self.to_owned()]);
+    }
+
+    // Since this is only called for virtually_compute, we can assert some
+    // sanity on our inputs.
+    pub fn virtual_apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
+        ensure!(
+            !self.is_path(),
+            "runtime error: attempting to apply a non-path"
+        );
+        ensure!(
+            !other.is_path(),
+            "runtime error: attempting to apply a non-path"
+        );
+        return Ok(match self {
+            Value::Boolean(b0) => {
+                Value::Boolean(Self::apply_boolean(tok, *b0, other.as_boolean()?)?)
             }
-        })
+            Value::Integer(i0) => Self::apply_integer(tok, *i0, other.as_integer()?)?,
+            Value::Float(f0) => Self::apply_float(tok, *f0, other.as_float()?)?,
+            Value::String(s0) => Value::String(Self::apply_string(tok, s0, &other.as_string()?)?),
+            _ => bail!("in prog"),
+        });
+    }
+
+    pub fn apply_boolean(tok: &Token, a: bool, b: bool) -> Result<bool, Error> {
+        return Ok(match tok {
+            Token::Or => a || b,
+            Token::And => a && b,
+            Token::Equals => a == b,
+            Token::NotEquals => a != b,
+            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+        });
+    }
+
+    pub fn apply_integer(tok: &Token, a: i64, b: i64) -> Result<Value, Error> {
+        return Ok(match tok {
+            Token::Add => Value::Integer(a + b),
+            Token::Subtract => Value::Integer(a - b),
+            Token::Multiply => Value::Integer(a * b),
+            Token::Divide => Value::Integer(a / b), // FIXME: revisit this -- consider auto promotion to float ala python3
+            Token::Equals => Value::Boolean(a == b),
+            Token::NotEquals => Value::Boolean(a != b),
+            Token::GreaterThan => Value::Boolean(a > b),
+            Token::LessThan => Value::Boolean(a < b),
+            Token::GreaterThanOrEquals => Value::Boolean(a >= b),
+            Token::LessThanOrEquals => Value::Boolean(a <= b),
+            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+        });
+    }
+
+    pub fn apply_float(tok: &Token, a: Float, b: Float) -> Result<Value, Error> {
+        return Ok(match tok {
+            Token::Add => Value::Float(a + b),
+            Token::Subtract => Value::Float(a - b),
+            Token::Multiply => Value::Float(a * b),
+            Token::Divide => Value::Float(a / b),
+            Token::Equals => Value::Boolean(a == b),
+            Token::NotEquals => Value::Boolean(a != b),
+            Token::GreaterThan => Value::Boolean(a > b),
+            Token::LessThan => Value::Boolean(a < b),
+            Token::GreaterThanOrEquals => Value::Boolean(a >= b),
+            Token::LessThanOrEquals => Value::Boolean(a <= b),
+            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+        });
+    }
+
+    pub fn apply_string(tok: &Token, a: &str, b: &str) -> Result<String, Error> {
+        return Ok(match tok {
+            Token::Add => a.to_owned() + &b,
+            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+        });
+    }
+
+    pub fn is_path(&self) -> bool {
+        if let Value::Path(_) = self {
+            return true;
+        }
+        return false;
     }
 
     pub fn as_boolean(&self) -> Result<bool, Error> {
@@ -99,12 +189,84 @@ impl Value {
         }
     }
 
-    pub fn find_all_inputs(&self, out: &mut Vec<ScriptPath>) -> Result<(), Error> {
-        match self {
-            Value::Path(sp) => out.push(sp.clone()),
-            _ => {}
+    // Devirtualize and return all concrete paths, if this is a path.
+    pub fn find_all_possible_inputs(
+        &self,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Result<ValueType, Error> {
+        trace!("Value::find_all_possible_inputs: {}", self);
+        if let Value::Path(path) = self {
+            let mut inputs = path.devirtualize(tree)?;
+
+            // Do type checking as we collect paths, since we won't have another opportunity.
+            let mut value_types = Vec::new();
+            for inp in inputs.iter() {
+                println!("looking up: {}", inp);
+                let noderef = tree.lookup_c_path(inp)?;
+                value_types.push(noderef.get_node_type(tree)?.unwrap());
+            }
+            ensure_same_types(&value_types);
+
+            out.append(&mut inputs);
+
+            // NOTE: we still need to grab concrete sub-paths for out, but they don't go into self.
+
+            return Ok(value_types[0]);
         }
-        return Ok(());
+        return Ok(match self {
+            Value::Boolean(_) => ValueType::BOOLEAN,
+            Value::Float(_) => ValueType::FLOAT,
+            Value::Integer(_) => ValueType::INTEGER,
+            Value::String(_) => ValueType::STRING,
+            Value::Path(p) => panic!("typecheck error: we already filtered out path"),
+        });
+    }
+
+    // fn find_inputs_in_path(
+    //     path: &ScriptPath,
+    //     tree: &Tree,
+    //     out: &mut Vec<ConcretePath>,
+    // ) -> Result<(), Error> {
+    //     trace!("Value::find_inputs_in_path({})", path);
+    //     if path.is_dynamic() {
+    //         //Self::find_all_concrete_inputs(path, tree, out)?;
+    //         //out.append(&mut path.devirtualize(tree)?);
+    //     } else {
+
+    //     }
+    //     return Ok(());
+    // }
+
+    // // Recurse through all dynamic paths, recording all leafs that are already concrete.
+    // fn find_all_concrete_inputs(
+    //     path: &ScriptPath,
+    //     tree: &Tree,
+    //     out: &mut Vec<ConcretePath>,
+    // ) -> Result<(), Error> {
+    //     assert!(path.is_dynamic());
+    //     trace!("Value::find_all_concrete_inputs({})", path);
+    //     for component in path.components.iter() {
+    //         match component {
+    //             PathComponent::Name(_) => {}
+    //             PathComponent::Lookup(sub_path) => {
+    //                 Self::find_inputs_in_path(&sub_path, tree, out)?;
+    //             }
+    //         }
+    //     }
+    //     return Ok(());
+    // }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Boolean(b) => write!(f, "{}", b),
+            Value::Integer(i) => write!(f, "{}i64", i),
+            Value::Float(v) => write!(f, "{}f64", v),
+            Value::String(s) => write!(f, "\"{}\"", s),
+            Value::Path(p) => write!(f, "{}", p),
+        }
     }
 }
 
@@ -131,46 +293,46 @@ macro_rules! map_values {
     ($self:ident, $f:ident, $reduce:expr, $($args:ident),*) => {
         match $self {
             Expr::Add(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Add, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::And(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::And, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Divide(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Divide, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Equal(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Equals, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::GreaterThan(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::GreaterThan, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::GreaterThanOrEqual(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::GreaterThanOrEquals, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::LessThan(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::LessThan, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::LessThanOrEqual(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::LessThanOrEquals, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Modulo(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Modulo, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Multiply(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Multiply, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Negate(a) => {
                 a.$f($($args),*)
             }
             Expr::NotEqual(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::NotEquals, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Or(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Or, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Subtract(a, b) => {
-                $reduce(a.$f($($args),*)?, b.$f($($args),*)?)
+                $reduce(Token::Subtract, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Value(v) => {
                 v.$f($($args),*)
@@ -193,19 +355,40 @@ impl Expr {
         })
     }
 
-    pub fn find_all_inputs(&self, out: &mut Vec<ScriptPath>) -> Result<(), Error> {
-        map_values!(self, find_all_inputs, |_a, _b| Ok(()), out)
-    }
-
-    pub fn typecheck(&self, input_map: &HashMap<ScriptPath, NodeRef>) -> Result<ValueType, Error> {
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         map_values!(
             self,
-            typecheck,
-            |a, b| {
+            virtually_compute_for_path,
+            |tok, mut lhs: Vec<Value>, mut rhs: Vec<Value>| {
+                trace!("vcomp: reduce {:?} {:?} {:?}", lhs, tok, rhs);
+                let mut out = Vec::new();
+                for a in lhs.iter() {
+                    for b in rhs.iter() {
+                        trace!("vcomp: reduce1 {:?} {:?} {:?}", a, tok, b);
+                        out.push(a.virtual_apply(&tok, b)?);
+                    }
+                }
+                Ok(out)
+            },
+            tree
+        )
+    }
+
+    pub fn find_all_possible_inputs(
+        &self,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Result<ValueType, Error> {
+        trace!("Expr::find_all_possible_inputs({:?})", self);
+        map_values!(
+            self,
+            find_all_possible_inputs,
+            |_tok, a, b| {
                 ensure!(a == b, "type check failure: mismatched types in {:?}", self);
                 Ok(a)
             },
-            input_map
+            tree,
+            out
         )
     }
 }
@@ -222,7 +405,7 @@ enum CompilationPhase {
 pub struct Script {
     suite: Expr,
     phase: CompilationPhase,
-    input_map: HashMap<ScriptPath, NodeRef>,
+    input_map: HashMap<ConcretePath, NodeRef>,
     produces_type: Option<ValueType>,
 }
 
@@ -241,38 +424,49 @@ impl Script {
 
     // Note that we have to have a separate build and install phase because otherwise we'd be borrowed
     // mutable when searching for inputs and double-borrow if any children are referenced.
-    pub fn build_input_map(&self, tree: &Tree) -> Result<HashMap<ScriptPath, NodeRef>, Error> {
+    pub fn build_input_map(
+        &self,
+        tree: &Tree,
+    ) -> Result<(HashMap<ConcretePath, NodeRef>, ValueType), Error> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         let mut inputs = Vec::new();
-        self.suite.find_all_inputs(&mut inputs)?;
+        let ty = self.suite.find_all_possible_inputs(tree, &mut inputs)?;
         let mut input_map = HashMap::new();
         for input in inputs.drain(..) {
-            let node = tree.lookup_path(&input)?;
+            let node = tree.lookup_c_path(&input)?;
             input_map.insert(input, node);
         }
-        return Ok(input_map);
+        return Ok((input_map, ty));
     }
 
     pub fn install_input_map(
         &mut self,
-        input_map: HashMap<ScriptPath, NodeRef>,
+        input_map: (HashMap<ConcretePath, NodeRef>, ValueType),
     ) -> Result<(), Error> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
-        self.input_map = input_map;
+        self.input_map = input_map.0;
+        self.produces_type = Some(input_map.1);
         self.phase = CompilationPhase::NeedTypeCheck;
         return Ok(());
     }
 
-    pub fn typecheck(&mut self) -> Result<ValueType, Error> {
-        assert!(
-            self.phase == CompilationPhase::NeedTypeCheck || self.phase == CompilationPhase::Ready
-        );
+    pub fn node_type_or_die(&self) -> ValueType {
         if self.produces_type.is_none() {
-            self.produces_type = Some(self.suite.typecheck(&self.input_map)?);
-            self.phase = CompilationPhase::Ready;
+            panic!("typecheck error: querying node type before ready");
         }
-        return Ok(self.produces_type.unwrap());
+        return self.produces_type.unwrap();
     }
+
+    // pub fn typecheck(&mut self) -> Result<ValueType, Error> {
+    //     assert!(
+    //         self.phase == CompilationPhase::NeedTypeCheck || self.phase == CompilationPhase::Ready
+    //     );
+    //     if self.produces_type.is_none() {
+    //         self.produces_type = Some(self.suite.typecheck(&self.input_map)?);
+    //         self.phase = CompilationPhase::Ready;
+    //     }
+    //     return Ok(self.produces_type.unwrap());
+    // }
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         ensure!(
@@ -281,6 +475,10 @@ impl Script {
             self.phase
         );
         self.suite.compute(tree)
+    }
+
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+        self.suite.virtually_compute_for_path(tree)
     }
 }
 
@@ -381,7 +579,7 @@ impl<'a> ExprParser<'a> {
     fn eparser(&mut self) -> Result<Expr, Error> {
         let e = self.exp_p(0)?;
         ensure!(
-            self.offset + 1 == self.tokens.len(),
+            self.offset == self.tokens.len(),
             "parse error: extra tokens after script"
         );
         return Ok(e);
@@ -458,14 +656,14 @@ mod test {
 
     fn do_compute(expr: &str) -> Result<Value, Error> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr)).unwrap();
-        let mut script = Script::inline_from_tokens("/a".to_owned(), &tok[2..]).unwrap();
+        let mut script =
+            Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1]).unwrap();
         let tree = Tree::new();
         let input_map = script.build_input_map(&tree).unwrap();
         ensure!(
             script.install_input_map(input_map).is_ok(),
             "typecheck failure"
         );
-        ensure!(script.typecheck().is_ok(), "typecheck failure");
         return script.compute(&Tree::new());
     }
 
@@ -497,7 +695,7 @@ mod test {
     #[test]
     fn test_script_or() {
         let tok = TreeTokenizer::tokenize("a <- true || true").unwrap();
-        ExprParser::from_tokens("/a".to_owned(), &tok[2..])
+        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])
             .eparser()
             .unwrap();
     }

@@ -2,6 +2,8 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
+use std::fmt;
+use tree::tree::Tree;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PathComponent {
@@ -9,9 +11,19 @@ pub enum PathComponent {
     Lookup(ScriptPath),
 }
 
+impl fmt::Display for PathComponent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PathComponent::Name(name) => write!(f, "{}", name),
+            PathComponent::Lookup(script_path) => write!(f, "{{{}}}", script_path),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ScriptPath {
     pub components: Vec<PathComponent>,
+    dynamic: bool,
 }
 
 impl ScriptPath {
@@ -21,42 +33,49 @@ impl ScriptPath {
         let (start, mut components) = if s.starts_with('/') {
             (1, Vec::new())
         } else {
-            (
-                0,
-                (&base_path[1..])
-                    .split('/')
-                    .map(|c| PathComponent::Name(c.to_owned()))
-                    .collect::<Vec<PathComponent>>(),
-            )
+            let mut comps = (&base_path[1..])
+                .split('/')
+                .map(|c| PathComponent::Name(c.to_owned()))
+                .collect::<Vec<PathComponent>>();
+            comps.pop();
+            (0, comps)
         };
-        Self::parse_parts(&mut components, base_path, &s[start..])?;
-        return Ok(ScriptPath { components });
+        let dynamic = Self::parse_parts(&mut components, base_path, &s[start..])?;
+        return Ok(ScriptPath {
+            components,
+            dynamic,
+        });
     }
 
     fn parse_parts(
         components: &mut Vec<PathComponent>,
         base_path: &str,
         s: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
+        let mut dynamic = false;
         let parts = Self::tokenize_path(s)?;
         for part in parts.iter() {
-            Self::parse_part(components, base_path, part)?;
+            if Self::parse_part(components, base_path, part)? {
+                dynamic = true;
+            }
         }
-        return Ok(());
+        return Ok(dynamic);
     }
 
     fn parse_part(
         components: &mut Vec<PathComponent>,
         base_path: &str,
         part: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         match part {
             "" => bail!(
                 "parse error: empty path component under '{}' in '{:?}'",
                 base_path,
                 components
             ),
-            "." => {}
+            "." => {
+                return Ok(false);
+            }
             ".." => {
                 ensure!(
                     components.len() > 0,
@@ -65,6 +84,7 @@ impl ScriptPath {
                     components
                 );
                 components.pop();
+                return Ok(false);
             }
             s => {
                 if s.starts_with('{') && s.ends_with('}') {
@@ -73,15 +93,16 @@ impl ScriptPath {
                         &s[1..s.len() - 1],
                     )?);
                     components.push(c);
+                    return Ok(true);
                 } else {
                     ensure!(!s.contains('{'), "parse error: found { in path part");
                     ensure!(!s.contains('}'), "parse error: found } in path part");
                     let c = PathComponent::Name(s.to_owned());
                     components.push(c);
+                    return Ok(false);
                 }
             }
         }
-        return Ok(());
     }
 
     fn tokenize_path(s: &str) -> Result<Vec<String>, Error> {
@@ -115,6 +136,138 @@ impl ScriptPath {
         parts.push(s[part_start..offset].chars().collect::<String>());
         return Ok(parts);
     }
+
+    pub fn is_dynamic(&self) -> bool {
+        return self.dynamic;
+    }
+
+    pub fn is_concrete(&self) -> bool {
+        return !self.dynamic;
+    }
+
+    pub fn as_concrete(&self) -> ConcretePath {
+        let mut concrete = Vec::new();
+        for component in self.components.iter() {
+            match component {
+                PathComponent::Name(name) => concrete.push(name.clone()),
+                PathComponent::Lookup(_) => {
+                    panic!("path error: dynamic is set, but lookups in path")
+                }
+            }
+        }
+        return ConcretePath::from_components(concrete);
+    }
+
+    // All inputs to a path must ultimately have a constrained domain, either
+    // because they come from constants or from a switch or button. This lets us
+    // use virtual interpretation of all intermediate scripts to get a set of
+    // possible values, even if large.
+    pub fn devirtualize(&self, tree: &Tree) -> Result<Vec<ConcretePath>, Error> {
+        if self.is_concrete() {
+            trace!("Path::devirtualize(concrete: {})", self);
+            return Ok(vec![self.as_concrete()]);
+        }
+        trace!("Path::devirtualize(dynamic: {})", self);
+        let mut working_set = Vec::new();
+        for component in self.components.iter() {
+            match component {
+                PathComponent::Name(name) => {
+                    // Append to all in-progress path fragments.
+                    working_set = Self::explode_paths_1(working_set, name.clone());
+                }
+                PathComponent::Lookup(script_path) => {
+                    // Find all possible paths using this algorithm on the child.
+                    let concrete_sub_paths = script_path.devirtualize(tree)?;
+                    trace!(
+                        "Path::devirtualize: devirtualized component {{{}}} to {:?}",
+                        script_path,
+                        concrete_sub_paths
+                    );
+
+                    // Find all values that this can take using virtual interpretation.
+                    let mut all_names = Vec::new();
+                    for sub_path in concrete_sub_paths.iter() {
+                        let noderef = tree.lookup_c_path(&sub_path)?;
+                        for v in noderef.virtually_compute_for_path(tree)? {
+                            all_names.push(v.as_path_component()?);
+                        }
+                    }
+                    trace!(
+                        "Path::devirtualize: path {{{}}} has values {:?}",
+                        component,
+                        concrete_sub_paths
+                    );
+
+                    // Explode these new names into the working set.
+                    working_set = Self::explode_paths_n(working_set, &all_names);
+                }
+            }
+            trace!(
+                "Path::devirtualize: working set after {}: {:?}",
+                component,
+                working_set
+            );
+        }
+        trace!("DV: RV: {:?} => {:?}", self.components, working_set);
+        return Ok(working_set);
+    }
+
+    fn explode_paths_1(mut paths: Vec<ConcretePath>, name: String) -> Vec<ConcretePath> {
+        if paths.is_empty() {
+            paths.push(ConcretePath::from_components(vec![name.clone()]));
+        } else {
+            for concrete in paths.iter_mut() {
+                concrete.components.push(name.clone());
+            }
+        }
+        return paths;
+    }
+
+    fn explode_paths_n(mut paths: Vec<ConcretePath>, all_names: &Vec<String>) -> Vec<ConcretePath> {
+        let mut next_paths = Vec::new();
+        if paths.is_empty() {
+            for name in all_names.iter() {
+                next_paths.push(ConcretePath::from_components(vec![name.clone()]));
+            }
+        } else {
+            for concrete in paths.drain(..) {
+                for name in all_names.iter() {
+                    let mut next = ConcretePath::from_components(concrete.components.clone());
+                    next.components.push(name.to_owned());
+                    next_paths.push(next);
+                }
+            }
+        }
+        return next_paths;
+    }
+}
+
+impl fmt::Display for ScriptPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let parts = self.components
+            .iter()
+            .map(|c| format!("{}", c))
+            .collect::<Vec<_>>()
+            .join("/");
+        write!(f, "/{}", parts)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ConcretePath {
+    pub components: Vec<String>,
+}
+
+impl ConcretePath {
+    fn from_components(components: Vec<String>) -> Self {
+        Self { components }
+    }
+}
+
+impl fmt::Display for ConcretePath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "/{}", self.components.join("/"))
+    }
 }
 
 #[cfg(test)]
@@ -143,8 +296,11 @@ mod test {
         PathComponent::Name(p.to_owned())
     }
 
-    fn p(v: Vec<PathComponent>) -> PathComponent {
-        PathComponent::Lookup(ScriptPath { components: v })
+    fn p(v: Vec<PathComponent>, d: bool) -> PathComponent {
+        PathComponent::Lookup(ScriptPath {
+            components: v,
+            dynamic: d,
+        })
     }
 
     #[test]
@@ -154,7 +310,7 @@ mod test {
             path.components,
             vec![
                 n("a"),
-                p(vec![n("0"), p(vec![n("A"), n("B")]), n("2")]),
+                p(vec![n("0"), p(vec![n("A"), n("B")], false), n("2")], true),
                 n("c"),
             ]
         )
@@ -177,26 +333,29 @@ mod test {
         let path = ScriptPath::from_str_at_path("/", "/foo/{/baz/./bep}/bar").unwrap();
         assert_eq!(
             path.components,
-            vec![n("foo"), p(vec![n("baz"), n("bep")]), n("bar")]
+            vec![n("foo"), p(vec![n("baz"), n("bep")], false), n("bar")]
         )
     }
 
     #[test]
     fn test_parse_abs_embedded_abs_parent() {
         let path = ScriptPath::from_str_at_path("/", "/foo/{/baz/../bep}/bar").unwrap();
-        assert_eq!(path.components, vec![n("foo"), p(vec![n("bep")]), n("bar")])
+        assert_eq!(
+            path.components,
+            vec![n("foo"), p(vec![n("bep")], false), n("bar")]
+        )
     }
 
     #[test]
     fn test_parse_rel_current() {
         let path = ScriptPath::from_str_at_path("/a/b", "./c/d").unwrap();
-        assert_eq!(path.components, vec![n("a"), n("b"), n("c"), n("d")])
+        assert_eq!(path.components, vec![n("a"), n("c"), n("d")])
     }
 
     #[test]
     fn test_parse_rel_parent() {
         let path = ScriptPath::from_str_at_path("/a/b", "../c/d").unwrap();
-        assert_eq!(path.components, vec![n("a"), n("c"), n("d")])
+        assert_eq!(path.components, vec![n("c"), n("d")])
     }
 
     #[test]
@@ -210,7 +369,7 @@ mod test {
         let path = ScriptPath::from_str_at_path("/a/b", "../c/{../e}/d").unwrap();
         assert_eq!(
             path.components,
-            vec![n("a"), n("c"), p(vec![n("a"), n("e")]), n("d")]
+            vec![n("c"), p(vec![n("e")], false), n("d")]
         )
     }
 }

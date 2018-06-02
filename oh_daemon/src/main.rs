@@ -48,7 +48,7 @@ fn main() {
 }
 
 fn run(opt: Opt) -> Result<(), Error> {
-    TermLogger::init(LevelFilter::Warn, Config::default())?;
+    TermLogger::init(LevelFilter::Debug, Config::default())?;
 
     let sys = System::new("open_house");
 
