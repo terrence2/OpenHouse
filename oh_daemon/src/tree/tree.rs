@@ -44,12 +44,12 @@ impl Tree {
         return self.root.lookup(relative);
     }
 
-    pub fn lookup_path(&self, path: &ScriptPath) -> Result<NodeRef, Error> {
-        self.root.lookup_path(&path.components[0..], self)
+    pub fn lookup_path(&self, path: &ConcretePath) -> Result<NodeRef, Error> {
+        self.root.lookup_path(&path.components[0..])
     }
 
-    pub fn lookup_c_path(&self, path: &ConcretePath) -> Result<NodeRef, Error> {
-        self.root.lookup_c_path(&path.components[0..])
+    pub fn lookup_dynamic_path(&self, path: &ScriptPath) -> Result<NodeRef, Error> {
+        self.root.lookup_dynamic_path(&path.components[0..], self)
     }
 
     // After the tree has been built, visit all nodes looking up references and
@@ -96,15 +96,19 @@ impl NodeRef {
         self.0.borrow().lookup(path)
     }
 
-    pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
-        self.0.borrow().lookup_path(parts, tree)
-    }
-
-    pub fn lookup_c_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
+    pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
         if parts.is_empty() {
             return Ok(self.to_owned());
         }
-        return self.0.borrow().lookup_c_path(parts);
+        return self.0.borrow().lookup_path(parts);
+    }
+
+    pub fn lookup_dynamic_path(
+        &self,
+        parts: &[PathComponent],
+        tree: &Tree,
+    ) -> Result<NodeRef, Error> {
+        self.0.borrow().lookup_dynamic_path(parts, tree)
     }
 
     pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
@@ -336,11 +340,32 @@ impl Node {
         };
     }
 
-    pub fn lookup_path(&self, parts: &[PathComponent], tree: &Tree) -> Result<NodeRef, Error> {
-        trace!("Node::lookup_path @ {}, looking up {:?}", self.path, parts);
+    pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
+        if let Some(child) = self.children.get(&parts[0]) {
+            return child.lookup_path(&parts[1..]);
+        }
+        bail!(
+            "runtime error: lookup on path that does not exist; at {} -> {:?}",
+            self.path,
+            parts
+        );
+    }
+
+    pub fn lookup_dynamic_path(
+        &self,
+        parts: &[PathComponent],
+        tree: &Tree,
+    ) -> Result<NodeRef, Error> {
+        trace!(
+            "Node::lookup_dynamic_path @ {}, looking up {:?}",
+            self.path,
+            parts
+        );
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
-            PathComponent::Lookup(p) => tree.lookup_path(p)?.compute(tree)?.as_path_component()?,
+            PathComponent::Lookup(p) => tree.lookup_dynamic_path(p)?
+                .compute(tree)?
+                .as_path_component()?,
         };
         ensure!(
             self.children.contains_key(&child_name),
@@ -350,18 +375,7 @@ impl Node {
         if parts.len() == 1 {
             return Ok(child.to_owned());
         }
-        return Ok(child.lookup_path(&parts[1..], tree)?);
-    }
-
-    pub fn lookup_c_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
-        if let Some(child) = self.children.get(&parts[0]) {
-            return child.lookup_c_path(&parts[1..]);
-        }
-        bail!(
-            "runtime error: lookup on path that does not exist; at {} -> {:?}",
-            self.path,
-            parts
-        );
+        return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
     }
 
     fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {

@@ -42,7 +42,7 @@ impl Value {
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         trace!("Value::virtually_compute_for_path({})", self);
         if let Value::Path(p) = self {
-            let noderef = tree.lookup_path(p)?;
+            let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.virtually_compute_for_path(tree);
         }
         return Ok(vec![self.to_owned()]);
@@ -50,7 +50,7 @@ impl Value {
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         if let Value::Path(p) = self {
-            let noderef = tree.lookup_path(p)?;
+            let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.compute(tree);
         }
         return Ok(self.to_owned());
@@ -185,7 +185,7 @@ impl Value {
             // Do type checking as we collect paths, since we won't have another opportunity.
             let mut value_types = Vec::new();
             for inp in inputs.iter() {
-                let noderef = tree.lookup_c_path(inp)?;
+                let noderef = tree.lookup_path(inp)?;
                 value_types.push(noderef.get_node_type(tree)?.unwrap());
             }
             ensure_same_types(&value_types)?;
@@ -380,7 +380,7 @@ impl Script {
         let ty = self.suite.find_all_possible_inputs(tree, &mut inputs)?;
         let mut input_map = HashMap::new();
         for input in inputs.drain(..) {
-            let node = tree.lookup_c_path(&input)?;
+            let node = tree.lookup_path(&input)?;
             input_map.insert(input, node);
         }
         return Ok((input_map, ty));

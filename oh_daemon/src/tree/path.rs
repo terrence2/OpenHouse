@@ -183,7 +183,7 @@ impl ScriptPath {
                     // Find all values that this can take using virtual interpretation.
                     let mut all_names = Vec::new();
                     for sub_path in concrete_sub_paths.iter() {
-                        let noderef = tree.lookup_c_path(&sub_path)?;
+                        let noderef = tree.lookup_path(&sub_path)?;
                         for v in noderef.virtually_compute_for_path(tree)? {
                             all_names.push(v.as_path_component()?);
                         }
