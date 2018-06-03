@@ -58,7 +58,7 @@ fn run(opt: Opt) -> Result<(), Error> {
 
     let sys = System::new("open_house");
 
-    let tree = Tree::from_file(&opt.config)?;
+    let tree = Tree::new_empty().build_from_file(&opt.config)?;
     let _tree_addr: Addr<Unsync, _> = tree.start();
 
     let server = build_server("openhouse.eyrie", "127.0.0.1", 8089)?;

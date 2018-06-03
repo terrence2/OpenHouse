@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::prelude::*;
 use failure::Error;
-use std::{fmt, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use std::{fmt, fs, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 use tree::{parser::TreeParser, path::{ConcretePath, PathComponent, ScriptPath},
            physical::Dimension2, script::{Script, Value, ValueType}};
 
@@ -20,12 +20,15 @@ impl Tree {
         }
     }
 
-    pub fn from_file(path: &Path) -> Result<Tree, Error> {
-        TreeParser::from_file(Self::new_empty(), path)
+    pub fn build_from_file(self, path: &Path) -> Result<Tree, Error> {
+        let contents = fs::read_to_string(path)?;
+        return self.build_from_str(&contents);
     }
 
-    pub fn from_str(self, s: &str) -> Result<Tree, Error> {
-        TreeParser::from_str(Self::new_empty(), s)
+    pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
+        return TreeParser::from_str(self, s)?
+            .link_and_validate_inputs()?
+            .invert_flow_graph();
     }
 
     pub fn root(&self) -> NodeRef {
@@ -54,12 +57,12 @@ impl Tree {
 
     // After the tree has been built, visit all nodes looking up references and
     // storing those references directly in the inputs list per script.
-    pub fn link_and_validate_inputs(self) -> Result<Tree, Error> {
+    fn link_and_validate_inputs(self) -> Result<Tree, Error> {
         self.root.link_and_validate_inputs(&self)?;
         return Ok(self);
     }
 
-    pub fn invert_flow_graph(self) -> Result<Tree, Error> {
+    fn invert_flow_graph(self) -> Result<Tree, Error> {
         Ok(self)
     }
 }

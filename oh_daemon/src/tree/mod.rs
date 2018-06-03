@@ -9,5 +9,4 @@ mod script;
 mod tokenizer;
 mod tree;
 
-pub use self::parser::TreeParser;
 pub use self::tree::Tree;
