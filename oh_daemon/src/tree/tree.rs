@@ -3,9 +3,9 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::prelude::*;
 use failure::Error;
-use std::{fmt, cell::RefCell, collections::HashMap, rc::Rc};
-use tree::{path::{ConcretePath, PathComponent, ScriptPath}, physical::Dimension2,
-           script::{Script, Value, ValueType}};
+use std::{fmt, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use tree::{parser::TreeParser, path::{ConcretePath, PathComponent, ScriptPath},
+           physical::Dimension2, script::{Script, Value, ValueType}};
 
 pub struct Tree {
     root: NodeRef,
@@ -13,11 +13,19 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn new() -> Self {
+    pub fn new_empty() -> Self {
         Tree {
             root: NodeRef::new(Node::new("", "")),
             sink_handlers: HashMap::new(),
         }
+    }
+
+    pub fn from_file(path: &Path) -> Result<Tree, Error> {
+        TreeParser::from_file(Self::new_empty(), path)
+    }
+
+    pub fn from_str(self, s: &str) -> Result<Tree, Error> {
+        TreeParser::from_str(Self::new_empty(), s)
     }
 
     pub fn root(&self) -> NodeRef {
@@ -501,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_build_tree() {
-        let tree = Tree::new();
+        let tree = Tree::new_empty();
         assert_eq!(None, tree.root().location());
 
         let d10 = Dimension2::from_str("@10x10").unwrap();

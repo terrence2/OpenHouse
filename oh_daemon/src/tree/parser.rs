@@ -12,9 +12,9 @@ pub struct TreeParser {
 }
 
 impl TreeParser {
-    pub fn from_file(path: &Path) -> Result<Tree, Error> {
+    pub fn from_file(tree: Tree, path: &Path) -> Result<Tree, Error> {
         let contents = fs::read_to_string(path)?;
-        return Self::from_str(&contents);
+        return Self::from_str(tree, &contents);
     }
 
     // Parsing strategy:
@@ -32,11 +32,10 @@ impl TreeParser {
     //   (5) Data flow
     //          - Invert the comes-from in order to build a goes-to set for each node.
     //
-    pub fn from_str(s: &str) -> Result<Tree, Error> {
+    pub fn from_str(tree: Tree, s: &str) -> Result<Tree, Error> {
         let sanitized = s.replace('\t', "    ");
 
         let tokens = TreeTokenizer::tokenize(&sanitized)?;
-        let tree = Tree::new();
         let mut parser = TreeParser {
             templates: HashMap::new(),
             tokens,
@@ -232,13 +231,13 @@ mod test {
 
     #[test]
     fn test_parse_minimal() {
-        let tree = TreeParser::from_str("a").unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), "a").unwrap();
         assert!(tree.lookup("/a").unwrap().location().is_none());
     }
 
     #[test]
     fn test_parse_siblings() {
-        let tree = TreeParser::from_str("a\nb").unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), "a\nb").unwrap();
         assert!(tree.lookup("/a").unwrap().location().is_none());
         assert!(tree.lookup("/b").unwrap().location().is_none());
     }
@@ -249,7 +248,7 @@ mod test {
 a @1x1
     b @2x2
 c @3x3";
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("@1x1").unwrap()
@@ -270,7 +269,7 @@ c @3x3";
 a @1x1
     b @2x2
     c @3x3";
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("@1x1").unwrap()
@@ -294,7 +293,7 @@ a @1x1
 c @3x3
     <-"bar"
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("@1x1").unwrap()
@@ -324,7 +323,7 @@ a @1x1
     b @2x2
         c @3x3
 d @4x4";
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("@1x1").unwrap()
@@ -351,7 +350,7 @@ template bar @2x2
 a !foo
 b !bar
 ";
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("@1x1").unwrap()
@@ -365,7 +364,7 @@ b !bar
     #[test]
     #[should_panic]
     fn test_parse_node_before_newline() {
-        TreeParser::from_str("a b").unwrap();
+        TreeParser::from_str(Tree::new_empty(), "a b").unwrap();
     }
 
     #[test]
@@ -373,7 +372,7 @@ b !bar
         // use simplelog::*;
         // let _ = TermLogger::init(LevelFilter::Trace, Config::default());
         let s = "a <- 2 + 2";
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().compute(&tree).unwrap(),
             Value::Integer(4)
@@ -386,7 +385,7 @@ b !bar
 a <-"foo"
 b <-/a
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -403,7 +402,7 @@ b <-/a
 a <-"foo"
 b <-./a
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -421,7 +420,7 @@ a <-"foo"
 b <-./a
     c <-../b
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -443,7 +442,7 @@ a <-"foo"
 b <-./b/c
     c <-../a
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -466,7 +465,7 @@ b <-/{./a}/v
 y
     v <- 2
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -492,7 +491,7 @@ y
 yz
     v <- 3
 "#;
-        let tree = TreeParser::from_str(s).unwrap();
+        let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype().unwrap(),
             ValueType::STRING
@@ -531,7 +530,7 @@ yz
     // z
     //     v <- 3
     // "#;
-    //         let tree = TreeParser::from_str(s).unwrap();
+    //         let tree = TreeParser::from_str(Tree::new_empty(), s).unwrap();
     //         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
     //         assert_eq!(
     //             tree.lookup("/a").unwrap().nodetype().unwrap(),

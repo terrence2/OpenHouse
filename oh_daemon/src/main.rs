@@ -27,7 +27,7 @@ use failure::Error;
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
-use tree::TreeParser;
+use tree::Tree;
 use web::server::build_server;
 
 #[derive(StructOpt, Debug)]
@@ -58,7 +58,7 @@ fn run(opt: Opt) -> Result<(), Error> {
 
     let sys = System::new("open_house");
 
-    let tree = TreeParser::from_file(&opt.config)?;
+    let tree = Tree::from_file(&opt.config)?;
     let _tree_addr: Addr<Unsync, _> = tree.start();
 
     let server = build_server("openhouse.eyrie", "127.0.0.1", 8089)?;

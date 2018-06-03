@@ -594,13 +594,13 @@ mod test {
     fn do_compute(expr: &str) -> Result<Value, Error> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;
         let mut script = Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])?;
-        let tree = Tree::new();
+        let tree = Tree::new_empty();
         let input_map = script.build_input_map(&tree)?;
         ensure!(
             script.install_input_map(input_map).is_ok(),
             "typecheck failure"
         );
-        return script.compute(&Tree::new());
+        return script.compute(&tree);
     }
 
     #[test]
