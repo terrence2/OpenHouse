@@ -48,11 +48,16 @@ fn main() {
 }
 
 fn run(opt: Opt) -> Result<(), Error> {
-    TermLogger::init(LevelFilter::Debug, Config::default())?;
+    let level = match opt.verbose {
+        0 => LevelFilter::Warn,
+        1 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
+    };
+    TermLogger::init(level, Config::default())?;
 
     let sys = System::new("open_house");
 
-    let tree = TreeParser::from_file(&opt.config, opt.verbose)?;
+    let tree = TreeParser::from_file(&opt.config)?;
     let _tree_addr: Addr<Unsync, _> = tree.start();
 
     let server = build_server("openhouse.eyrie", "127.0.0.1", 8089)?;

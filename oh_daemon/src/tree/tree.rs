@@ -5,7 +5,7 @@ use actix::prelude::*;
 use failure::Error;
 use std::{fmt, cell::RefCell, collections::HashMap, rc::Rc};
 use tree::{path::{ConcretePath, PathComponent, ScriptPath}, physical::Dimension2,
-           script::{ensure_same_types, Script, Value, ValueType}};
+           script::{Script, Value, ValueType}};
 
 pub struct Tree {
     root: NodeRef,
@@ -201,28 +201,6 @@ impl NodeRef {
         );
         return Ok(self.0.borrow().nodetype.unwrap());
     }
-
-    // pub fn find_matching<MF>(
-    //     &self,
-    //     path: &str,
-    //     matches: &mut HashMap<String, NodeRef>,
-    //     match_func: &MF,
-    // ) -> Result<(), Error>
-    // where
-    //     MF: Fn(&NodeRef) -> bool,
-    // {
-    //     if match_func(&self) {
-    //         matches.insert(path.to_owned(), self.clone());
-    //     }
-    //     for (name, child) in self.0.borrow().children.iter() {
-    //         if name.starts_with(".") {
-    //             continue;
-    //         }
-    //         let child_path = format!("{}/{}", path, name);
-    //         child.find_matching(&child_path, matches, match_func)?;
-    //     }
-    //     return Ok(());
-    // }
 
     pub fn location(&self) -> Option<Dimension2> {
         self.0.borrow().location

@@ -137,10 +137,6 @@ impl ScriptPath {
         return Ok(parts);
     }
 
-    pub fn is_dynamic(&self) -> bool {
-        return self.dynamic;
-    }
-
     pub fn is_concrete(&self) -> bool {
         return !self.dynamic;
     }

@@ -3,8 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
 use std::{fmt, collections::HashMap};
-use tree::{float::Float, path::{ConcretePath, PathComponent, ScriptPath}, tokenizer::Token,
-           tree::{NodeRef, Tree}};
+use tree::{float::Float, path::{ConcretePath, ScriptPath}, tokenizer::Token, tree::{NodeRef, Tree}};
 
 pub fn ensure_same_types(types: &Vec<ValueType>) -> Result<ValueType, Error> {
     ensure!(
@@ -186,15 +185,15 @@ impl Value {
             // Do type checking as we collect paths, since we won't have another opportunity.
             let mut value_types = Vec::new();
             for inp in inputs.iter() {
-                println!("looking up: {}", inp);
                 let noderef = tree.lookup_c_path(inp)?;
                 value_types.push(noderef.get_node_type(tree)?.unwrap());
             }
-            ensure_same_types(&value_types);
+            ensure_same_types(&value_types)?;
 
             out.append(&mut inputs);
 
-            // NOTE: we still need to grab concrete sub-paths for out, but they don't go into self.
+            // FIXME FIXME FIXME: we still need to grab concrete sub-paths for out -- they are not part of devirtualize
+            // because they are inputs to the devirtualized path, but not themselves part of it in any way.
 
             return Ok(value_types[0]);
         }
@@ -203,7 +202,7 @@ impl Value {
             Value::Float(_) => ValueType::FLOAT,
             Value::Integer(_) => ValueType::INTEGER,
             Value::String(_) => ValueType::STRING,
-            Value::Path(p) => panic!("typecheck error: we already filtered out path"),
+            Value::Path(_) => panic!("typeflow error: we already filtered out path"),
         });
     }
 }
@@ -296,7 +295,7 @@ impl Expr {
         map_values!(
             self,
             compute,
-            |tok, mut lhs: Value, mut rhs: Value| {
+            |tok, lhs: Value, rhs: Value| {
                 trace!("compute: reduce {:?} {:?} {:?}", lhs, tok, rhs);
                 lhs.apply(&tok, &rhs)
             },
@@ -308,7 +307,7 @@ impl Expr {
         map_values!(
             self,
             virtually_compute_for_path,
-            |tok, mut lhs: Vec<Value>, mut rhs: Vec<Value>| {
+            |tok, lhs: Vec<Value>, rhs: Vec<Value>| {
                 trace!("vcomp: reduce {:?} {:?} {:?}", lhs, tok, rhs);
                 let mut out = Vec::new();
                 for a in lhs.iter() {
@@ -593,11 +592,10 @@ mod test {
     use tree::tokenizer::TreeTokenizer;
 
     fn do_compute(expr: &str) -> Result<Value, Error> {
-        let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr)).unwrap();
-        let mut script =
-            Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1]).unwrap();
+        let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;
+        let mut script = Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])?;
         let tree = Tree::new();
-        let input_map = script.build_input_map(&tree).unwrap();
+        let input_map = script.build_input_map(&tree)?;
         ensure!(
             script.install_input_map(input_map).is_ok(),
             "typecheck failure"
