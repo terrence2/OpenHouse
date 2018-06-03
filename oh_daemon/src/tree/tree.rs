@@ -149,7 +149,7 @@ impl NodeRef {
             // FIXME: we can just store this in the script.
             // let nodetype = self.0.borrow().script.unwrap().node_type()?;
             self.0.borrow_mut().nodetype = Some(nodetype);
-        } else if self.source().is_some() {
+        } else if self.0.borrow().source.is_some() {
             bail!("dont know how to treat sources yet")
         }
 
@@ -169,7 +169,8 @@ impl NodeRef {
     }
 
     pub fn has_value(&self) -> bool {
-        self.source().is_some() || self.0.borrow().script.is_some()
+        let node = self.0.borrow();
+        return node.source.is_some() || node.script.is_some();
     }
 
     pub fn get_node_type(&self, tree: &Tree) -> Result<Option<ValueType>, Error> {
@@ -215,9 +216,9 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn source(&self) -> Option<String> {
-        self.0.borrow().source.clone()
-    }
+    // pub fn source(&self) -> Option<String> {
+    //     self.0.borrow().source.clone()
+    // }
 
     pub fn set_source(&self, from: &str) -> Result<(), Error> {
         ensure!(
@@ -228,13 +229,20 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn sink(&self) -> Option<String> {
-        self.0.borrow().sink.clone()
-    }
+    // pub fn sink(&self) -> Option<String> {
+    //     self.0.borrow().sink.clone()
+    // }
 
     pub fn set_sink(&self, tgt: &str) -> Result<(), Error> {
         ensure!(self.0.borrow().sink.is_none(), "sink has already been set");
         self.0.borrow_mut().sink = Some(tgt.to_owned());
+        return Ok(());
+    }
+
+    pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
+        if let Some(dim) = template.location() {
+            self.set_location(dim)?;
+        }
         return Ok(());
     }
 
@@ -249,13 +257,6 @@ impl NodeRef {
 
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         self.0.borrow().virtually_compute_for_path(tree)
-    }
-
-    pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
-        if let Some(dim) = template.location() {
-            self.set_location(dim)?;
-        }
-        return Ok(());
     }
 }
 

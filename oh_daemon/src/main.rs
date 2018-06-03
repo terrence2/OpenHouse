@@ -9,6 +9,7 @@ extern crate approx;
 extern crate bitflags;
 #[macro_use]
 extern crate failure;
+extern crate failure_derive;
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]

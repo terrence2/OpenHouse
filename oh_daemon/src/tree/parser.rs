@@ -307,7 +307,6 @@ c @3x3
             tree.lookup("/a/b").unwrap().location().unwrap(),
             Dimension2::from_str("@2x2").unwrap()
         );
-        assert_eq!(tree.lookup("/a/b").unwrap().sink().unwrap(), "redstone");
         assert_eq!(
             tree.lookup("/c").unwrap().location().unwrap(),
             Dimension2::from_str("@3x3").unwrap()
@@ -526,7 +525,7 @@ yz
     // a <- "y"
     // b <- "z"
     // c
-    //     <- latch(/{./a}/v, /{./b}/v)
+    //     <- latest(/{./a}/v, /{./b}/v)
     // y
     //     v <- 2
     // z
