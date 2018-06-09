@@ -180,20 +180,29 @@ impl Value {
     ) -> Result<ValueType, Error> {
         trace!("Value::find_all_possible_inputs: {}", self);
         if let Value::Path(path) = self {
-            let mut inputs = path.devirtualize(tree)?;
+            // Our virtual path will depend on concrete inputs that may or may
+            // not have been visited yet. Find them, and make sure they have been
+            // visited so that we can virtually_compute on them when devirtualizing.
+            let mut concrete_inputs = Vec::new();
+            path.find_concrete_inputs(&mut concrete_inputs)?;
+            for concrete in concrete_inputs.iter() {
+                tree.lookup_path(concrete)?.link_and_validate_inputs(tree)?;
+            }
+
+            let mut direct_inputs = path.devirtualize(tree)?;
 
             // Do type checking as we collect paths, since we won't have another opportunity.
             let mut value_types = Vec::new();
-            for inp in inputs.iter() {
+            for inp in direct_inputs.iter() {
                 let noderef = tree.lookup_path(inp)?;
-                value_types.push(noderef.get_node_type(tree)?.unwrap());
+                let nodetype = noderef.get_or_find_node_type(tree)?;
+                value_types.push(nodetype);
             }
             ensure_same_types(&value_types)?;
 
-            out.append(&mut inputs);
-
-            // FIXME FIXME FIXME: we still need to grab concrete sub-paths for out -- they are not part of devirtualize
-            // because they are inputs to the devirtualized path, but not themselves part of it in any way.
+            // Collect both direct and indirect inputs at this value.
+            out.append(&mut direct_inputs);
+            out.append(&mut concrete_inputs);
 
             return Ok(value_types[0]);
         }
@@ -348,12 +357,11 @@ enum CompilationPhase {
 }
 
 /// The code embedded under a comes-from (<- or <-\) operator in the tree.
-#[derive(Debug)]
 pub struct Script {
     suite: Expr,
     phase: CompilationPhase,
     input_map: HashMap<ConcretePath, NodeRef>,
-    produces_type: Option<ValueType>,
+    nodetype: Option<ValueType>,
 }
 
 impl Script {
@@ -364,7 +372,7 @@ impl Script {
             suite: expr,
             phase: CompilationPhase::NeedInputMap,
             input_map: HashMap::new(),
-            produces_type: None,
+            nodetype: None,
         };
         return Ok(script);
     }
@@ -392,29 +400,41 @@ impl Script {
     ) -> Result<(), Error> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         self.input_map = input_map.0;
-        self.produces_type = Some(input_map.1);
+        self.nodetype = Some(input_map.1);
         self.phase = CompilationPhase::Ready;
         return Ok(());
     }
 
-    pub fn node_type(&self) -> Result<ValueType, Error> {
+    pub fn nodetype(&self) -> Result<ValueType, Error> {
         ensure!(
-            self.produces_type.is_some(),
+            self.nodetype.is_some(),
             "typecheck error: querying node type before ready"
         );
-        return Ok(self.produces_type.unwrap());
+        return Ok(self.nodetype.unwrap());
     }
 
-    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub(in tree) fn has_a_nodetype(&self) -> bool {
+        return self.nodetype.is_some();
+    }
+
+    pub(in tree) fn all_inputs(&self) -> Result<Vec<String>, Error> {
+        return Ok(self.input_map
+            .keys()
+            .map(|concrete| concrete.to_string())
+            .collect::<Vec<_>>());
+    }
+
+    pub(in tree) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         ensure!(
             self.phase == CompilationPhase::Ready,
-            "runtime error: attempting script usage before ready: {:?}",
-            self.phase
+            "runtime error: attempting script usage before ready: {:?} => {:?}",
+            self.phase,
+            self.suite
         );
         self.suite.compute(tree)
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub(in tree) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         self.suite.virtually_compute_for_path(tree)
     }
 }

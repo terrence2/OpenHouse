@@ -154,6 +154,22 @@ impl ScriptPath {
         return ConcretePath::from_components(concrete);
     }
 
+    pub fn find_concrete_inputs(&self, inputs: &mut Vec<ConcretePath>) -> Result<(), Error> {
+        if self.is_concrete() {
+            inputs.push(self.as_concrete());
+            return Ok(());
+        }
+        for component in self.components.iter() {
+            match component {
+                PathComponent::Name(_) => {}
+                PathComponent::Lookup(path) => {
+                    path.find_concrete_inputs(inputs)?;
+                }
+            }
+        }
+        return Ok(());
+    }
+
     // All inputs to a path must ultimately have a constrained domain, either
     // because they come from constants or from a switch or button. This lets us
     // use virtual interpretation of all intermediate scripts to get a set of

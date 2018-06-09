@@ -2,16 +2,17 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 use tree::{script::Script, tokenizer::{Token, TreeTokenizer}, tree::{Node, NodeRef, Tree}};
 
-pub struct TreeParser {
+pub struct TreeParser<'a> {
+    tree: &'a Tree,
     templates: HashMap<String, NodeRef>,
     tokens: Vec<Token>,
     position: usize,
 }
 
-impl TreeParser {
+impl<'a> TreeParser<'a> {
     // Parsing strategy:
     //   (1) Tokenize:
     //          - keeps indent state and emits indent and dedent events with tokens
@@ -30,13 +31,16 @@ impl TreeParser {
     pub fn from_str(tree: Tree, s: &str) -> Result<Tree, Error> {
         let sanitized = s.replace('\t', "    ");
 
-        let tokens = TreeTokenizer::tokenize(&sanitized)?;
-        let mut parser = TreeParser {
-            templates: HashMap::new(),
-            tokens,
-            position: 0,
-        };
-        parser.consume_root(&tree.root())?;
+        {
+            let tokens = TreeTokenizer::tokenize(&sanitized)?;
+            let mut parser = TreeParser {
+                tree: &tree,
+                templates: HashMap::new(),
+                tokens,
+                position: 0,
+            };
+            parser.consume_root(&tree.root())?;
+        }
 
         return Ok(tree);
     }
@@ -160,8 +164,8 @@ impl TreeParser {
         trace!("Consuming sigil: {:?}", self.peek()?);
         match self.pop()? {
             Token::Location(dim) => node.set_location(dim)?,
-            Token::Source(ref s) => node.set_source(s)?,
-            Token::Sink(ref s) => node.set_sink(s)?,
+            Token::Source(ref s) => node.set_source(s, &self.tree)?,
+            Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
                 let s = Script::inline_from_tokens(node.path(), &self.tokens[self.position..end])?;
