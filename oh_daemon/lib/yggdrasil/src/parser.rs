@@ -2,8 +2,11 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
+use path::ConcretePath;
+use script::Script;
 use std::collections::HashMap;
-use tree::{script::Script, tokenizer::{Token, TreeTokenizer}, tree::{Node, NodeRef, Tree}};
+use tokenizer::{Token, TreeTokenizer};
+use tree::{Node, NodeRef, Tree};
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
@@ -69,10 +72,12 @@ impl<'a> TreeParser<'a> {
         );
         let name = self.peek_name()?;
         trace!("Consuming template: {}", name);
-        let template_root = NodeRef::new(Node::new("", "template-root"));
+        let template_root = NodeRef::new(Node::new(
+            ConcretePath::new_root().new_child("template-root"),
+        ));
         self.consume_tree(&template_root)?;
         self.templates
-            .insert(name.clone(), template_root.lookup(&name)?);
+            .insert(name.clone(), template_root.lookup_path(&vec![name])?);
         return Ok(());
     }
 
@@ -168,7 +173,10 @@ impl<'a> TreeParser<'a> {
             Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
-                let s = Script::inline_from_tokens(node.path(), &self.tokens[self.position..end])?;
+                let s = Script::inline_from_tokens(
+                    node.path().to_string(),
+                    &self.tokens[self.position..end],
+                )?;
                 self.position = end;
                 node.set_script(s)?
             }
@@ -226,7 +234,8 @@ impl<'a> TreeParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::{physical::Dimension2, script::{Value, ValueType}};
+    use physical::Dimension2;
+    use script::{Value, ValueType};
 
     #[test]
     fn test_parse_minimal() {
@@ -298,7 +307,7 @@ c @3x3
             Dimension2::from_str("@1x1").unwrap()
         );
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
@@ -310,7 +319,7 @@ c @3x3
             Dimension2::from_str("@3x3").unwrap()
         );
         assert_eq!(
-            tree.lookup("/c").unwrap().nodetype().unwrap(),
+            tree.lookup("/c").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
     }
@@ -386,11 +395,11 @@ b <-/a
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
     }
@@ -403,11 +412,11 @@ b <-./a
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
     }
@@ -421,15 +430,15 @@ b <-./a
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b/c").unwrap().nodetype().unwrap(),
+            tree.lookup("/b/c").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
     }
@@ -443,15 +452,15 @@ b <-./b/c
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b/c").unwrap().nodetype().unwrap(),
+            tree.lookup("/b/c").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
     }
@@ -466,15 +475,15 @@ y
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::INTEGER
         );
         assert_eq!(
-            tree.lookup("/y/v").unwrap().nodetype().unwrap(),
+            tree.lookup("/y/v").unwrap().nodetype(&tree).unwrap(),
             ValueType::INTEGER
         );
     }
@@ -492,23 +501,23 @@ yz
 "#;
         let tree = Tree::new_empty().build_from_str(s).unwrap();
         assert_eq!(
-            tree.lookup("/a").unwrap().nodetype().unwrap(),
+            tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/b").unwrap().nodetype().unwrap(),
+            tree.lookup("/b").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
         );
         assert_eq!(
-            tree.lookup("/y/v").unwrap().nodetype().unwrap(),
+            tree.lookup("/y/v").unwrap().nodetype(&tree).unwrap(),
             ValueType::INTEGER
         );
         assert_eq!(
-            tree.lookup("/yz/v").unwrap().nodetype().unwrap(),
+            tree.lookup("/yz/v").unwrap().nodetype(&tree).unwrap(),
             ValueType::INTEGER
         );
         assert_eq!(
-            tree.lookup("/c").unwrap().nodetype().unwrap(),
+            tree.lookup("/c").unwrap().nodetype(&tree).unwrap(),
             ValueType::INTEGER
         );
         assert_eq!(

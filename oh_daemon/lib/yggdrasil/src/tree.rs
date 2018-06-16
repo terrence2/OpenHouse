@@ -1,74 +1,93 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use actix::prelude::*;
+use downcast_rs::Downcast;
 use failure::Error;
-use std::{fmt, fs, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
-use tree::{parser::TreeParser, path::{ConcretePath, PathComponent, ScriptPath},
-           physical::Dimension2, script::{Script, Value, ValueType}};
+use parser::TreeParser;
+use path::{ConcretePath, PathComponent, ScriptPath};
+use physical::Dimension2;
+use script::{Script, Value, ValueType};
+use std::{fs, cell::{RefCell, RefMut}, collections::HashMap, path::Path, rc::Rc};
 
-pub trait TreeSource {
-    // FIXME: if we call this before we have linked up inputs, we won't be able
-    // to call compute on the children of it when we call this, so won't
-    // actually be able to do anything useful in the source with that
-    // information.
-    //
-    // However, we need to know all_possible_values in order to figure out what
-    // our inputs are at this node. So we can't do it in the other order either
-    // because we need to call all_possible_values to get all input paths to
-    // actually figure out what values it can take.
-    //
-    // But that doesn't necessarily apply to its children. We could have a
-    // guarantee that any children of a source node must not depend on the value
-    // of that source....
-    //
-    // We would need to switch to depth-first link_and_validate_inputs, then,
-    // after the depth-first traversal, if this is a source node do an
-    // assertion. Then we could call register_paths, knowing that it could
-    // inspect children under our node safely.
-    //fn register_path(&self, sources: &Vec<ConcretePath>, tree: &Tree) -> Result<(), Error>;
+/// The combination of a Value plus a monotonic ordinal.
+pub struct Sample {
+    value: Value,
+    at: usize,
+}
 
-    // FIXME2: we'd like to start with a subsystem registered as a handler
-    // for a name, but switched off initially to save resources. So at the
-    // first usage we need to remember to turn it on.
-    //
-    // This won't be useful for things like hue, since they need the bridge
-    // first, and that needs info in the tree to operate.
-    //
-    // Maybe we need a first pass to find all references to a kind of source?
-    // Do we do linking for things under those nodes first in a separate pass?
-    // This is getting weird.
-    //fn enable_source(&self) -> Result<(), Error>;
+pub trait TreeSource: Downcast {
+    /// Note the following path listed as a source using this handler.
+    fn add_path(&mut self, path: &str, tree: &SubTree) -> Result<(), Error>;
 
-    // FIXME: needs to be @ a path
-    fn all_possible_values(&self) -> Result<Vec<Value>, Error>;
+    /// Return the type of the given path.
+    fn nodetype(&self, path: &str, tree: &SubTree) -> Result<ValueType, Error>;
 
-    // FIXME: needs to be @ a path
-    fn current_value(&self) -> Result<Value, Error>;
+    /// Return all possible values that the given source can take. This is only
+    /// called for sources that are used as a path component elsewhere. In the
+    /// event this is called for a source that does not have a constrained set of
+    /// possible values -- floats, arbitrary strings, etc -- return an error.
+    fn get_all_possible_values(&self, path: &str, tree: &SubTree) -> Result<Vec<Value>, Error>;
 
-    // FIXME: needs to be @ a path
-    fn nodetype(&self) -> Result<ValueType, Error>;
+    /// Return the current value of the given source. Sources are generally
+    /// expected to be delivered asyncronously and the latest value will be
+    /// cached indefinitely, This is only called when the value is used as a path
+    /// component before a change event has occurred.
+    fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value>;
+}
+impl_downcast!(TreeSource);
+
+#[derive(Clone)]
+pub struct SourceRef(Rc<RefCell<Box<TreeSource>>>);
+
+impl SourceRef {
+    pub fn new(source: Box<TreeSource>) -> Self {
+        SourceRef(Rc::new(RefCell::new(source)))
+    }
+
+    pub fn mutate_as<T>(&self, f: &mut FnMut(&mut T)) -> Result<(), Error>
+    where
+        T: TreeSource,
+    {
+        RefMut::map(self.0.borrow_mut(), |ts| {
+            if let Some(real) = ts.downcast_mut::<T>() {
+                f(real);
+            }
+            ts
+        });
+        return Ok(());
+    }
 }
 
 pub struct Tree {
     root: NodeRef,
-    source_handlers: HashMap<String, Rc<Box<TreeSource>>>,
-    sink_handlers: HashMap<String, Recipient<Syn, SinkEvent>>,
+    source_handlers: HashMap<String, SourceRef>,
+    //source_handlers_base: HashMap<String, Box<FnOnce() -> ()>>,
+    //sink_handlers: HashMap<String, Recipient<Syn, SinkEvent>>,
 }
+
+// pub trait EventHandler {
+//     fn handle_event(&self, path: &str, value: &Value) -> Result<(), Error>;
+// }
+
+// impl EventHandler for Tree {
+//     fn handle_event(&self, path: &str, value: &Value) -> Result<(), Error> {
+//         debug!("handle_event called on path {} with value {}", path, value);
+//         return Ok(());
+//     }
+// }
 
 impl Tree {
     pub fn new_empty() -> Self {
         Tree {
-            root: NodeRef::new(Node::new("", "")),
+            root: NodeRef::new(Node::new(ConcretePath::new_root())),
             source_handlers: HashMap::new(),
-            sink_handlers: HashMap::new(),
+            //sink_handlers: HashMap::new(),
         }
     }
 
-    pub fn add_source_handler(mut self, name: &str, source: Box<TreeSource>) -> Tree {
-        self.source_handlers
-            .insert(name.to_owned(), Rc::new(source));
-        return self;
+    pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Result<Tree, Error> {
+        self.source_handlers.insert(name.to_owned(), source.clone());
+        return Ok(self);
     }
 
     pub fn build_from_file(self, path: &Path) -> Result<Tree, Error> {
@@ -87,15 +106,8 @@ impl Tree {
     }
 
     pub fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
-        ensure!(
-            path.starts_with('/'),
-            "invalid path: tree lookups must start at /"
-        );
-        let relative: &str = &path[1..];
-        if relative.is_empty() {
-            return Ok(self.root.clone());
-        }
-        return self.root.lookup(relative);
+        let concrete = ConcretePath::from_str(path)?;
+        return self.lookup_path(&concrete);
     }
 
     pub fn lookup_path(&self, path: &ConcretePath) -> Result<NodeRef, Error> {
@@ -122,18 +134,18 @@ impl Tree {
     }
 }
 
-impl Actor for Tree {
-    type Context = Context<Self>;
-}
+// impl Actor for Tree {
+//     type Context = Context<Self>;
+// }
 
-struct SubTree<'a> {
+pub struct SubTree<'a> {
     tree: &'a Tree,
     root: NodeRef,
 }
 
 impl<'a> SubTree<'a> {
     fn new(tree: &'a Tree, root: NodeRef) -> Result<Self, Error> {
-        root.enforce_jail()?;
+        //root.enforce_jail()?;
         return Ok(SubTree { tree, root });
     }
 }
@@ -152,12 +164,8 @@ impl NodeRef {
         return self_ref;
     }
 
-    pub fn path(&self) -> String {
+    pub fn path(&self) -> ConcretePath {
         return self.0.borrow().path.clone();
-    }
-
-    pub fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
-        self.0.borrow().lookup(path)
     }
 
     pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
@@ -194,7 +202,7 @@ impl NodeRef {
         self.0.borrow().name.clone()
     }
 
-    pub(in tree) fn link_and_validate_inputs(&self, tree: &Tree) -> Result<(), Error> {
+    pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Result<(), Error> {
         trace!(
             "+++NodeRef::link_and_validate_input({})",
             self.0.borrow().path
@@ -204,6 +212,10 @@ impl NodeRef {
         // so can skip recursion as well. If we have no input, there is no easy
         // way to tell if we've already visited this node.
         if self.0.borrow().has_a_nodetype() {
+            trace!(
+                "---NodeRef::link_and_validate_input({})",
+                self.0.borrow().path
+            );
             return Ok(());
         }
 
@@ -233,14 +245,18 @@ impl NodeRef {
             .map(|s| s.to_owned())
             .collect::<_>();
         children.sort();
-        for name in children {
-            let child = &self.0.borrow().children[&name];
+        for name in children.iter() {
+            let child = &self.0.borrow().children[name];
             child.link_and_validate_inputs(tree)?;
         }
 
         // If this is a source node, tell the associated source handler about it.
-        if let Some(source) = self.source() {
-            let subtree = tree.subtree_at(self.to_owned())?;
+        if let Some(NodeInput::Source(ref source)) = self.0.borrow().input {
+            self.enforce_jail()?;
+            source
+                .0
+                .borrow_mut()
+                .add_path(&self.path().to_string(), &tree.subtree_at(self.to_owned())?)?;
         }
 
         trace!(
@@ -251,16 +267,29 @@ impl NodeRef {
     }
 
     fn enforce_jail(&self) -> Result<(), Error> {
-        for child in self.0.borrow().children.values() {
-            child.enforce_jail_under(&self.0.borrow().path)?;
+        trace!("enforcing jail under {}", self.path());
+        for (name, child) in self.0.borrow().children.iter() {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.enforce_jail_under(&self.0.borrow().path.to_string())?;
         }
         return Ok(());
     }
 
-    fn enforce_jail_under(&self, path: &str) -> Result<(), Error> {
+    fn enforce_jail_under(&self, jail_path: &str) -> Result<(), Error> {
+        trace!("enforcing jail path {} at path {}", jail_path, self.path());
         if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
-            for input in script.all_inputs() {
-                println!("INP: {:?}", input);
+            for input_path in script.all_inputs()?.iter() {
+                trace!("checking input: {}", input_path);
+                if !input_path.starts_with(jail_path) {
+                    bail!(
+                        "jailbreak error @ {}: referenced path {} outside of jail in {}",
+                        self.path(),
+                        input_path,
+                        jail_path
+                    );
+                }
             }
         }
         return Ok(());
@@ -277,7 +306,7 @@ impl NodeRef {
     // If node type has been set, return it, otherwise do link_and_validate in
     // order to find it. This method is only safe to call during compilation. It
     // is public for use by Script during compilation.
-    pub(in tree) fn get_or_find_node_type(&self, tree: &Tree) -> Result<ValueType, Error> {
+    pub(super) fn get_or_find_node_type(&self, tree: &Tree) -> Result<ValueType, Error> {
         ensure!(
             self.has_input(),
             "typeflow error: read from the node @ {} has no inputs",
@@ -286,16 +315,16 @@ impl NodeRef {
 
         // If we have already validated this node, return the type.
         if self.0.borrow().has_a_nodetype() {
-            return self.nodetype();
+            return self.nodetype(tree);
         }
 
         // We need to recurse in order to typecheck the current node.
         self.link_and_validate_inputs(tree)?;
-        return self.nodetype();
+        return self.nodetype(tree);
     }
 
-    pub fn nodetype(&self) -> Result<ValueType, Error> {
-        return self.0.borrow().nodetype();
+    pub fn nodetype(&self, tree: &Tree) -> Result<ValueType, Error> {
+        return self.0.borrow().nodetype(tree);
     }
 
     pub fn location(&self) -> Option<Dimension2> {
@@ -307,6 +336,7 @@ impl NodeRef {
             self.0.borrow().location.is_none(),
             "location has already been set"
         );
+        debug!("set_location about to borrow_mut: {}", self.0.borrow().path);
         self.0.borrow_mut().location = Some(loc);
         return Ok(());
     }
@@ -322,15 +352,8 @@ impl NodeRef {
             "parse error: unknown source kind '{}'",
             from
         );
-        self.0.borrow_mut().input = Some(NodeInput::Source(tree.source_handlers[from].clone()));
+        self.0.borrow_mut().input = Some(NodeInput::Source(tree.source_handlers[from].to_owned()));
         return Ok(());
-    }
-
-    fn source(&self) -> Option<Rc<Box<TreeSource>>> {
-        if let Some(NodeInput::Source(ref source)) = self.0.borrow().input {
-            return Some(source.to_owned());
-        }
-        return None;
     }
 
     pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Result<(), Error> {
@@ -372,47 +395,15 @@ impl NodeRef {
 }
 
 enum NodeInput {
-    Source(Rc<Box<TreeSource>>),
+    Source(SourceRef),
     Script(Script),
 }
 
 impl NodeInput {
-    fn nodetype(&self) -> Result<ValueType, Error> {
-        match self {
-            NodeInput::Source(s) => s.nodetype(),
-            NodeInput::Script(s) => s.nodetype(),
-        }
-    }
-
     fn has_a_nodetype(&self) -> bool {
         match self {
             NodeInput::Source(_) => false,
             NodeInput::Script(s) => s.has_a_nodetype(),
-        }
-    }
-
-    fn is_script(&self) -> bool {
-        match self {
-            NodeInput::Source(_) => false,
-            NodeInput::Script(_) => true,
-        }
-    }
-
-    fn is_source(&self) -> bool {
-        !self.is_script()
-    }
-
-    fn compute(&self, tree: &Tree) -> Result<Value, Error> {
-        match self {
-            NodeInput::Script(script) => script.compute(tree),
-            NodeInput::Source(source) => source.current_value(),
-        }
-    }
-
-    fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
-        match self {
-            NodeInput::Script(script) => script.virtually_compute_for_path(tree),
-            NodeInput::Source(source) => source.all_possible_values(),
         }
     }
 }
@@ -420,7 +411,7 @@ impl NodeInput {
 pub struct Node {
     // The tree structure.
     name: String,
-    path: String,
+    path: ConcretePath,
     children: HashMap<String, NodeRef>,
 
     // Simple sigils.
@@ -431,6 +422,7 @@ pub struct Node {
     // pulling inputs from external systems and other computed values. Or
     // nothing; it's fine for a node to just be structural.
     input: Option<NodeInput>,
+    cache: Option<Sample>,
 
     // Optional output data binding.
     sink: Option<String>,
@@ -438,49 +430,23 @@ pub struct Node {
     // source: Option<String>,
     // script: Option<Script>,
     // nodetype: Option<ValueType>,
-    // cache: (usize, Option<Value>),
 }
 
 impl Node {
-    pub fn new(parent: &str, name: &str) -> Self {
-        assert!(name.find('/').is_none());
-        let path = if parent == "/" {
-            format!("/{}", name)
-        } else {
-            format!("{}/{}", parent, name)
-        };
+    pub fn new(path: ConcretePath) -> Self {
         return Node {
-            name: name.to_owned(),
+            name: path.basename().to_owned(),
             path,
             children: HashMap::new(),
             location: None,
             dimensions: None,
             input: None,
+            cache: None,
             sink: None,
             //source: None,
             //script: None,
             //nodetype: None,
             //cache: (0, None),
-        };
-    }
-
-    fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
-        ensure!(
-            !path.starts_with('/'),
-            "invalid path: node lookups must not start at /"
-        );
-        ensure!(!path.is_empty(), "invalid path: empty path component");
-        let parts = path.splitn(2, '/').collect::<Vec<_>>();
-        ensure!(parts.len() >= 1, "invalid path: did not find a component");
-        ensure!(
-            self.children.contains_key(parts[0]),
-            format!("invalid path: did not find path component: {}", parts[0])
-        );
-        let child = self.children[parts[0]].clone();
-        return match parts.len() {
-            1 => Ok(child),
-            2 => child.lookup(parts[1]),
-            _ => unreachable!(),
         };
     }
 
@@ -522,6 +488,12 @@ impl Node {
         return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
     }
 
+    fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {
+        let child = NodeRef::new(Node::new(self.path.new_child(name)));
+        self.children.insert(name.to_owned(), child.clone());
+        return Ok(child);
+    }
+
     pub fn has_input(&self) -> bool {
         self.input.is_some()
     }
@@ -543,118 +515,130 @@ impl Node {
         return false;
     }
 
-    fn nodetype(&self) -> Result<ValueType, Error> {
-        if let Some(ref input) = self.input {
-            return input.nodetype();
+    fn nodetype(&self, tree: &Tree) -> Result<ValueType, Error> {
+        match self.input {
+            None => bail!(
+                "runtime error: nodetype request on a non-input node @ {}",
+                self.path
+            ),
+            Some(NodeInput::Script(ref script)) => {
+                return script.nodetype();
+            }
+            Some(NodeInput::Source(ref source)) => {
+                return source.0.borrow().nodetype(
+                    &self.path.to_string(),
+                    &tree.subtree_at(self.children["."].to_owned())?,
+                );
+            }
         }
-        bail!(
-            "runtime error: nodetype request on a non-input node @ {}",
-            self.path
-        );
-    }
-
-    fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {
-        let child = NodeRef::new(Node::new(&self.path, name));
-        self.children.insert(name.to_owned(), child.clone());
-        return Ok(child);
-    }
-
-    fn level(&self) -> Result<usize, Error> {
-        let mut cnt = 0;
-        let mut cursor = self.children["."].clone();
-        while cursor.0.borrow().children.contains_key("..") {
-            let next_cursor = cursor.0.borrow().children[".."].clone();
-            cursor = next_cursor;
-            cnt += 1;
-        }
-        return Ok(cnt);
     }
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
-        ensure!(
-            self.input.is_some(),
-            "runtime error: computing a non-input path @ {}",
-            self.path
-        );
-        if let Some(ref input) = self.input {
-            return Ok(input.compute(tree)?);
+        match self.input {
+            None => {
+                bail!("runtime error: computing a non-input path @ {}", self.path);
+            }
+            Some(NodeInput::Script(ref script)) => {
+                return script.compute(tree);
+            }
+            Some(NodeInput::Source(ref source)) => {
+                // FIXME: we need to make this entire path mut
+                // if let Some((_, cached)) = self.cache {
+                //     return cached;
+                // }
+                let current = source.0.borrow().get_value(
+                    &self.path.to_string(),
+                    &tree.subtree_at(self.children["."].to_owned())?,
+                );
+                return match current {
+                    None => bail!("runtime error: no value @ {}", self.path),
+                    Some(v) => Ok(v),
+                };
+            }
         }
-        unreachable!()
     }
 
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
-        ensure!(
-            self.input.is_some(),
-            "typeflow error: reading input from non-script path {}",
-            self.path
-        );
-        if let Some(ref input) = self.input {
-            return Ok(input.virtually_compute_for_path(tree)?);
+        match self.input {
+            None => {
+                bail!(
+                    "typeflow error: reading input from non-script path {}",
+                    self.path
+                );
+            }
+            Some(NodeInput::Script(ref script)) => {
+                return script.virtually_compute_for_path(tree);
+            }
+            Some(NodeInput::Source(ref source)) => {
+                return source.0.borrow().get_all_possible_values(
+                    &self.path.to_string(),
+                    &tree.subtree_at(self.children["."].to_owned())?,
+                );
+            }
         }
-        unreachable!()
     }
 }
 
 /// Sent on state changes that contain Sinks with the subscribed name.
-pub struct SinkEvent {
-    affected_paths: Vec<String>,
-}
+// pub struct SinkEvent {
+//     affected_paths: Vec<String>,
+// }
 
-impl Message for SinkEvent {
-    type Result = Result<(), Error>;
-}
+// impl Message for SinkEvent {
+//     type Result = Result<(), Error>;
+// }
 
-pub struct AddSinkHandler {
-    name: String,
-    recipient: Recipient<Syn, SinkEvent>,
-}
+// pub struct AddSinkHandler {
+//     name: String,
+//     recipient: Recipient<Syn, SinkEvent>,
+// }
 
-impl AddSinkHandler {
-    pub fn new(name: &str, recipient: Recipient<Syn, SinkEvent>) -> Self {
-        AddSinkHandler {
-            name: name.to_owned(),
-            recipient,
-        }
-    }
-}
+// impl AddSinkHandler {
+//     pub fn new(name: &str, recipient: Recipient<Syn, SinkEvent>) -> Self {
+//         AddSinkHandler {
+//             name: name.to_owned(),
+//             recipient,
+//         }
+//     }
+// }
 
-impl Message for AddSinkHandler {
-    type Result = Result<(), Error>;
-}
+// impl Message for AddSinkHandler {
+//     type Result = Result<(), Error>;
+// }
 
-impl Handler<AddSinkHandler> for Tree {
-    type Result = Result<(), Error>;
+// impl Handler<AddSinkHandler> for Tree {
+//     type Result = Result<(), Error>;
 
-    fn handle(&mut self, msg: AddSinkHandler, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("adding handler for {}", msg.name);
-        self.sink_handlers.insert(msg.name, msg.recipient);
-        return Ok(());
-    }
-}
+//     fn handle(&mut self, msg: AddSinkHandler, _ctx: &mut Context<Self>) -> Self::Result {
+//         info!("adding handler for {}", msg.name);
+//         self.sink_handlers.insert(msg.name, msg.recipient);
+//         return Ok(());
+//     }
+// }
 
-pub struct SourceEvent {
-    affecting_path: String,
-}
+// pub struct SourceEvent {
+//     affecting_path: String,
+// }
 
-impl SourceEvent {
-    pub fn new(path: &str) -> Self {
-        SourceEvent {
-            affecting_path: path.to_owned(),
-        }
-    }
-}
+// impl SourceEvent {
+//     pub fn new(path: &str) -> Self {
+//         SourceEvent {
+//             affecting_path: path.to_owned(),
+//         }
+//     }
+// }
 
-impl Message for SourceEvent {
-    type Result = Result<(), Error>;
-}
+// impl Message for SourceEvent {
+//     type Result = Result<(), Error>;
+// }
 
-impl Handler<SourceEvent> for Tree {
-    type Result = Result<(), Error>;
+// impl Handler<SourceEvent> for Tree {
+//     type Result = Result<(), Error>;
 
-    fn handle(&mut self, msg: SourceEvent, _ctx: &mut Context<Self>) -> Self::Result {
-        return Ok(());
-    }
-}
+//     fn handle(&mut self, msg: SourceEvent, _ctx: &mut Context<Self>) -> Self::Result {
+//         return Ok(());
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -683,22 +667,9 @@ mod tests {
         );
         assert_eq!(
             d20,
-            tree.lookup("/foopy/barmy")
-                .unwrap()
-                .lookup(".")
-                .unwrap()
-                .location()
-                .unwrap()
+            tree.lookup("/foopy/barmy").unwrap().location().unwrap()
         );
-        assert_eq!(
-            d10,
-            tree.lookup("/foopy/barmy")
-                .unwrap()
-                .lookup("..")
-                .unwrap()
-                .location()
-                .unwrap()
-        );
+        assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
     }
 
     struct TestSource1 {
@@ -706,33 +677,49 @@ mod tests {
         input: usize,
     }
 
+    impl TestSource1 {
+        fn new_box(values: Vec<String>) -> Result<Box<TreeSource>, Error> {
+            let src = Box::new(Self { values, input: 0 });
+            return Ok(src);
+        }
+
+        fn new(values: Vec<String>) -> Result<SourceRef, Error> {
+            let src = Box::new(Self { values, input: 0 });
+            return Ok(SourceRef::new(src));
+        }
+
+        fn set_input(&mut self, input: usize) {
+            self.input = input;
+        }
+    }
+
     impl TreeSource for TestSource1 {
-        fn all_possible_values(&self) -> Result<Vec<Value>, Error> {
+        fn get_all_possible_values(
+            &self,
+            _path: &str,
+            _tree: &SubTree,
+        ) -> Result<Vec<Value>, Error> {
             Ok(self.values
                 .iter()
                 .map(|s| Value::String(s.clone()))
                 .collect::<Vec<Value>>())
         }
 
-        fn current_value(&self) -> Result<Value, Error> {
-            Ok(Value::String(self.values[self.input].clone()))
+        fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
+            return Ok(());
         }
 
-        fn nodetype(&self) -> Result<ValueType, Error> {
+        fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
+            return Some(Value::String(self.values[self.input].clone()));
+        }
+
+        fn nodetype(&self, _path: &str, _tree: &SubTree) -> Result<ValueType, Error> {
             Ok(ValueType::STRING)
         }
     }
 
-    impl TestSource1 {
-        fn set_input(&mut self, i: usize) {
-            self.input = i;
-        }
-    }
-
     #[test]
-    fn test_tree_jail_source() {
-        use simplelog::*;
-        TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+    fn test_tree_jail_source_ok() {
         let s = r#"
 a ^src1
     a <- ./{/a/b} + "2"
@@ -740,64 +727,97 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = TestSource1 {
-            values: vec![],
-            input: 0,
-        };
+        let src1 = TestSource1::new(vec![]).unwrap();
         let tree = Tree::new_empty()
-            .add_source_handler("src1", Box::new(src1))
+            .add_source_handler("src1", &src1)
+            .unwrap()
             .build_from_str(s)
             .unwrap();
         let result = tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
         assert_eq!(result, Value::String("d2".to_owned()));
     }
 
-    //     #[test]
-    //     fn test_tree_sources() {
-    //         use simplelog::*;
-    //         TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
-    //         let s = r#"
-    // a ^src1
-    // b <-/{/a}/v
-    // foo
-    //     v<-1
-    // bar
-    //     v<-2
-    // "#;
-    //         let mut src1 = TestSource1 {
-    //             values: vec!["foo".to_owned(), "bar".to_owned()],
-    //             input: 0,
-    //         };
-    //         let tree = Tree::new_empty()
-    //             .add_source_handler("src1", Box::new(src1))
-    //             .build_from_str(s)
-    //             .unwrap();
-    //         assert_eq!(
-    //             tree.lookup("/b").unwrap().compute(&tree).unwrap(),
-    //             Value::Integer(1)
-    //         );
-    //         src1.set_input(1);
-    //         assert_eq!(
-    //             tree.lookup("/b").unwrap().compute(&tree).unwrap(),
-    //             Value::Integer(2)
-    //         );
-    //     }
-
-    struct TestSink {
-        count: usize,
+    #[test]
+    #[should_panic]
+    fn test_tree_jail_source_break_rel() {
+        let s = r#"
+a ^src1
+    a <- ../b
+b <- "foo"
+"#;
+        let src1 = TestSource1::new(vec![]).unwrap();
+        let tree = Tree::new_empty()
+            .add_source_handler("src1", &src1)
+            .unwrap()
+            .build_from_str(s)
+            .unwrap();
+        tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
     }
-    impl Actor for TestSink {
-        type Context = Context<Self>;
-    }
-    impl Handler<SinkEvent> for TestSink {
-        type Result = Result<(), Error>;
 
-        fn handle(&mut self, msg: SinkEvent, _ctx: &mut Context<Self>) -> Self::Result {
-            println!("TestSink: received change event {:?}", msg.affected_paths);
-            // TODO: shutdown the system here
-            return Ok(());
+    #[test]
+    #[should_panic]
+    fn test_tree_jail_source_break_abs() {
+        let s = r#"
+a ^src1
+    a <- /b
+b <- "foo"
+"#;
+        let src1 = TestSource1::new(vec![]).unwrap();
+        let tree = Tree::new_empty()
+            .add_source_handler("src1", &src1)
+            .unwrap()
+            .build_from_str(s)
+            .unwrap();
+        let result = tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
+        assert_eq!(result, Value::String("foo".to_owned()));
+    }
+
+    #[test]
+    fn test_tree_sources() {
+        let s = r#"
+a ^src1
+b <-/{/a}/v
+foo
+    v<-1
+bar
+    v<-2
+"#;
+        let srcref: SourceRef = TestSource1::new(vec!["foo".to_owned(), "bar".to_owned()]).unwrap();
+        let tree = Tree::new_empty()
+            .add_source_handler("src1", &srcref)
+            .unwrap()
+            .build_from_str(s)
+            .unwrap();
+        assert_eq!(
+            tree.lookup("/b").unwrap().compute(&tree).unwrap(),
+            Value::Integer(1)
+        );
+
+        {
+            srcref.mutate_as::<TestSource1>(&mut |src1: &mut TestSource1| src1.set_input(1));
         }
+
+        assert_eq!(
+            tree.lookup("/b").unwrap().compute(&tree).unwrap(),
+            Value::Integer(2)
+        );
     }
+
+    // struct TestSink {
+    //     count: usize,
+    // }
+    // impl Actor for TestSink {
+    //     type Context = Context<Self>;
+    // }
+    // impl Handler<SinkEvent> for TestSink {
+    //     type Result = Result<(), Error>;
+
+    //     fn handle(&mut self, msg: SinkEvent, _ctx: &mut Context<Self>) -> Self::Result {
+    //         println!("TestSink: received change event {:?}", msg.affected_paths);
+    //         // TODO: shutdown the system here
+    //         return Ok(());
+    //     }
+    // }
 
     // #[test]
     // fn test_run_tree() {

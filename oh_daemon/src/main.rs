@@ -8,6 +8,8 @@ extern crate approx;
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
+extern crate downcast_rs;
+#[macro_use]
 extern crate failure;
 extern crate failure_derive;
 #[macro_use]

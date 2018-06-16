@@ -2,8 +2,11 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
+use float::Float;
+use path::{ConcretePath, ScriptPath};
 use std::{fmt, collections::HashMap};
-use tree::{float::Float, path::{ConcretePath, ScriptPath}, tokenizer::Token, tree::{NodeRef, Tree}};
+use tokenizer::Token;
+use tree::{NodeRef, Tree};
 
 pub fn ensure_same_types(types: &Vec<ValueType>) -> Result<ValueType, Error> {
     ensure!(
@@ -413,18 +416,18 @@ impl Script {
         return Ok(self.nodetype.unwrap());
     }
 
-    pub(in tree) fn has_a_nodetype(&self) -> bool {
+    pub(super) fn has_a_nodetype(&self) -> bool {
         return self.nodetype.is_some();
     }
 
-    pub(in tree) fn all_inputs(&self) -> Result<Vec<String>, Error> {
+    pub(super) fn all_inputs(&self) -> Result<Vec<String>, Error> {
         return Ok(self.input_map
             .keys()
             .map(|concrete| concrete.to_string())
             .collect::<Vec<_>>());
     }
 
-    pub(in tree) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub(super) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         ensure!(
             self.phase == CompilationPhase::Ready,
             "runtime error: attempting script usage before ready: {:?} => {:?}",
@@ -434,7 +437,7 @@ impl Script {
         self.suite.compute(tree)
     }
 
-    pub(in tree) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         self.suite.virtually_compute_for_path(tree)
     }
 }
@@ -609,7 +612,7 @@ impl<'a> ExprParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::tokenizer::TreeTokenizer;
+    use tokenizer::TreeTokenizer;
 
     fn do_compute(expr: &str) -> Result<Value, Error> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;

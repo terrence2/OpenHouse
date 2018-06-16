@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
 use std::fmt;
-use tree::tree::Tree;
+use tree::Tree;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PathComponent {
@@ -273,6 +273,42 @@ pub struct ConcretePath {
 impl ConcretePath {
     fn from_components(components: Vec<String>) -> Self {
         Self { components }
+    }
+
+    pub fn from_str(path: &str) -> Result<Self, Error> {
+        ensure!(
+            path.starts_with('/'),
+            "invalid path: tree lookups must start at /"
+        );
+        let relative: &str = &path[1..];
+        if relative.is_empty() {
+            return Ok(Self::new_root());
+        }
+        let mut components = Vec::new();
+        for part in relative.split('/') {
+            ensure!(!part.is_empty(), "invalid path: empty path component");
+            components.push(part.to_owned());
+        }
+        return Ok(Self::from_components(components));
+    }
+
+    pub fn new_root() -> Self {
+        Self {
+            components: Vec::new(),
+        }
+    }
+
+    pub fn new_child(&self, name: &str) -> Self {
+        let mut components = self.components.clone();
+        components.push(name.to_owned());
+        return Self { components };
+    }
+
+    pub fn basename(&self) -> &str {
+        if self.components.is_empty() {
+            return "";
+        }
+        return &self.components[self.components.len() - 1];
     }
 }
 

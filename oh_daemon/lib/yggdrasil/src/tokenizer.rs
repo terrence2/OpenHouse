@@ -2,7 +2,8 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
-use tree::{float::Float, physical::Dimension2};
+use float::Float;
+use physical::Dimension2;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
