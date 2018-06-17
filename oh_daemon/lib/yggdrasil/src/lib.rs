@@ -20,7 +20,19 @@ mod parser;
 mod path;
 mod physical;
 mod script;
+mod sink;
+mod source;
 mod tokenizer;
 mod tree;
+mod value;
 
-pub use self::tree::Tree;
+pub use self::sink::{SinkRef, TreeSink};
+pub use self::source::{SourceRef, TreeSource};
+pub use self::tree::{SubTree, Tree};
+pub use self::value::{Value, ValueType};
+pub use failure::Error;
+
+//#[cfg(test)]
+// pub mod test {
+//     pub use source::test::SimpleSource;
+// }

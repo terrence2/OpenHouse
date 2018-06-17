@@ -1,68 +1,26 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use downcast_rs::Downcast;
 use failure::Error;
 use parser::TreeParser;
 use path::{ConcretePath, PathComponent, ScriptPath};
 use physical::Dimension2;
-use script::{Script, Value, ValueType};
-use std::{fs, cell::{RefCell, RefMut}, collections::HashMap, path::Path, rc::Rc};
+use script::Script;
+use sink::SinkRef;
+use source::SourceRef;
+use std::{fs, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use value::{Value, ValueType};
 
 /// The combination of a Value plus a monotonic ordinal.
 pub struct Sample {
-    value: Value,
-    at: usize,
-}
-
-pub trait TreeSource: Downcast {
-    /// Note the following path listed as a source using this handler.
-    fn add_path(&mut self, path: &str, tree: &SubTree) -> Result<(), Error>;
-
-    /// Return the type of the given path.
-    fn nodetype(&self, path: &str, tree: &SubTree) -> Result<ValueType, Error>;
-
-    /// Return all possible values that the given source can take. This is only
-    /// called for sources that are used as a path component elsewhere. In the
-    /// event this is called for a source that does not have a constrained set of
-    /// possible values -- floats, arbitrary strings, etc -- return an error.
-    fn get_all_possible_values(&self, path: &str, tree: &SubTree) -> Result<Vec<Value>, Error>;
-
-    /// Return the current value of the given source. Sources are generally
-    /// expected to be delivered asyncronously and the latest value will be
-    /// cached indefinitely, This is only called when the value is used as a path
-    /// component before a change event has occurred.
-    fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value>;
-}
-impl_downcast!(TreeSource);
-
-#[derive(Clone)]
-pub struct SourceRef(Rc<RefCell<Box<TreeSource>>>);
-
-impl SourceRef {
-    pub fn new(source: Box<TreeSource>) -> Self {
-        SourceRef(Rc::new(RefCell::new(source)))
-    }
-
-    pub fn mutate_as<T>(&self, f: &mut FnMut(&mut T)) -> Result<(), Error>
-    where
-        T: TreeSource,
-    {
-        RefMut::map(self.0.borrow_mut(), |ts| {
-            if let Some(real) = ts.downcast_mut::<T>() {
-                f(real);
-            }
-            ts
-        });
-        return Ok(());
-    }
+    _value: Value,
+    _at: usize,
 }
 
 pub struct Tree {
     root: NodeRef,
     source_handlers: HashMap<String, SourceRef>,
-    //source_handlers_base: HashMap<String, Box<FnOnce() -> ()>>,
-    //sink_handlers: HashMap<String, Recipient<Syn, SinkEvent>>,
+    sink_handlers: HashMap<String, SinkRef>,
 }
 
 // pub trait EventHandler {
@@ -81,13 +39,22 @@ impl Tree {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             source_handlers: HashMap::new(),
-            //sink_handlers: HashMap::new(),
+            sink_handlers: HashMap::new(),
         }
     }
 
     pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Result<Tree, Error> {
         self.source_handlers.insert(name.to_owned(), source.clone());
         return Ok(self);
+    }
+
+    pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Result<Tree, Error> {
+        self.sink_handlers.insert(name.to_owned(), sink.clone());
+        return Ok(self);
+    }
+
+    pub fn handle_event(&self, path: &str, value: Value) -> Result<(), Error> {
+        return self.lookup(path)?.handle_event(value);
     }
 
     pub fn build_from_file(self, path: &Path) -> Result<Tree, Error> {
@@ -129,7 +96,7 @@ impl Tree {
         Ok(self)
     }
 
-    fn subtree_at(&self, root: NodeRef) -> Result<SubTree, Error> {
+    pub(super) fn subtree_at(&self, root: &NodeRef) -> Result<SubTree, Error> {
         SubTree::new(self, root)
     }
 }
@@ -139,14 +106,16 @@ impl Tree {
 // }
 
 pub struct SubTree<'a> {
-    tree: &'a Tree,
-    root: NodeRef,
+    _tree: &'a Tree,
+    _root: NodeRef,
 }
 
 impl<'a> SubTree<'a> {
-    fn new(tree: &'a Tree, root: NodeRef) -> Result<Self, Error> {
-        //root.enforce_jail()?;
-        return Ok(SubTree { tree, root });
+    fn new(tree: &'a Tree, root: &NodeRef) -> Result<Self, Error> {
+        return Ok(SubTree {
+            _tree: tree,
+            _root: root.to_owned(),
+        });
     }
 }
 
@@ -164,15 +133,18 @@ impl NodeRef {
         return self_ref;
     }
 
-    pub fn path(&self) -> ConcretePath {
-        return self.0.borrow().path.clone();
-    }
-
     pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
         if parts.is_empty() {
             return Ok(self.to_owned());
         }
-        return self.0.borrow().lookup_path(parts);
+        if let Some(child) = self.child_at(&parts[0]) {
+            return child.lookup_path(&parts[1..]);
+        }
+        bail!(
+            "runtime error: lookup on path that does not exist; at {} -> {:?}",
+            self.path_str(),
+            parts
+        );
     }
 
     pub fn lookup_dynamic_path(
@@ -180,11 +152,32 @@ impl NodeRef {
         parts: &[PathComponent],
         tree: &Tree,
     ) -> Result<NodeRef, Error> {
-        self.0.borrow().lookup_dynamic_path(parts, tree)
+        trace!(
+            "Node::lookup_dynamic_path @ {}, looking up {:?}",
+            self.path_str(),
+            parts
+        );
+        let child_name = match &parts[0] {
+            PathComponent::Name(n) => n.to_owned(),
+            PathComponent::Lookup(p) => tree.lookup_dynamic_path(p)?
+                .compute(tree)?
+                .as_path_component()?,
+        };
+        if let Some(child) = self.child_at(&child_name) {
+            if parts.len() == 1 {
+                return Ok(child.to_owned());
+            }
+            return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
+        }
+        bail!(format!(
+            "invalid path: did not find path component '{}' @ {}",
+            child_name,
+            self.path_str()
+        ));
     }
 
     pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
-        let child = self.0.borrow_mut().add_child(name)?;
+        let child = self.0.borrow_mut().create_new_child(name)?;
         child
             .0
             .borrow_mut()
@@ -203,19 +196,13 @@ impl NodeRef {
     }
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Result<(), Error> {
-        trace!(
-            "+++NodeRef::link_and_validate_input({})",
-            self.0.borrow().path
-        );
+        trace!("+++NodeRef::link_and_validate_input({})", self.path_str());
 
         // If nodetype is already set, we've already recursed through this node,
         // so can skip recursion as well. If we have no input, there is no easy
         // way to tell if we've already visited this node.
-        if self.0.borrow().has_a_nodetype() {
-            trace!(
-                "---NodeRef::link_and_validate_input({})",
-                self.0.borrow().path
-            );
+        if self.has_a_nodetype() {
+            trace!("---NodeRef::link_and_validate_input({})", self.path_str());
             return Ok(());
         }
 
@@ -253,10 +240,11 @@ impl NodeRef {
         // If this is a source node, tell the associated source handler about it.
         if let Some(NodeInput::Source(ref source)) = self.0.borrow().input {
             self.enforce_jail()?;
-            source
-                .0
-                .borrow_mut()
-                .add_path(&self.path().to_string(), &tree.subtree_at(self.to_owned())?)?;
+            source.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
+        }
+        if let Some(ref sink) = self.0.borrow().sink {
+            self.enforce_jail()?;
+            sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
 
         trace!(
@@ -267,25 +255,25 @@ impl NodeRef {
     }
 
     fn enforce_jail(&self) -> Result<(), Error> {
-        trace!("enforcing jail under {}", self.path());
+        trace!("enforcing jail @ {}", self.path_str());
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
                 continue;
             }
-            child.enforce_jail_under(&self.0.borrow().path.to_string())?;
+            child.enforce_jail_under(&self.path_str())?;
         }
         return Ok(());
     }
 
     fn enforce_jail_under(&self, jail_path: &str) -> Result<(), Error> {
-        trace!("enforcing jail path {} at path {}", jail_path, self.path());
+        trace!("enforcing jail path {} @ {}", jail_path, self.path_str());
         if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
             for input_path in script.all_inputs()?.iter() {
                 trace!("checking input: {}", input_path);
                 if !input_path.starts_with(jail_path) {
                     bail!(
                         "jailbreak error @ {}: referenced path {} outside of jail in {}",
-                        self.path(),
+                        self.path_str(),
                         input_path,
                         jail_path
                     );
@@ -295,12 +283,44 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn has_input(&self) -> bool {
-        self.0.borrow().has_input()
+    fn has_input(&self) -> bool {
+        self.0.borrow().input.is_some()
     }
 
-    pub fn has_script(&self) -> bool {
-        self.0.borrow().has_script()
+    fn has_script(&self) -> bool {
+        if let Some(NodeInput::Script(_)) = self.0.borrow().input {
+            return true;
+        }
+        return false;
+    }
+
+    fn has_source(&self) -> bool {
+        if let Some(NodeInput::Source(_)) = self.0.borrow().input {
+            return true;
+        }
+        return false;
+    }
+
+    fn child_at(&self, name: &str) -> Option<NodeRef> {
+        self.0.borrow().children.get(name).map(|v| v.to_owned())
+    }
+
+    fn subtree_here<'a>(&'a self, tree: &'a Tree) -> Result<SubTree, Error> {
+        tree.subtree_at(self)
+    }
+
+    pub fn path_str(&self) -> String {
+        self.0.borrow().path.to_string()
+    }
+
+    // This will be false if !has_input or we are in the middle of compilation.
+    // This should not be used after compilation, as the combination of
+    // has_input and nodetype should be sufficient.
+    fn has_a_nodetype(&self) -> bool {
+        if let Some(ref input) = self.0.borrow().input {
+            return input.has_a_nodetype();
+        }
+        return false;
     }
 
     // If node type has been set, return it, otherwise do link_and_validate in
@@ -310,11 +330,11 @@ impl NodeRef {
         ensure!(
             self.has_input(),
             "typeflow error: read from the node @ {} has no inputs",
-            self.path()
+            self.path_str()
         );
 
         // If we have already validated this node, return the type.
-        if self.0.borrow().has_a_nodetype() {
+        if self.has_a_nodetype() {
             return self.nodetype(tree);
         }
 
@@ -324,7 +344,18 @@ impl NodeRef {
     }
 
     pub fn nodetype(&self, tree: &Tree) -> Result<ValueType, Error> {
-        return self.0.borrow().nodetype(tree);
+        match self.0.borrow().input {
+            None => bail!(
+                "runtime error: nodetype request on a non-input node @ {}",
+                self.0.borrow().path
+            ),
+            Some(NodeInput::Script(ref script)) => {
+                return script.nodetype();
+            }
+            Some(NodeInput::Source(ref source)) => {
+                return source.nodetype(&self.path_str(), &self.subtree_here(tree)?);
+            }
+        }
     }
 
     pub fn location(&self) -> Option<Dimension2> {
@@ -336,8 +367,20 @@ impl NodeRef {
             self.0.borrow().location.is_none(),
             "location has already been set"
         );
-        debug!("set_location about to borrow_mut: {}", self.0.borrow().path);
         self.0.borrow_mut().location = Some(loc);
+        return Ok(());
+    }
+
+    pub fn dimensions(&self) -> Option<Dimension2> {
+        self.0.borrow().dimensions
+    }
+
+    pub fn set_dimensions(&self, dim: Dimension2) -> Result<(), Error> {
+        ensure!(
+            self.0.borrow().dimensions.is_none(),
+            "dimensions have already been set"
+        );
+        self.0.borrow_mut().dimensions = Some(dim);
         return Ok(());
     }
 
@@ -349,8 +392,9 @@ impl NodeRef {
         );
         ensure!(
             tree.source_handlers.contains_key(from),
-            "parse error: unknown source kind '{}'",
-            from
+            "parse error: unknown source kind '{}' referenced @ {}",
+            from,
+            self.0.borrow().path
         );
         self.0.borrow_mut().input = Some(NodeInput::Source(tree.source_handlers[from].to_owned()));
         return Ok(());
@@ -362,7 +406,13 @@ impl NodeRef {
             "parse error: sink set twice @ {}",
             self.0.borrow().path
         );
-        self.0.borrow_mut().sink = Some(tgt.to_owned());
+        ensure!(
+            tree.sink_handlers.contains_key(tgt),
+            "parse error: unknown sink kind '{}' referenced @ {}",
+            tgt,
+            self.0.borrow().path
+        );
+        self.0.borrow_mut().sink = Some(tree.sink_handlers[tgt].to_owned());
         return Ok(());
     }
 
@@ -384,13 +434,54 @@ impl NodeRef {
     }
 
     pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
-        trace!("computing @ {}", self.path());
-        self.0.borrow().compute(tree)
+        let path = self.path_str();
+        trace!("computing @ {}", path);
+        match self.0.borrow_mut().input {
+            None => {
+                bail!("runtime error: computing a non-input path @ {}", path);
+            }
+            Some(NodeInput::Script(ref script)) => {
+                return script.compute(tree);
+            }
+            Some(NodeInput::Source(ref source)) => {
+                // FIXME: we need to make this entire path mut
+                // if let Some((_, cached)) = self.cache {
+                //     return cached;
+                // }
+                let current = source.get_value(&path, &self.subtree_here(&tree)?);
+                return match current {
+                    None => bail!("runtime error: no value @ {}", path),
+                    Some(v) => Ok(v),
+                };
+            }
+        }
     }
 
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
-        trace!("virtually computing @ {}", self.path());
-        self.0.borrow().virtually_compute_for_path(tree)
+        trace!("virtually computing @ {}", self.path_str());
+        match self.0.borrow().input {
+            None => {
+                bail!(
+                    "typeflow error: reading input from non-input path @ {}",
+                    self.path_str()
+                );
+            }
+            Some(NodeInput::Script(ref script)) => {
+                return script.virtually_compute_for_path(tree);
+            }
+            Some(NodeInput::Source(ref source)) => {
+                return source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?);
+            }
+        }
+    }
+
+    pub fn handle_event(&self, _value: Value) -> Result<(), Error> {
+        ensure!(
+            self.has_source(),
+            "runtime error: handle_event delivered to non-source node"
+        );
+        // FIXME: invert the flows.
+        return Ok(());
     }
 }
 
@@ -422,14 +513,10 @@ pub struct Node {
     // pulling inputs from external systems and other computed values. Or
     // nothing; it's fine for a node to just be structural.
     input: Option<NodeInput>,
-    cache: Option<Sample>,
+    _cache: Option<Sample>,
 
     // Optional output data binding.
-    sink: Option<String>,
-    // The i/o transform function.
-    // source: Option<String>,
-    // script: Option<Script>,
-    // nodetype: Option<ValueType>,
+    sink: Option<SinkRef>,
 }
 
 impl Node {
@@ -441,141 +528,15 @@ impl Node {
             location: None,
             dimensions: None,
             input: None,
-            cache: None,
+            _cache: None,
             sink: None,
-            //source: None,
-            //script: None,
-            //nodetype: None,
-            //cache: (0, None),
         };
     }
 
-    pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
-        if let Some(child) = self.children.get(&parts[0]) {
-            return child.lookup_path(&parts[1..]);
-        }
-        bail!(
-            "runtime error: lookup on path that does not exist; at {} -> {:?}",
-            self.path,
-            parts
-        );
-    }
-
-    pub fn lookup_dynamic_path(
-        &self,
-        parts: &[PathComponent],
-        tree: &Tree,
-    ) -> Result<NodeRef, Error> {
-        trace!(
-            "Node::lookup_dynamic_path @ {}, looking up {:?}",
-            self.path,
-            parts
-        );
-        let child_name = match &parts[0] {
-            PathComponent::Name(n) => n.to_owned(),
-            PathComponent::Lookup(p) => tree.lookup_dynamic_path(p)?
-                .compute(tree)?
-                .as_path_component()?,
-        };
-        ensure!(
-            self.children.contains_key(&child_name),
-            format!("invalid path: did not find path component: {}", child_name)
-        );
-        let child = self.children.get(&child_name).unwrap();
-        if parts.len() == 1 {
-            return Ok(child.to_owned());
-        }
-        return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
-    }
-
-    fn add_child(&mut self, name: &str) -> Result<NodeRef, Error> {
+    fn create_new_child(&mut self, name: &str) -> Result<NodeRef, Error> {
         let child = NodeRef::new(Node::new(self.path.new_child(name)));
         self.children.insert(name.to_owned(), child.clone());
         return Ok(child);
-    }
-
-    pub fn has_input(&self) -> bool {
-        self.input.is_some()
-    }
-
-    pub fn has_script(&self) -> bool {
-        if let Some(NodeInput::Script(_)) = self.input {
-            return true;
-        }
-        return false;
-    }
-
-    // This will be false if !has_input or we are in the middle of compilation.
-    // This should not be used after compilation, as the combination of
-    // has_input and nodetype should be sufficient.
-    fn has_a_nodetype(&self) -> bool {
-        if let Some(ref input) = self.input {
-            return input.has_a_nodetype();
-        }
-        return false;
-    }
-
-    fn nodetype(&self, tree: &Tree) -> Result<ValueType, Error> {
-        match self.input {
-            None => bail!(
-                "runtime error: nodetype request on a non-input node @ {}",
-                self.path
-            ),
-            Some(NodeInput::Script(ref script)) => {
-                return script.nodetype();
-            }
-            Some(NodeInput::Source(ref source)) => {
-                return source.0.borrow().nodetype(
-                    &self.path.to_string(),
-                    &tree.subtree_at(self.children["."].to_owned())?,
-                );
-            }
-        }
-    }
-
-    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
-        match self.input {
-            None => {
-                bail!("runtime error: computing a non-input path @ {}", self.path);
-            }
-            Some(NodeInput::Script(ref script)) => {
-                return script.compute(tree);
-            }
-            Some(NodeInput::Source(ref source)) => {
-                // FIXME: we need to make this entire path mut
-                // if let Some((_, cached)) = self.cache {
-                //     return cached;
-                // }
-                let current = source.0.borrow().get_value(
-                    &self.path.to_string(),
-                    &tree.subtree_at(self.children["."].to_owned())?,
-                );
-                return match current {
-                    None => bail!("runtime error: no value @ {}", self.path),
-                    Some(v) => Ok(v),
-                };
-            }
-        }
-    }
-
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
-        match self.input {
-            None => {
-                bail!(
-                    "typeflow error: reading input from non-script path {}",
-                    self.path
-                );
-            }
-            Some(NodeInput::Script(ref script)) => {
-                return script.virtually_compute_for_path(tree);
-            }
-            Some(NodeInput::Source(ref source)) => {
-                return source.0.borrow().get_all_possible_values(
-                    &self.path.to_string(),
-                    &tree.subtree_at(self.children["."].to_owned())?,
-                );
-            }
-        }
     }
 }
 
@@ -643,6 +604,7 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use source::test::SimpleSource;
 
     #[test]
     fn test_build_tree() {
@@ -658,6 +620,7 @@ mod tests {
 
         let child = tree.lookup("/foopy").unwrap().add_child("barmy").unwrap();
         child.set_location(d20.clone()).unwrap();
+        child.set_dimensions(d20.clone()).unwrap();
         assert_eq!(d20, child.location().unwrap());
 
         assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
@@ -672,52 +635,6 @@ mod tests {
         assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
     }
 
-    struct TestSource1 {
-        values: Vec<String>,
-        input: usize,
-    }
-
-    impl TestSource1 {
-        fn new_box(values: Vec<String>) -> Result<Box<TreeSource>, Error> {
-            let src = Box::new(Self { values, input: 0 });
-            return Ok(src);
-        }
-
-        fn new(values: Vec<String>) -> Result<SourceRef, Error> {
-            let src = Box::new(Self { values, input: 0 });
-            return Ok(SourceRef::new(src));
-        }
-
-        fn set_input(&mut self, input: usize) {
-            self.input = input;
-        }
-    }
-
-    impl TreeSource for TestSource1 {
-        fn get_all_possible_values(
-            &self,
-            _path: &str,
-            _tree: &SubTree,
-        ) -> Result<Vec<Value>, Error> {
-            Ok(self.values
-                .iter()
-                .map(|s| Value::String(s.clone()))
-                .collect::<Vec<Value>>())
-        }
-
-        fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
-            return Ok(());
-        }
-
-        fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
-            return Some(Value::String(self.values[self.input].clone()));
-        }
-
-        fn nodetype(&self, _path: &str, _tree: &SubTree) -> Result<ValueType, Error> {
-            Ok(ValueType::STRING)
-        }
-    }
-
     #[test]
     fn test_tree_jail_source_ok() {
         let s = r#"
@@ -727,7 +644,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = TestSource1::new(vec![]).unwrap();
+        let src1 = SimpleSource::new(vec![]).unwrap();
         let tree = Tree::new_empty()
             .add_source_handler("src1", &src1)
             .unwrap()
@@ -745,7 +662,7 @@ a ^src1
     a <- ../b
 b <- "foo"
 "#;
-        let src1 = TestSource1::new(vec![]).unwrap();
+        let src1 = SimpleSource::new(vec![]).unwrap();
         let tree = Tree::new_empty()
             .add_source_handler("src1", &src1)
             .unwrap()
@@ -762,7 +679,7 @@ a ^src1
     a <- /b
 b <- "foo"
 "#;
-        let src1 = TestSource1::new(vec![]).unwrap();
+        let src1 = SimpleSource::new(vec![]).unwrap();
         let tree = Tree::new_empty()
             .add_source_handler("src1", &src1)
             .unwrap()
@@ -782,7 +699,8 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = TestSource1::new(vec!["foo".to_owned(), "bar".to_owned()]).unwrap();
+        let srcref: SourceRef =
+            SimpleSource::new(vec!["foo".to_owned(), "bar".to_owned()]).unwrap();
         let tree = Tree::new_empty()
             .add_source_handler("src1", &srcref)
             .unwrap()
@@ -794,7 +712,11 @@ bar
         );
 
         {
-            srcref.mutate_as::<TestSource1>(&mut |src1: &mut TestSource1| src1.set_input(1));
+            srcref
+                .mutate_as::<SimpleSource>(&mut |src1: &mut SimpleSource| {
+                    src1.set_input(1, "/a", &tree)
+                })
+                .unwrap();
         }
 
         assert_eq!(

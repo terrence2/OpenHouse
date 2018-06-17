@@ -40,8 +40,8 @@ pub enum Token {
     // Terminals
     NameTerm(String),   // [a-zA-Z][a-zA-Z0-9]*
     StringTerm(String), // ""
-    IntegerTerm(i64),   // [0-9]+
-    FloatTerm(Float),   // [0-9.]+
+    IntegerTerm(i64),   // -?[0-9]+
+    FloatTerm(Float),   // -?[0-9.]+
     BooleanTerm(bool),  // true|false
     PathTerm(String),   // (\.\.?)?(/identifier)+
 }
@@ -115,6 +115,7 @@ impl TreeTokenizer {
             '>' => self.tokenize_greater_than(),
             '|' | '&' => self.tokenize_operator_2(),
             //'=' => tokens.push(self.tokenize_equals()?),
+            '-' => self.tokenize_subtract_or_number(),
             '(' => {
                 self.offset += 1;
                 Ok(Token::LeftParen)
@@ -126,10 +127,6 @@ impl TreeTokenizer {
             '+' => {
                 self.offset += 1;
                 Ok(Token::Add)
-            }
-            '-' => {
-                self.offset += 1;
-                Ok(Token::Subtract)
             }
             '*' => {
                 self.offset += 1;
@@ -159,7 +156,24 @@ impl TreeTokenizer {
         }
     }
 
+    fn tokenize_subtract_or_number(&mut self) -> Result<Token, Error> {
+        if let Some(c) = self.maybe_peek(1) {
+            if c == ' ' || c == '/' || c == '.' {
+                self.offset += 1;
+                return Ok(Token::Subtract);
+            }
+        }
+        return self.tokenize_int_or_float();
+    }
+
     fn tokenize_int_or_float(&mut self) -> Result<Token, Error> {
+        let negative = match self.peek(0)? {
+            '-' => {
+                self.offset += 1;
+                -1
+            }
+            _ => 1,
+        };
         let start = self.offset;
         let mut contains_dot = false;
         while !self.is_empty() {
@@ -174,9 +188,11 @@ impl TreeTokenizer {
         }
         let s = self.chars[start..self.offset].iter().collect::<String>();
         if contains_dot {
-            return Ok(Token::FloatTerm(Float::new(s.parse::<f64>()?)?));
+            return Ok(Token::FloatTerm(Float::new(
+                negative as f64 * s.parse::<f64>()?,
+            )?));
         }
-        return Ok(Token::IntegerTerm(s.parse::<i64>()?));
+        return Ok(Token::IntegerTerm(negative * s.parse::<i64>()?));
     }
 
     fn tokenize_source(&mut self) -> Result<Token, Error> {
@@ -365,7 +381,7 @@ impl TreeTokenizer {
 
 #[cfg(test)]
 mod test {
-    use super::{Dimension2, Token, TreeTokenizer as TT};
+    use super::{Dimension2, Float, Token, TreeTokenizer as TT};
 
     #[test]
     fn test_tokenize_dedent1() {
@@ -578,6 +594,39 @@ d";
                 Token::IntegerTerm(0),
                 Token::Newline,
             ]
+        );
+
+        assert_eq!(
+            TT::tokenize("-/a").unwrap(),
+            vec![
+                Token::Subtract,
+                Token::PathTerm("/a".to_owned()),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_integer() {
+        assert_eq!(
+            TT::tokenize("1").unwrap(),
+            vec![Token::IntegerTerm(1), Token::Newline]
+        );
+        assert_eq!(
+            TT::tokenize("-1").unwrap(),
+            vec![Token::IntegerTerm(-1), Token::Newline]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_float() {
+        assert_eq!(
+            TT::tokenize("1.").unwrap(),
+            vec![Token::FloatTerm(Float::new(1f64).unwrap()), Token::Newline]
+        );
+        assert_eq!(
+            TT::tokenize("-1.").unwrap(),
+            vec![Token::FloatTerm(Float::new(-1f64).unwrap()), Token::Newline]
         );
     }
 }

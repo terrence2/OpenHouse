@@ -173,10 +173,8 @@ impl<'a> TreeParser<'a> {
             Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
-                let s = Script::inline_from_tokens(
-                    node.path().to_string(),
-                    &self.tokens[self.position..end],
-                )?;
+                let s =
+                    Script::inline_from_tokens(node.path_str(), &self.tokens[self.position..end])?;
                 self.position = end;
                 node.set_script(s)?
             }
@@ -235,7 +233,7 @@ impl<'a> TreeParser<'a> {
 mod test {
     use super::*;
     use physical::Dimension2;
-    use script::{Value, ValueType};
+    use value::{Value, ValueType};
 
     #[test]
     fn test_parse_minimal() {
@@ -297,7 +295,7 @@ a @1x1
         let s = r#"
 a @1x1
     <- "foo"
-    b @2x2 $redstone
+    b @2x2
 c @3x3
     <-"bar"
 "#;
