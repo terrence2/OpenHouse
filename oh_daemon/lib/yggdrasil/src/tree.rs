@@ -1,14 +1,21 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::{Error, Fallible};
+use graph::Graph;
 use parser::TreeParser;
 use path::{ConcretePath, PathComponent, ScriptPath};
 use physical::Dimension2;
 use script::Script;
 use sink::SinkRef;
 use source::SourceRef;
-use std::{fs, cell::RefCell, collections::HashMap, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{hash_map::Entry, HashMap},
+    fs,
+    path::Path,
+    rc::Rc,
+};
 use value::{Value, ValueType};
 
 /// The combination of a Value plus a monotonic ordinal.
@@ -53,8 +60,28 @@ impl Tree {
         return Ok(self);
     }
 
-    pub fn handle_event(&self, path: &str, value: Value) -> Result<(), Error> {
-        return self.lookup(path)?.handle_event(value);
+    pub fn handle_event(&self, path: &str, _value: Value) -> Result<(), Error> {
+        let source = self.lookup(path)?;
+        let sink_nodes = source.get_sink_nodes_observing()?;
+
+        let mut groups = HashMap::new();
+        for node in sink_nodes.iter() {
+            let next_value = node.compute(self)?;
+            let kind = node.sink_kind()?;
+            let value = (node.path_str(), next_value);
+            match groups.entry(kind) {
+                Entry::Vacant(e) => {
+                    e.insert(vec![value]);
+                }
+                Entry::Occupied(mut e) => {
+                    e.get_mut().push(value);
+                }
+            }
+        }
+        for (kind, values) in groups.iter() {
+            self.sink_handlers[kind].values_updated(values)?;
+        }
+        return Ok(());
     }
 
     pub fn build_from_file(self, path: &Path) -> Result<Tree, Error> {
@@ -63,9 +90,10 @@ impl Tree {
     }
 
     pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
-        return TreeParser::from_str(self, s)?
+        let tree = TreeParser::from_str(self, s)?
             .link_and_validate_inputs()?
-            .invert_flow_graph();
+            .map_inputs_to_outputs();
+        return tree;
     }
 
     pub fn root(&self) -> NodeRef {
@@ -92,7 +120,12 @@ impl Tree {
         return Ok(self);
     }
 
-    fn invert_flow_graph(self) -> Result<Tree, Error> {
+    fn map_inputs_to_outputs(self) -> Result<Tree, Error> {
+        let mut graph = Graph::new_empty();
+        let mut sinks = Vec::new();
+        self.root().populate_flow_graph(&mut graph)?;
+        self.root().find_all_sinks(&mut sinks)?;
+        self.root().flow_input_to_output(&sinks, &graph)?;
         Ok(self)
     }
 
@@ -159,7 +192,8 @@ impl NodeRef {
         );
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
-            PathComponent::Lookup(p) => tree.lookup_dynamic_path(p)?
+            PathComponent::Lookup(p) => tree
+                .lookup_dynamic_path(p)?
                 .compute(tree)?
                 .as_path_component()?,
         };
@@ -224,7 +258,8 @@ impl NodeRef {
         }
 
         // Recurse into our children. Use sorted order so results are stable.
-        let mut children: Vec<String> = self.0
+        let mut children: Vec<String> = self
+            .0
             .borrow()
             .children
             .keys()
@@ -238,11 +273,11 @@ impl NodeRef {
         }
 
         // If this is a source node, tell the associated source handler about it.
-        if let Some(NodeInput::Source(ref source)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(ref source, _)) = self.0.borrow().input {
             self.enforce_jail()?;
             source.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
-        if let Some(ref sink) = self.0.borrow().sink {
+        if let Some((ref _kind, ref sink)) = self.0.borrow().sink {
             self.enforce_jail()?;
             sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
@@ -283,19 +318,76 @@ impl NodeRef {
         return Ok(());
     }
 
+    fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Result<(), Error> {
+        for (name, child) in self.0.borrow().children.iter() {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.find_all_sinks(sinks)?;
+        }
+        if let Some(_) = self.0.borrow().sink {
+            sinks.push(self.to_owned());
+        }
+        return Ok(());
+    }
+
+    fn populate_flow_graph(&self, graph: &mut Graph) -> Result<(), Error> {
+        graph.add_node(self);
+        for (name, child) in self.0.borrow().children.iter() {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.populate_flow_graph(graph)?;
+        }
+
+        if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
+            script.populate_flow_graph(self, graph)?;
+        }
+
+        return Ok(());
+    }
+
+    fn flow_input_to_output(&self, sinks: &Vec<NodeRef>, graph: &Graph) -> Result<(), Error> {
+        for (name, child) in self.0.borrow().children.iter() {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.flow_input_to_output(sinks, graph)?;
+        }
+
+        let mut connected_sinks = None;
+        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
+            let connected = graph.connected_nodes(self, sinks)?;
+            if connected.is_empty() {
+                warn!(
+                    "dataflow warning: source at {} is not connected to any sinks",
+                    self.path_str()
+                );
+            }
+            connected_sinks = Some(connected);
+        };
+
+        if connected_sinks.is_some() {
+            if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.borrow_mut().input {
+                assert!(
+                    sinks.is_empty(),
+                    "dataflow error: found connected sinks at {}, but sinks already set"
+                );
+                sinks.append(&mut connected_sinks.unwrap());
+            } else {
+                panic!("expected source to not mutate")
+            }
+        }
+
+        return Ok(());
+    }
+
     fn has_input(&self) -> bool {
         self.0.borrow().input.is_some()
     }
 
     fn has_script(&self) -> bool {
         if let Some(NodeInput::Script(_)) = self.0.borrow().input {
-            return true;
-        }
-        return false;
-    }
-
-    fn has_source(&self) -> bool {
-        if let Some(NodeInput::Source(_)) = self.0.borrow().input {
             return true;
         }
         return false;
@@ -352,7 +444,7 @@ impl NodeRef {
             Some(NodeInput::Script(ref script)) => {
                 return script.nodetype();
             }
-            Some(NodeInput::Source(ref source)) => {
+            Some(NodeInput::Source(ref source, _)) => {
                 return source.nodetype(&self.path_str(), &self.subtree_here(tree)?);
             }
         }
@@ -396,7 +488,10 @@ impl NodeRef {
             from,
             self.0.borrow().path
         );
-        self.0.borrow_mut().input = Some(NodeInput::Source(tree.source_handlers[from].to_owned()));
+        self.0.borrow_mut().input = Some(NodeInput::Source(
+            tree.source_handlers[from].to_owned(),
+            Vec::new(),
+        ));
         return Ok(());
     }
 
@@ -412,7 +507,7 @@ impl NodeRef {
             tgt,
             self.0.borrow().path
         );
-        self.0.borrow_mut().sink = Some(tree.sink_handlers[tgt].to_owned());
+        self.0.borrow_mut().sink = Some((tgt.to_owned(), tree.sink_handlers[tgt].to_owned()));
         return Ok(());
     }
 
@@ -443,7 +538,7 @@ impl NodeRef {
             Some(NodeInput::Script(ref script)) => {
                 return script.compute(tree);
             }
-            Some(NodeInput::Source(ref source)) => {
+            Some(NodeInput::Source(ref source, _)) => {
                 // FIXME: we need to make this entire path mut
                 // if let Some((_, cached)) = self.cache {
                 //     return cached;
@@ -469,31 +564,42 @@ impl NodeRef {
             Some(NodeInput::Script(ref script)) => {
                 return script.virtually_compute_for_path(tree);
             }
-            Some(NodeInput::Source(ref source)) => {
+            Some(NodeInput::Source(ref source, _)) => {
                 return source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?);
             }
         }
     }
 
-    pub fn handle_event(&self, _value: Value) -> Result<(), Error> {
-        ensure!(
-            self.has_source(),
-            "runtime error: handle_event delivered to non-source node"
+    pub fn get_sink_nodes_observing(&self) -> Result<Vec<NodeRef>, Error> {
+        if let Some(NodeInput::Source(_, ref sinks)) = self.0.borrow().input {
+            return Ok(sinks.to_owned());
+        }
+        bail!(
+            "runtime: invalid event; occurred on node {} with no source",
+            self.path_str()
         );
-        // FIXME: invert the flows.
-        return Ok(());
+    }
+
+    pub fn sink_kind(&self) -> Fallible<String> {
+        if let Some((ref kind, _)) = self.0.borrow().sink {
+            return Ok(kind.to_owned());
+        }
+        bail!(
+            "runtime: tried to get sink kind of the non-sink node at {}",
+            self.path_str()
+        );
     }
 }
 
 enum NodeInput {
-    Source(SourceRef),
+    Source(SourceRef, Vec<NodeRef>),
     Script(Script),
 }
 
 impl NodeInput {
     fn has_a_nodetype(&self) -> bool {
         match self {
-            NodeInput::Source(_) => false,
+            NodeInput::Source(_, _) => false,
             NodeInput::Script(s) => s.has_a_nodetype(),
         }
     }
@@ -516,7 +622,7 @@ pub struct Node {
     _cache: Option<Sample>,
 
     // Optional output data binding.
-    sink: Option<SinkRef>,
+    sink: Option<(String, SinkRef)>,
 }
 
 impl Node {

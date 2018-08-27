@@ -16,6 +16,7 @@ extern crate log;
 extern crate simplelog;
 
 mod float;
+mod graph;
 mod parser;
 mod path;
 mod physical;
@@ -31,8 +32,3 @@ pub use self::source::{SourceRef, TreeSource};
 pub use self::tree::{SubTree, Tree};
 pub use self::value::{Value, ValueType};
 pub use failure::Error;
-
-//#[cfg(test)]
-// pub mod test {
-//     pub use source::test::SimpleSource;
-// }

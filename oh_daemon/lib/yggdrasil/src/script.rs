@@ -2,6 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Error;
+use graph::Graph;
 use path::{ConcretePath, ScriptPath};
 use std::collections::HashMap;
 use tokenizer::Token;
@@ -182,6 +183,13 @@ impl Script {
         self.input_map = input_map.0;
         self.nodetype = Some(input_map.1);
         self.phase = CompilationPhase::Ready;
+        return Ok(());
+    }
+
+    pub fn populate_flow_graph(&self, tgt_node: &NodeRef, graph: &mut Graph) -> Result<(), Error> {
+        for src_node in self.input_map.values() {
+            graph.add_edge(src_node, tgt_node);
+        }
         return Ok(());
     }
 

@@ -1,8 +1,10 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+extern crate failure;
 extern crate yggdrasil;
 
+use failure::Fallible;
 use yggdrasil::{Error, SinkRef, SourceRef, SubTree, Tree, TreeSink, TreeSource, Value, ValueType};
 
 struct Light {
@@ -15,7 +17,11 @@ impl TreeSink for Light {
     fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
         return Ok(());
     }
-    fn values_updated(&mut self, _values: &Vec<(&str, Value)>) -> Result<(), Error> {
+    fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Result<(), Error> {
+        for (path, value) in values.iter() {
+            assert_eq!(*path, "/room/light");
+            self.value = Some(value.to_owned());
+        }
         return Ok(());
     }
 }
@@ -37,7 +43,7 @@ impl TreeSource for Switch {
 }
 
 #[test]
-fn test_main() {
+fn test_main() -> Fallible<()> {
     let program = r#"
 room
     light
@@ -49,18 +55,15 @@ room
     let src = SourceRef::new(Box::new(Switch {}));
     let sink = SinkRef::new(Box::new(Light { value: None }));
     let tree = Tree::new_empty()
-        .add_source_handler("switch", &src)
-        .unwrap()
-        .add_sink_handler("light", &sink)
-        .unwrap()
-        .build_from_str(program)
-        .unwrap();
+        .add_source_handler("switch", &src)?
+        .add_sink_handler("light", &sink)?
+        .build_from_str(program)?;
 
-    tree.handle_event("/room/switch", Value::String("foo".to_owned()))
-        .unwrap();
+    tree.handle_event("/room/switch", Value::String("foo".to_owned()))?;
 
     //assert_eq!(sink.0.borrow().value, Some(Value::String("foo".to_owned())));
-    let v = sink.inspect_as::<Light, Option<Value>>(&|l| &l.value)
-        .unwrap();
+    let v = sink.inspect_as::<Light, Option<Value>>(&|l| &l.value)?;
     assert_eq!((*v).clone().unwrap(), Value::String("foo".to_owned()));
+
+    return Ok(());
 }
