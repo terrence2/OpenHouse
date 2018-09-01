@@ -7,15 +7,21 @@ version = "2.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
-actix = "^0.5"
-actix-web = { git="https://github.com/actix/actix-web.git", rev="9b7ea836d0a0d850b03ad693c25578697c922076", features=["alpn", "flate2-rust"] }
+actix = "^0.7"
+#actix-web = { git="https://github.com/actix/actix-web.git", rev="9b7ea836d0a0d850b03ad693c25578697c922076", features=["alpn", "flate2-rust"] }
+actix-web = { version = "^0.7", features=["alpn", "flate2-rust"] }
 approx = "0.1"
 bitflags = "1.0"
+bytes = "0.4.9"
 downcast-rs = "1.0"
 failure = "0.1"
 failure_derive = "0.1"
+futures = "0.1.23"
 lazy_static = "*"
 log = "0.4"
 openssl = { version=">=0.10", features = ["v110"] }
+serde = "1"
+serde_derive = "1"
 simplelog = "0.5"
 structopt = "0.2"
+yggdrasil = { path = "./lib/yggdrasil" }

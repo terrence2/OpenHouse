@@ -179,7 +179,8 @@ impl<'a> TreeParser<'a> {
                 node.set_script(s)?
             }
             Token::UseTemplate(ref s) => {
-                let template: &NodeRef = self.templates
+                let template: &NodeRef = self
+                    .templates
                     .get(s)
                     .ok_or(format_err!("parse error: unknown template: {}", s))?;
                 node.apply_template(template)?

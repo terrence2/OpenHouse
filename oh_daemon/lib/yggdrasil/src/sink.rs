@@ -18,6 +18,11 @@ pub trait TreeSink: Downcast {
     /// Note the following path listed as a sink using this handler.
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
 
+    /// Parsing is finished and we are ready to start the system.
+    fn on_ready(&mut self, tree: &SubTree) -> Fallible<()> {
+        return Ok(());
+    }
+
     /// Update the given paths to the new values.
     fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Fallible<()>;
 }
@@ -66,6 +71,10 @@ impl SinkRef {
 
     pub(super) fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType> {
         self.sink.borrow().nodetype(path, tree)
+    }
+
+    pub(super) fn on_ready(&self, tree: &SubTree) -> Fallible<()> {
+        self.sink.borrow_mut().on_ready(tree)
     }
 
     pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {

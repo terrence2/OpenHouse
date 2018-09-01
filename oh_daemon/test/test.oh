@@ -1,0 +1,19 @@
+rooms
+    office
+        switch0
+            ^legacy-mcu
+            ip <- "127.0.0.1"
+
+        switch1
+            ^legacy-mcu
+            ip <- "10.5.0.23"
+
+        switch2
+            ^legacy-mcu
+            ip <- "10.5.0.24"
+
+meta
+    hue-bridge
+        $hue
+        address <- "hue-bridge.eyrie"
+        username <- "MasterControlProgram"

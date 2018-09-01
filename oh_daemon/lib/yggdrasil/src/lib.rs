@@ -27,6 +27,7 @@ mod tokenizer;
 mod tree;
 mod value;
 
+pub use self::path::ConcretePath;
 pub use self::sink::{SinkRef, TreeSink};
 pub use self::source::{SourceRef, TreeSource};
 pub use self::tree::{SubTree, Tree};

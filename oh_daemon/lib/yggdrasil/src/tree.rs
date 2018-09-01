@@ -14,7 +14,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fs,
     path::Path,
-    rc::Rc,
+    sync::Arc,
 };
 use value::{Value, ValueType};
 
@@ -92,8 +92,11 @@ impl Tree {
     pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
         let tree = TreeParser::from_str(self, s)?
             .link_and_validate_inputs()?
-            .map_inputs_to_outputs();
-        return tree;
+            .map_inputs_to_outputs()?;
+        for sink in tree.sink_handlers.values() {
+            sink.on_ready(&tree.root.subtree_here(&tree)?)?;
+        }
+        return Ok(tree);
     }
 
     pub fn root(&self) -> NodeRef {
@@ -150,14 +153,23 @@ impl<'a> SubTree<'a> {
             _root: root.to_owned(),
         });
     }
+
+    pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
+        let concrete = ConcretePath::from_str(path)?;
+        return self._root.lookup_path(&concrete.components[0..]);
+    }
+
+    pub fn tree(&self) -> &'a Tree {
+        return self._tree;
+    }
 }
 
 #[derive(Clone)]
-pub struct NodeRef(Rc<RefCell<Node>>);
+pub struct NodeRef(Arc<RefCell<Node>>);
 
 impl NodeRef {
     pub fn new(node: Node) -> NodeRef {
-        let self_ref = NodeRef(Rc::new(RefCell::new(node)));
+        let self_ref = NodeRef(Arc::new(RefCell::new(node)));
         self_ref
             .0
             .borrow_mut()
