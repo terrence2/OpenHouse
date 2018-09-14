@@ -15,6 +15,8 @@ extern crate failure;
 extern crate failure_derive;
 extern crate futures;
 #[macro_use]
+extern crate json;
+#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate log;

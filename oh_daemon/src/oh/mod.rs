@@ -3,6 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 mod db_server;
 mod hue;
+mod json_helpers;
 mod legacy_mcu;
 
 pub use self::db_server::{DBServer, HandleEvent};

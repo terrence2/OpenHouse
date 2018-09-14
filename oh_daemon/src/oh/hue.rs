@@ -8,8 +8,13 @@ use actix::{
 use actix_web::{actix, client, HttpMessage};
 use bytes::Bytes;
 use failure::{err_msg, Fallible};
-use futures::Future;
-use std::collections::HashMap;
+use futures::{
+    future::{err, ok},
+    Future, IntoFuture,
+};
+use json::{object::Object, parse, JsonValue};
+use oh::json_helpers::{ObjectHelper, ValueHelper};
+use std::{collections::HashMap, str};
 use yggdrasil::{ConcretePath, SinkRef, SubTree, TreeSink, Value, ValueType};
 
 pub struct Hue {
@@ -21,12 +26,11 @@ pub struct Hue {
 
 impl Hue {
     pub fn new() -> Fallible<Box<Self>> {
-        //let worker = HueWorker {};
         Ok(Box::new(Hue {
             address: None,
             username: None,
             paths: HashMap::new(),
-            worker: None//worker.start(),
+            worker: None,
         }))
     }
 }
@@ -91,11 +95,6 @@ struct HueWorker {
 
 impl HueWorker {}
 
-#[derive(Deserialize, Debug)]
-struct Foobar {
-    name: String,
-}
-
 impl Actor for HueWorker {
     type Context = Context<Self>;
 
@@ -112,38 +111,68 @@ impl Actor for HueWorker {
                     ()
                 })
                 .and_then(|response| {
-                    println!("Response: {:?}", response);
                     response.body()
                         .limit(1024 * 1024 * 1024)
-                        .map_err(|e| { warn!("hue system: read failed: {}", e); () } )
+                        .map_err(|e| {
+                            error!("hue system: read failed while starting up: {}", e);
+                            System::current().stop();
+                            ()
+                        })
                         .and_then(|bytes: Bytes| {
-                            println!("==== BODY ==== {:?}", bytes);
-                            Ok(())
+                            match handle_hub_info(bytes) {
+                                Ok(_) => ok(()),
+                                Err(e) => {
+                                    error!("hue system: failed to handle hue info: {}", e);
+                                    System::current().stop();
+                                    ok(())
+                                }
+                            }
                         })
                 }),
         );
     }
 }
 
-// struct Initialize {
-//     address: String,
-//     username: String,
-//     paths: HashMap<String, String>,
-// }
+fn handle_hub_info(bytes: Bytes) -> Fallible<()> {
+    let as_str = str::from_utf8(&bytes)?;
+    let body = parse(as_str)?;
 
-// impl Message for Initialize {
-//     type Result = Fallible<()>;
-// }
+    let config = body.to_object()?.fetch("config")?.to_object()?;
+    let props = vec![
+        "name",
+        "zigbeechannel",
+        "bridgeid",
+        "mac",
+        "dhcp",
+        "ipaddress",
+        "netmask",
+        "gateway",
+        "proxyaddress",
+        "proxyport",
+        "modelid",
+        "datastoreversion",
+        "swversion",
+        "apiversion",
+    ];
+    info!("hue hub info ->");
+    for prop in props.iter() {
+        info!("{:>20}: {}", prop, config.fetch(prop)?);
+    }
 
-// impl Handler<Initialize> for HueWorker {
-//     type Result = Fallible<()>;
+    info!("hue light info ->");
+    let lights = body.to_object()?.fetch("lights")?.to_object()?;
+    for (number, light) in lights.iter() {
+        info!(
+            "{:>3} : {:<20} : {} : {}",
+            number,
+            light.to_object()?.fetch("name")?.to_str()?,
+            light.to_object()?.fetch("modelid")?.to_str()?,
+            light.to_object()?.fetch("swversion")?.to_str()?
+        );
+    }
 
-//     fn handle(&mut self, msg: Initialize, ctx: &mut Context<Self>) -> Self::Result {
-//         println!("Initializing...");
-
-//         Ok(())
-//     }
-// }
+    return Ok(());
+}
 
 #[cfg(test)]
 mod test {

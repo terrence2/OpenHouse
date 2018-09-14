@@ -90,10 +90,15 @@ impl Tree {
     }
 
     pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
+        // Parse, link, map.
         let tree = TreeParser::from_str(self, s)?
             .link_and_validate_inputs()?
             .map_inputs_to_outputs()?;
+
+        // Tell sinks to get ready.
         for sink in tree.sink_handlers.values() {
+            // FIXME: For each source, get the full set of sink nodes to which it can refer.
+
             sink.on_ready(&tree.root.subtree_here(&tree)?)?;
         }
         return Ok(tree);
