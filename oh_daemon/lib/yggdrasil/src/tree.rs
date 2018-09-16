@@ -750,7 +750,7 @@ b <- "foo"
     }
 
     #[test]
-    fn test_tree_sources() {
+    fn test_tree_sources() -> Fallible<()> {
         let s = r#"
 a ^src1
 b <-/{/a}/v
@@ -759,79 +759,15 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef =
-            SimpleSource::new(vec!["foo".to_owned(), "bar".to_owned()]).unwrap();
+        let srcref: SourceRef = SimpleSource::new(vec!["foo".into(), "bar".into()])?;
         let tree = Tree::new_empty()
-            .add_source_handler("src1", &srcref)
-            .unwrap()
-            .build_from_str(s)
-            .unwrap();
-        assert_eq!(
-            tree.lookup("/b").unwrap().compute(&tree).unwrap(),
-            Value::Integer(1)
-        );
+            .add_source_handler("src1", &srcref)?
+            .build_from_str(s)?;
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
 
-        {
-            srcref
-                .mutate_as::<SimpleSource>(&mut |src1: &mut SimpleSource| {
-                    src1.set_input(1, "/a", &tree)
-                })
-                .unwrap();
-        }
+        tree.handle_event("/a", Value::String("foo".to_owned()))?;
 
-        assert_eq!(
-            tree.lookup("/b").unwrap().compute(&tree).unwrap(),
-            Value::Integer(2)
-        );
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
+        Ok(())
     }
-
-    // struct TestSink {
-    //     count: usize,
-    // }
-    // impl Actor for TestSink {
-    //     type Context = Context<Self>;
-    // }
-    // impl Handler<SinkEvent> for TestSink {
-    //     type Result = Result<(), Error>;
-
-    //     fn handle(&mut self, msg: SinkEvent, _ctx: &mut Context<Self>) -> Self::Result {
-    //         println!("TestSink: received change event {:?}", msg.affected_paths);
-    //         // TODO: shutdown the system here
-    //         return Ok(());
-    //     }
-    // }
-
-    // #[test]
-    // fn test_run_tree() {
-    //     TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
-    //     let sys = System::new("test");
-
-    //     let mut tree = Tree::new();
-    //     let a = tree.root().add_child("a").unwrap();
-    //     a.set_sink("foo").unwrap();
-    //     //a.add_comes_from("/b").unwrap();
-    //     let b = tree.root().add_child("b").unwrap();
-    //     b.set_source("bar").unwrap();
-    //     tree.build_flow_graph();
-    //     let tree_addr: Addr<Syn, _> = tree.start();
-
-    //     let sink = TestSink { count: 0 };
-    //     let sink_addr: Addr<Syn, _> = sink.start();
-    //     let result = tree_addr.send(AddSinkHandler::new("foo", sink_addr.recipient()));
-
-    //     tree_addr.send(SourceEvent::new("/b"));
-
-    //     // Arbiter::handle().spawn(
-    //     //     result
-    //     //         .map(|res| match res {
-    //     //             Ok(result) => println!("Got result: {}", result),
-    //     //             Err(err) => println!("Got error: {}", err),
-    //     //         })
-    //     //         .map_err(|e| {
-    //     //             println!("Actor is probably died: {}", e);
-    //     //         }),
-    //     // );
-
-    //     sys.run();
-    // }
 }

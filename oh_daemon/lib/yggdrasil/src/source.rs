@@ -107,41 +107,43 @@ impl SourceRef {
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
+    use std::collections::HashMap;
     use tree::Tree;
 
     pub struct SimpleSource {
-        values: Vec<String>,
-        input: usize,
+        values: Vec<Value>,
+        inputs: HashMap<String, Value>,
     }
 
     impl SimpleSource {
-        pub fn new(values: Vec<String>) -> Fallible<SourceRef> {
-            let src = Box::new(Self { values, input: 0 });
+        pub fn new(values: Vec<Value>) -> Fallible<SourceRef> {
+            let src = Box::new(Self {
+                values: values.clone(),
+                inputs: HashMap::new(),
+            });
             return Ok(SourceRef::new(src));
-        }
-
-        pub fn set_input(&mut self, input: usize, path: &str, tree: &Tree) {
-            self.input = input;
-            tree.handle_event(path, Value::String(self.values[self.input].clone()))
-                .unwrap();
         }
     }
 
     impl TreeSource for SimpleSource {
         fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
-            Ok(self
-                .values
-                .iter()
-                .map(|s| Value::String(s.clone()))
-                .collect::<Vec<Value>>())
+            Ok(self.values.clone())
         }
 
-        fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Fallible<()> {
+        fn add_path(&mut self, path: &str, _tree: &SubTree) -> Fallible<()> {
+            self.inputs
+                .insert(path.into(), Value::String("foo".to_owned()));
             return Ok(());
         }
 
-        fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
-            return Some(Value::String(self.values[self.input].clone()));
+        fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
+            let entry = self.inputs.get_mut(path).unwrap();
+            *entry = value;
+            return Ok(());
+        }
+
+        fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
+            return Some(self.inputs[path].clone());
         }
 
         fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {

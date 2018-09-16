@@ -37,6 +37,9 @@ impl TreeSource for Switch {
     fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Result<Vec<Value>, Error> {
         return Ok(vec![]);
     }
+    fn handle_event(&mut self, _path: &str, _value: Value, _tree: &SubTree) -> Fallible<()> {
+        return Ok(());
+    }
     fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
         return Some(Value::String("foo".to_owned()));
     }

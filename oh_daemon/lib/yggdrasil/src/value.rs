@@ -4,7 +4,7 @@
 use failure::Error;
 use float::Float;
 use path::{ConcretePath, ScriptPath};
-use std::fmt;
+use std::{convert::From, fmt};
 use tokenizer::Token;
 use tree::Tree;
 
@@ -216,6 +216,12 @@ impl Value {
             Value::String(_) => ValueType::STRING,
             Value::Path(_) => panic!("typeflow error: we already filtered out path"),
         });
+    }
+}
+
+impl<'a> From<&'a str> for Value {
+    fn from(t: &str) -> Value {
+        Value::String(t.to_owned())
     }
 }
 
