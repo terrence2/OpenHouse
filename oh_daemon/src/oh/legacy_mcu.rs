@@ -1,28 +1,22 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Fallible;
+use failure::{err_msg, Fallible};
 use std::{collections::HashMap, net::IpAddr};
 use yggdrasil::{SubTree, TreeSource, Value, ValueType};
 
 pub struct LegacyMCU {
     pub path_map: HashMap<IpAddr, String>,
+    value_map: HashMap<String, Value>,
 }
 
 impl LegacyMCU {
     pub fn new() -> Fallible<Box<Self>> {
         Ok(Box::new(Self {
             path_map: HashMap::new(),
+            value_map: HashMap::new(),
         }))
     }
-
-    // pub fn get_path_map(&self) -> Fallible<HashMap<IpAddr, String>> {
-    //     let mut out = HashMap::new();
-    //     for mcu in self.info.iter() {
-    //         out.insert(mcu.ip, mcu.path.clone());
-    //     }
-    //     return Ok(out);
-    // }
 }
 
 impl TreeSource for LegacyMCU {
@@ -32,12 +26,9 @@ impl TreeSource for LegacyMCU {
             .compute(tree.tree())?
             .as_string()?
             .parse::<IpAddr>()?;
-        // let mcu = MCUInfo {
-        //     path: path.to_string(),
-        //     ip:
-        // };
-        // self.info.push(mcu);
         self.path_map.insert(ip, path.to_string());
+        self.value_map
+            .insert(path.to_string(), Value::String("off".to_owned()));
         return Ok(());
     }
 
@@ -52,7 +43,17 @@ impl TreeSource for LegacyMCU {
             .collect::<Vec<Value>>());
     }
 
-    fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
-        return Some(Value::String("foo".to_owned()));
+    fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
+        let entry = self
+            .value_map
+            .get_mut(path)
+            .ok_or_else(|| err_msg("recvd event for unknown path"))?;
+        *entry = value;
+        return Ok(());
+    }
+
+    fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
+        trace!("LegacyMCU: get_value @ {}", path);
+        return self.value_map.get(path).map(|v| v.to_owned());
     }
 }

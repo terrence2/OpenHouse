@@ -19,7 +19,7 @@ pub trait TreeSink: Downcast {
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
 
     /// Parsing is finished and we are ready to start the system.
-    fn on_ready(&mut self, tree: &SubTree) -> Fallible<()> {
+    fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
         return Ok(());
     }
 

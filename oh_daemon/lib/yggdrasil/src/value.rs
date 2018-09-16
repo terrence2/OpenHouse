@@ -42,7 +42,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
         trace!("Value::virtually_compute_for_path({})", self);
         if let Value::Path(p) = self {
             let noderef = tree.lookup_dynamic_path(p)?;
@@ -51,7 +51,7 @@ impl Value {
         return Ok(vec![self.to_owned()]);
     }
 
-    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub(super) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
         if let Value::Path(p) = self {
             let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.compute(tree);
@@ -59,7 +59,7 @@ impl Value {
         return Ok(self.to_owned());
     }
 
-    pub fn apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
+    pub(super) fn apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
         ensure!(
             !self.is_path(),
             "runtime error: attempting to apply a non-path"
@@ -79,7 +79,7 @@ impl Value {
         });
     }
 
-    pub fn apply_boolean(tok: &Token, a: bool, b: bool) -> Result<bool, Error> {
+    pub(super) fn apply_boolean(tok: &Token, a: bool, b: bool) -> Result<bool, Error> {
         return Ok(match tok {
             Token::Or => a || b,
             Token::And => a && b,
@@ -89,7 +89,7 @@ impl Value {
         });
     }
 
-    pub fn apply_integer(tok: &Token, a: i64, b: i64) -> Result<Value, Error> {
+    pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Result<Value, Error> {
         return Ok(match tok {
             Token::Add => Value::Integer(a + b),
             Token::Subtract => Value::Integer(a - b),
@@ -105,7 +105,7 @@ impl Value {
         });
     }
 
-    pub fn apply_float(tok: &Token, a: Float, b: Float) -> Result<Value, Error> {
+    pub(super) fn apply_float(tok: &Token, a: Float, b: Float) -> Result<Value, Error> {
         return Ok(match tok {
             Token::Add => Value::Float(a + b),
             Token::Subtract => Value::Float(a - b),
@@ -121,7 +121,7 @@ impl Value {
         });
     }
 
-    pub fn apply_string(tok: &Token, a: &str, b: &str) -> Result<String, Error> {
+    pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Result<String, Error> {
         return Ok(match tok {
             Token::Add => a.to_owned() + &b,
             _ => bail!("runtime error: {:?} is not a valid operation on an integer"),

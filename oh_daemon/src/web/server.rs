@@ -7,7 +7,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use bytes::Bytes;
-use failure::{err_msg, Error, Fallible};
+use failure::{err_msg, Fallible};
 use futures::future::{ok, Future};
 use oh::{DBServer, HandleEvent};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -34,7 +34,7 @@ fn get_caller_ip(req: &HttpRequest<AppState>) -> Fallible<IpAddr> {
 fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     let ip = match get_caller_ip(req) {
         Ok(ip) => ip,
-        Err(e) => return Box::new(ok(HttpResponse::BadRequest().finish())),
+        Err(_) => return Box::new(ok(HttpResponse::BadRequest().finish())),
     };
 
     let path = req.state().button_path_map.get(&ip);
@@ -49,9 +49,10 @@ fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
             .limit(128)
             .from_err()
             .and_then(move |bytes: Bytes| {
-                println!("==== BODY ==== {:?}", bytes);
                 let value = str::from_utf8(&bytes).unwrap().to_string();
-                db.send(HandleEvent { path, value });
+                trace!("http server: recvd legacy mcu event {} <- {}", path, value);
+                let event = HandleEvent { path, value };
+                db.do_send(event);
                 ok(HttpResponse::Ok().into())
             }),
     );

@@ -1,26 +1,31 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use actix::{
-    fut::wrap_future, Actor, ActorContext, Addr, Arbiter, AsyncContext, Context, Handler, Message,
-    System,
-};
-use actix_web::{actix, client, HttpMessage};
-use bytes::Bytes;
+use actix::{Actor, Addr, Context, Handler, Message, System};
 use failure::{err_msg, Fallible};
-use futures::{
-    future::{err, ok},
-    Future, IntoFuture,
+use itertools::Itertools;
+use json::{parse, stringify, JsonValue};
+use oh::{
+    color::{Color, Mired, BHS, RGB},
+    json_helpers::{ObjectHelper, ValueHelper},
 };
-use json::{object::Object, parse, JsonValue};
-use oh::json_helpers::{ObjectHelper, ValueHelper};
-use std::{collections::HashMap, str};
-use yggdrasil::{ConcretePath, SinkRef, SubTree, TreeSink, Value, ValueType};
+use reqwest::Client;
+use std::{collections::HashMap, str, time::Duration};
+use yggdrasil::{ConcretePath, SubTree, TreeSink, Value, ValueType};
 
+struct ValuesUpdated {
+    values: Vec<(String, Value)>,
+}
+impl Message for ValuesUpdated {
+    type Result = Fallible<()>;
+}
+
+// The hue plugin to Yggdrasil. All processing is done off-main-thread by the
+// HueWorker actor.
 pub struct Hue {
     address: Option<String>,
     username: Option<String>,
-    paths: HashMap<String, String>,
+    path_map: HashMap<String, String>,
     worker: Option<Addr<HueWorker>>,
 }
 
@@ -29,14 +34,14 @@ impl Hue {
         Ok(Box::new(Hue {
             address: None,
             username: None,
-            paths: HashMap::new(),
+            path_map: HashMap::new(),
             worker: None,
         }))
     }
 }
 
 impl TreeSink for Hue {
-    fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType> {
+    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
         return Ok(ValueType::STRING);
     }
 
@@ -52,141 +57,295 @@ impl TreeSink for Hue {
             return Ok(());
         }
 
-        self.paths.insert(path.to_owned(), basename.to_owned());
+        // FIXME: allow the user to override the light name, rather than just
+        // assuming it's the last path component.
+        self.path_map.insert(path.to_owned(), basename.to_owned());
         return Ok(());
     }
 
-    fn on_ready(&mut self, tree: &SubTree) -> Fallible<()> {
+    fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
         if self.address.is_none() || self.username.is_none() {
             warn!("hue system: no hub defined; not starting");
             return Ok(());
         }
-        let hub = Hub {
-            address: self.address.clone().unwrap(),
-            username: self.username.clone().unwrap(),
-        };
-        let worker = HueWorker { hub };
+        let address = self
+            .address
+            .clone()
+            .ok_or_else(|| err_msg("hue: no address on bridge"))?;
+        let username = self
+            .username
+            .clone()
+            .ok_or_else(|| err_msg("hue: no username on bridge"))?;
+        let hub = Hub::new(&address, &username)?;
+        let worker = HueWorker::new(hub, &self.path_map);
         self.worker = Some(worker.start());
         return Ok(());
     }
 
     fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Fallible<()> {
-        // if let Some(worker) = self.worker {
-        //     worker.send(ValuesUpdated { values });
-        // }
+        if let Some(ref worker) = self.worker {
+            worker.do_send(ValuesUpdated {
+                values: values.to_owned(),
+            });
+        }
         return Ok(());
     }
 }
-
 struct Hub {
     address: String,
     username: String,
+    client: Client,
 }
 
 impl Hub {
+    fn new(address: &str, username: &str) -> Fallible<Self> {
+        Ok(Hub {
+            address: address.to_owned(),
+            username: username.to_owned(),
+            client: Client::builder()
+                .gzip(true)
+                .timeout(Duration::from_secs(30))
+                .build()?,
+        })
+    }
+
+    fn light_state_for_value(value: &str) -> Fallible<JsonValue> {
+        if value == "none" {
+            return Ok(object!{"on" => false});
+        }
+        let color = Color::parse(value)?;
+        let mut obj = match color {
+            Color::Mired(Mired { color_temp: ct }) => object!{"ct" => ct},
+            Color::RGB(RGB {
+                red: r,
+                green: g,
+                blue: b,
+            }) => bail!("implement support for rgb"),
+            Color::BHS(BHS {
+                brightness: bri,
+                hue: hue,
+                saturation: sat,
+            }) => object!{"bri" => bri, "hue" => hue, "sat" => sat},
+        };
+        obj["on"] = true.into();
+        // FIXME: support transition time
+        obj["transitiontime"] = 10.into();
+        return Ok(obj);
+    }
+
     fn url(&self, path: &str) -> String {
         return format!("http://{}/api/{}{}", self.address, self.username, path);
     }
+
+    fn get(&self, path: &str) -> Fallible<String> {
+        let url = self.url(path);
+        info!("GET {}", url);
+        let body = self.client.get(&url).send()?.text()?;
+        return Ok(body);
+    }
+
+    fn post(&self, path: &str, data: String) -> Fallible<JsonValue> {
+        let url = self.url(path);
+        info!("POST {} -> {}", url, data);
+        let body = self.client.post(&url).body(data).send()?.text()?;
+        return Ok(parse(&body)?);
+    }
+
+    fn put(&self, path: &str, data: String) -> Fallible<JsonValue> {
+        let url = self.url(path);
+        info!("PUT {} -> {}", url, data);
+        let body = self.client.put(&url).body(data).send()?.text()?;
+        return Ok(parse(&body)?);
+    }
 }
 
+// The hue worker is the sole, serial thread allowed to talk to the hue hub.
 struct HueWorker {
     hub: Hub,
-}
 
-impl HueWorker {}
+    // Map from paths to light names.
+    path_map: HashMap<String, String>,
+
+    // Map from light names to the light number needed to talk to the hub.
+    light_map: HashMap<String, u32>,
+
+    // Map from light sets to group numbers.
+    group_map: HashMap<Vec<u32>, u32>,
+}
 
 impl Actor for HueWorker {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        Arbiter::spawn(
-            client::get(self.hub.url(""))   // <- Create request builder
-                .header("User-Agent", "Actix-web")
-                .finish()
-                .expect("failed to build request")
-                .send()
-                .map_err(|e| {
-                    error!("hue system: cannot reach hue bridge while starting up: {}", e);
-                    System::current().stop();
-                    ()
-                })
-                .and_then(|response| {
-                    response.body()
-                        .limit(1024 * 1024 * 1024)
-                        .map_err(|e| {
-                            error!("hue system: read failed while starting up: {}", e);
-                            System::current().stop();
-                            ()
-                        })
-                        .and_then(|bytes: Bytes| {
-                            match handle_hub_info(bytes) {
-                                Ok(_) => ok(()),
-                                Err(e) => {
-                                    error!("hue system: failed to handle hue info: {}", e);
-                                    System::current().stop();
-                                    ok(())
-                                }
-                            }
-                        })
-                }),
-        );
+        match self.handle_started(ctx) {
+            Ok(_) => (),
+            Err(e) => {
+                error!("hue system: failed to start: {}", e);
+                System::current().stop();
+                ()
+            }
+        };
     }
 }
 
-fn handle_hub_info(bytes: Bytes) -> Fallible<()> {
-    let as_str = str::from_utf8(&bytes)?;
-    let body = parse(as_str)?;
-
-    let config = body.to_object()?.fetch("config")?.to_object()?;
-    let props = vec![
-        "name",
-        "zigbeechannel",
-        "bridgeid",
-        "mac",
-        "dhcp",
-        "ipaddress",
-        "netmask",
-        "gateway",
-        "proxyaddress",
-        "proxyport",
-        "modelid",
-        "datastoreversion",
-        "swversion",
-        "apiversion",
-    ];
-    info!("hue hub info ->");
-    for prop in props.iter() {
-        info!("{:>20}: {}", prop, config.fetch(prop)?);
+impl HueWorker {
+    fn new(hub: Hub, path_map: &HashMap<String, String>) -> Self {
+        HueWorker {
+            hub,
+            path_map: path_map.to_owned(),
+            light_map: HashMap::new(),
+            group_map: HashMap::new(),
+        }
     }
 
-    info!("hue light info ->");
-    let lights = body.to_object()?.fetch("lights")?.to_object()?;
-    for (number, light) in lights.iter() {
-        info!(
-            "{:>3} : {:<20} : {} : {}",
-            number,
-            light.to_object()?.fetch("name")?.to_str()?,
-            light.to_object()?.fetch("modelid")?.to_str()?,
-            light.to_object()?.fetch("swversion")?.to_str()?
-        );
+    fn handle_started(&mut self, _ctx: &mut Context<Self>) -> Fallible<()> {
+        let resp = self.hub.get("")?;
+        let body = parse(&resp)?;
+
+        self.show_configuration(&body)?;
+        self.collect_lights(&body)?;
+        self.collect_groups(&body)?;
+        return Ok(());
     }
 
-    return Ok(());
+    fn show_configuration(&self, body: &JsonValue) -> Fallible<()> {
+        let config = body.to_object()?.fetch("config")?.to_object()?;
+        let props = vec![
+            "name",
+            "zigbeechannel",
+            "bridgeid",
+            "mac",
+            "dhcp",
+            "ipaddress",
+            "netmask",
+            "gateway",
+            "proxyaddress",
+            "proxyport",
+            "modelid",
+            "datastoreversion",
+            "swversion",
+            "apiversion",
+        ];
+        info!("hue hub info ->");
+        for prop in props.iter() {
+            info!("{:>20}: {}", prop, config.fetch(prop)?);
+        }
+        return Ok(());
+    }
+
+    // Build the light map so that we can bridge from light names to the numbers
+    // that the hub works with internally.
+    fn collect_lights(&mut self, body: &JsonValue) -> Fallible<()> {
+        info!("hue light info ->");
+        let lights = body.to_object()?.fetch("lights")?.to_object()?;
+        for (number, light) in lights.iter() {
+            let name = light.to_object()?.fetch("name")?.to_str()?;
+            info!(
+                "{:>3} : {:<20} : {} : {}",
+                number,
+                name,
+                light.to_object()?.fetch("modelid")?.to_str()?,
+                light.to_object()?.fetch("swversion")?.to_str()?
+            );
+            self.light_map.insert(name.to_owned(), number.parse()?);
+        }
+        return Ok(());
+    }
+
+    // Groups are not limited in recent releases of the firmware, so just
+    // collect all currently existing groups on startup instead of trying to
+    // clean up.
+    fn collect_groups(&mut self, body: &JsonValue) -> Fallible<()> {
+        info!("hue group info ->");
+        let groups = body.to_object()?.fetch("groups")?.to_object()?;
+        for (number, group) in groups.iter() {
+            let mut lights = Vec::new();
+            let lights_node = group.to_object()?.fetch("lights")?.to_array()?;
+            for s in lights_node {
+                lights.push(s.to_str()?.parse()?);
+            }
+            lights.sort();
+
+            info!("{:>3} => {:?}", number, lights);
+            self.group_map.insert(lights, number.parse()?);
+        }
+        return Ok(());
+    }
+
+    fn handle_values_updated(&mut self, msg: ValuesUpdated) -> Fallible<()> {
+        // Group lights by value.
+        let groups = msg.values.iter().group_by(|(_, v)| v);
+        for (value, group) in &groups {
+            let mut lights = group
+                .map(|(path, _)| {
+                    let light_name = &self.path_map[path];
+                    self.light_map[light_name]
+                })
+                .collect::<Vec<u32>>();
+            lights.sort();
+            info!("hue worker: group {:?} -> {}", lights, value);
+
+            if !self.group_map.contains_key(&lights) {
+                self.make_new_group(&lights)?;
+            }
+            let group_name = self.group_map[&lights];
+
+            self.update_group(group_name, value)?;
+        }
+        return Ok(());
+    }
+
+    fn make_new_group(&mut self, lights: &[u32]) -> Fallible<()> {
+        let mut arr = JsonValue::new_array();
+        for light in lights {
+            arr.push(light.to_string())?;
+        }
+        let obj = object!{"lights" => arr};
+        let resp = self.hub.post("/groups/", stringify(obj))?;
+        let name = resp[0]["success"]["id"].to_str()?.parse()?;
+        self.group_map.insert(lights.to_vec(), name);
+        return Ok(());
+    }
+
+    fn update_group(&self, group: u32, light_value: &Value) -> Fallible<()> {
+        let url = format!("/groups/{}/action", group);
+        let v = &light_value.as_string()?;
+        let obj = Hub::light_state_for_value(v)?;
+        let put_data = stringify(obj);
+        let resp = self.hub.put(&url, put_data)?;
+        return Ok(());
+    }
+}
+
+impl Handler<ValuesUpdated> for HueWorker {
+    type Result = Fallible<()>;
+
+    fn handle(&mut self, msg: ValuesUpdated, _: &mut Context<Self>) -> Self::Result {
+        match self.handle_values_updated(msg) {
+            Ok(_) => (),
+            Err(e) => error!("hue: value update failed: {}", e),
+        }
+        return Ok(());
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use actix::System;
 
     #[test]
     fn test_new_sink() -> Fallible<()> {
-        let hue = Hue::new();
+        let _hue = Hue::new();
         return Ok(());
     }
 
     #[test]
-    fn test_new_worker() -> Fallible<()> {
+    fn test_light_state() -> Fallible<()> {
+        assert_eq!(Hub::light_state_for_value("none")?, object!{"off" => true});
+        assert_eq!(
+            Hub::light_state_for_value("mired(40)")?,
+            object!{"ct" => 40}
+        );
         return Ok(());
     }
 }

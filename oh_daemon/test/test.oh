@@ -1,16 +1,53 @@
+palette
+    on
+        <- "bhs(255, 34495, 255)"
+    low
+        <- "bhs(64, 34495, 255)"
+    moonlight
+        <- "bhs(255, 47000, 255)"
+    default
+        <- "bhs(255, 0, 255)"
+    off
+        <- "none"
+        
+#local-zone: "office-lightswitch.eyrie." static
+#local-data: "office-lightswitch.eyrie. 10800 IN A 10.0.5.40"
+
+#local-zone: "kitchen-lightswitch.eyrie." static
+#local-data: "kitchen-lightswitch.eyrie. 10800 IN A 10.0.5.41"
+
+#local-zone: "livingroom-lightswitch.eyrie." static
+#local-data: "livingroom-lightswitch.eyrie. 10800 IN A 10.0.5.42"
+
+#local-zone: "bedroom-lightswitch.eyrie." static
+#local-data: "bedroom-lightswitch.eyrie. 10800 IN A 10.0.5.43"
+
+#|| ./office-lightswitch.eyrie
+
+template hue-light
+    $hue
+    <-/palette/{./color}
+
 rooms
     office
-        switch0
+        office-test-switch
             ^legacy-mcu
             ip <- "127.0.0.1"
-
-        switch1
+        
+        office-lightswitch.eyrie
             ^legacy-mcu
-            ip <- "10.5.0.23"
+            ip <-"10.0.5.40"
 
-        switch2
-            ^legacy-mcu
-            ip <- "10.5.0.24"
+        color <-./office-test-switch
+
+        office-ceiling1 $hue @5'x6'
+            <-/palette/{./color}
+
+        office-ceiling2 $hue @4'x7'
+            <-/palette/{./color}
+
+        office-desk0 $hue @11'x0'
+            <-/palette/{./color}
 
 meta
     hue-bridge

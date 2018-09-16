@@ -19,10 +19,15 @@ pub trait TreeSource: Downcast {
     fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType>;
 
     /// Return all possible values that the given source can take. This is only
-    /// called for sources that are used as a path component elsewhere. In the
-    /// event this is called for a source that does not have a constrained set of
-    /// possible values -- floats, arbitrary strings, etc -- return an error.
+    /// called for sources that are used as a path component in a dynamic path.
+    /// In the event this is called for a source that does not have a constrained
+    /// set of possible values -- floats, arbitrary strings, etc -- return an
+    /// error.
     fn get_all_possible_values(&self, path: &str, tree: &SubTree) -> Fallible<Vec<Value>>;
+
+    /// Called on handle_event, before event processing. The source should be
+    /// ready for calls to get_value(path) after this.
+    fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()>;
 
     /// Return the current value of the given source. Sources are generally
     /// expected to be delivered asyncronously and the latest value will be
@@ -83,6 +88,15 @@ impl SourceRef {
         tree: &SubTree,
     ) -> Fallible<Vec<Value>> {
         self.0.borrow().get_all_possible_values(path, tree)
+    }
+
+    pub(super) fn handle_event(
+        &mut self,
+        path: &str,
+        value: Value,
+        tree: &SubTree,
+    ) -> Fallible<()> {
+        self.0.borrow_mut().handle_event(path, value, tree)
     }
 
     pub(super) fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value> {

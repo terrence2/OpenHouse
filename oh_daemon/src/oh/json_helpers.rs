@@ -2,10 +2,11 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::{err_msg, Fallible};
-use json::{object::Object, parse, JsonValue};
+use json::{object::Object, Array, JsonValue};
 
 pub trait ValueHelper {
     fn to_object(&self) -> Fallible<&Object>;
+    fn to_array(&self) -> Fallible<&Array>;
     fn to_str(&self) -> Fallible<&str>;
     fn to_int(&self) -> Fallible<i64>;
     fn to_bool(&self) -> Fallible<bool>;
@@ -16,6 +17,13 @@ impl ValueHelper for JsonValue {
         match self {
             JsonValue::Object(obj) => Ok(obj),
             _ => bail!("value is not an object"),
+        }
+    }
+
+    fn to_array(&self) -> Fallible<&Array> {
+        match self {
+            JsonValue::Array(arr) => Ok(arr),
+            _ => bail!("value is not an array"),
         }
     }
 

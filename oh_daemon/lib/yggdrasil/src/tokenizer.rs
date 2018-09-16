@@ -337,7 +337,7 @@ impl TreeTokenizer {
         let start = self.offset;
         while !self.is_empty() {
             match self.chars[self.offset] {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' => self.offset += 1,
+                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '.' => self.offset += 1,
                 _ => break,
             }
         }

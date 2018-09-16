@@ -30,17 +30,6 @@ pub struct Tree {
     sink_handlers: HashMap<String, SinkRef>,
 }
 
-// pub trait EventHandler {
-//     fn handle_event(&self, path: &str, value: &Value) -> Result<(), Error>;
-// }
-
-// impl EventHandler for Tree {
-//     fn handle_event(&self, path: &str, value: &Value) -> Result<(), Error> {
-//         debug!("handle_event called on path {} with value {}", path, value);
-//         return Ok(());
-//     }
-// }
-
 impl Tree {
     pub fn new_empty() -> Self {
         Tree {
@@ -60,8 +49,9 @@ impl Tree {
         return Ok(self);
     }
 
-    pub fn handle_event(&self, path: &str, _value: Value) -> Result<(), Error> {
+    pub fn handle_event(&self, path: &str, value: Value) -> Result<(), Error> {
         let source = self.lookup(path)?;
+        source.handle_event(value, self)?;
         let sink_nodes = source.get_sink_nodes_observing()?;
 
         let mut groups = HashMap::new();
@@ -90,15 +80,10 @@ impl Tree {
     }
 
     pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
-        // Parse, link, map.
         let tree = TreeParser::from_str(self, s)?
             .link_and_validate_inputs()?
             .map_inputs_to_outputs()?;
-
-        // Tell sinks to get ready.
         for sink in tree.sink_handlers.values() {
-            // FIXME: For each source, get the full set of sink nodes to which it can refer.
-
             sink.on_ready(&tree.root.subtree_here(&tree)?)?;
         }
         return Ok(tree);
@@ -467,6 +452,19 @@ impl NodeRef {
         }
     }
 
+    pub(super) fn handle_event(&self, value: Value, tree: &Tree) -> Fallible<()> {
+        let path = &self.path_str();
+        match self.0.borrow_mut().input {
+            Some(NodeInput::Source(ref mut source, _)) => {
+                return source.handle_event(path, value, &self.subtree_here(tree)?);
+            }
+            _ => bail!(
+                "runtime error: handle_event request on a non-source node @ {}",
+                self.0.borrow().path
+            ),
+        }
+    }
+
     pub fn location(&self) -> Option<Dimension2> {
         self.0.borrow().location
     }
@@ -662,67 +660,6 @@ impl Node {
         return Ok(child);
     }
 }
-
-/// Sent on state changes that contain Sinks with the subscribed name.
-// pub struct SinkEvent {
-//     affected_paths: Vec<String>,
-// }
-
-// impl Message for SinkEvent {
-//     type Result = Result<(), Error>;
-// }
-
-// pub struct AddSinkHandler {
-//     name: String,
-//     recipient: Recipient<Syn, SinkEvent>,
-// }
-
-// impl AddSinkHandler {
-//     pub fn new(name: &str, recipient: Recipient<Syn, SinkEvent>) -> Self {
-//         AddSinkHandler {
-//             name: name.to_owned(),
-//             recipient,
-//         }
-//     }
-// }
-
-// impl Message for AddSinkHandler {
-//     type Result = Result<(), Error>;
-// }
-
-// impl Handler<AddSinkHandler> for Tree {
-//     type Result = Result<(), Error>;
-
-//     fn handle(&mut self, msg: AddSinkHandler, _ctx: &mut Context<Self>) -> Self::Result {
-//         info!("adding handler for {}", msg.name);
-//         self.sink_handlers.insert(msg.name, msg.recipient);
-//         return Ok(());
-//     }
-// }
-
-// pub struct SourceEvent {
-//     affecting_path: String,
-// }
-
-// impl SourceEvent {
-//     pub fn new(path: &str) -> Self {
-//         SourceEvent {
-//             affecting_path: path.to_owned(),
-//         }
-//     }
-// }
-
-// impl Message for SourceEvent {
-//     type Result = Result<(), Error>;
-// }
-
-// impl Handler<SourceEvent> for Tree {
-//     type Result = Result<(), Error>;
-
-//     fn handle(&mut self, msg: SourceEvent, _ctx: &mut Context<Self>) -> Self::Result {
-//         return Ok(());
-//     }
-// }
 
 #[cfg(test)]
 mod tests {

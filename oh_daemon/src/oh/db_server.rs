@@ -33,7 +33,7 @@ impl DBServer {
 impl Actor for DBServer {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {}
+    fn started(&mut self, _ctx: &mut Self::Context) {}
 }
 
 pub struct HandleEvent {
@@ -48,8 +48,12 @@ impl Message for HandleEvent {
 impl Handler<HandleEvent> for DBServer {
     type Result = Fallible<()>;
 
-    fn handle(&mut self, msg: HandleEvent, ctx: &mut Context<Self>) -> Self::Result {
-        self.tree.handle_event(&msg.path, Value::String(msg.value));
+    fn handle(&mut self, msg: HandleEvent, _ctx: &mut Context<Self>) -> Self::Result {
+        trace!("db server: recvd event {} <- {}", msg.path, msg.value);
+        match self.tree.handle_event(&msg.path, Value::String(msg.value)) {
+            Ok(_) => (),
+            Err(e) => error!("db server: failed to handle event: {}", e),
+        }
         return Ok(());
     }
 }
@@ -61,7 +65,7 @@ mod test {
     #[test]
     fn test_new() -> Fallible<()> {
         let db = DBServer::new_from_file(Path::new("test/test.oh"))?;
-        let button_path_map = db
+        let _button_path_map = db
             .legacy_mcu
             .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
             .clone();

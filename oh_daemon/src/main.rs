@@ -3,17 +3,11 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 extern crate actix;
 extern crate actix_web;
-#[macro_use]
-extern crate approx;
-#[macro_use]
-extern crate bitflags;
 extern crate bytes;
 #[macro_use]
-extern crate downcast_rs;
-#[macro_use]
 extern crate failure;
-extern crate failure_derive;
 extern crate futures;
+extern crate itertools;
 #[macro_use]
 extern crate json;
 #[macro_use]
@@ -21,9 +15,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 extern crate openssl;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
+extern crate regex;
+extern crate reqwest;
 extern crate simplelog;
 #[macro_use]
 extern crate structopt;
@@ -34,7 +27,7 @@ mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
-use oh::{DBServer, Hue, LegacyMCU};
+use oh::{DBServer, LegacyMCU};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -70,7 +63,9 @@ fn run(opt: Opt) -> Fallible<()> {
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
-    TermLogger::init(level, Config::default())?;
+    let mut log_config = Config::default();
+    log_config.time_format = Some("%F %T%.6fZ");
+    TermLogger::init(level, log_config)?;
 
     let sys = System::new("open_house");
 
