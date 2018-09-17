@@ -341,10 +341,10 @@ mod test {
 
     #[test]
     fn test_light_state() -> Fallible<()> {
-        assert_eq!(Hub::light_state_for_value("none")?, object!{"off" => true});
+        assert_eq!(Hub::light_state_for_value("none")?, object!{"on" => false});
         assert_eq!(
             Hub::light_state_for_value("mired(40)")?,
-            object!{"ct" => 40}
+            object!{"on" => true, "ct" => 40, "transitiontime" => 10}
         );
         return Ok(());
     }

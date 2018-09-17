@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::{Error, Fallible};
 use float::Float;
 use physical::Dimension2;
 
@@ -11,14 +11,16 @@ pub enum Token {
     Newline,
     Indent,
     Dedent,
+    Template, // template name [...]
 
     // Sigil-delimited
     Location(Dimension2), // @
-    Source(String),       // ^
-    Sink(String),         // $
-    ComesFromInline,      // <-
-    ComesFromBlock,       // <-\
-    UseTemplate(String),  // !
+    Size(Dimension2),
+    Source(String),      // ^
+    Sink(String),        // $
+    ComesFromInline,     // <-
+    ComesFromBlock,      // <-\
+    UseTemplate(String), // !
 
     // Operators
     Add,                 // +
@@ -46,10 +48,7 @@ pub enum Token {
     PathTerm(String),   // (\.\.?)?(/identifier)+
 }
 
-pub struct TreeTokenizer {
-    chars: Vec<char>,
-    offset: usize,
-}
+pub struct TreeTokenizer {}
 
 impl TreeTokenizer {
     pub fn tokenize(s: &str) -> Result<Vec<Token>, Error> {
@@ -57,13 +56,13 @@ impl TreeTokenizer {
 
         let mut indent = vec![0];
         for line_raw in s.lines() {
-            let line = Self::trim_comment(line_raw);
+            let line = LineTokenizer::trim_comment(line_raw);
             if line.is_empty() {
                 continue;
             }
 
             let last_level = *indent.last().unwrap();
-            let current_level = Self::leading_whitespace(&line);
+            let current_level = LineTokenizer::leading_whitespace(&line);
             if current_level > last_level {
                 indent.push(current_level);
                 tokens.push(Token::Indent);
@@ -79,20 +78,32 @@ impl TreeTokenizer {
                 }
             }
 
-            let mut tt = TreeTokenizer {
+            let mut lt = LineTokenizer {
                 chars: line.chars().collect::<Vec<char>>(),
                 offset: 0,
             };
-            while !tt.is_empty() {
-                while tt.peek(0)? == ' ' {
-                    tt.offset += 1;
-                }
-                tokens.push(tt.tokenize_one()?);
+            while !lt.is_empty() {
+                lt.skip_space();
+                let token = lt.tokenize_one()?;
+                tokens.push(token);
             }
             tokens.push(Token::Newline);
         }
 
         return Ok(tokens);
+    }
+}
+
+pub struct LineTokenizer {
+    chars: Vec<char>,
+    offset: usize,
+}
+
+impl LineTokenizer {
+    fn skip_space(&mut self) {
+        while self.maybe_peek(0) == Some(' ') {
+            self.offset += 1;
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -102,7 +113,7 @@ impl TreeTokenizer {
     fn tokenize_one(&mut self) -> Result<Token, Error> {
         let c = self.peek(0)?;
         let tok = match c {
-            'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword(),
+            'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword_or_template(),
             '0'...'9' => self.tokenize_int_or_float(),
             '/' => self.tokenize_absolute_path_or_division(),
             '.' => self.tokenize_path(),
@@ -111,7 +122,7 @@ impl TreeTokenizer {
             '!' => self.tokenize_use_template_or_not_eq(),
             '@' => self.tokenize_location(),
             '"' => self.tokenize_string(),
-            '<' => self.tokenize_comes_from_or_less_than(),
+            '<' => self.tokenize_comes_from_or_less_than_or_size(),
             '>' => self.tokenize_greater_than(),
             '|' | '&' => self.tokenize_operator_2(),
             //'=' => tokens.push(self.tokenize_equals()?),
@@ -145,15 +156,40 @@ impl TreeTokenizer {
         return Ok(tok);
     }
 
-    fn tokenize_name_or_keyword(&mut self) -> Result<Token, Error> {
+    fn tokenize_name_or_keyword_or_template(&mut self) -> Result<Token, Error> {
         let s = self.tokenize_identifier()?;
         if s == "true" {
             return Ok(Token::BooleanTerm(true));
         } else if s == "false" {
             return Ok(Token::BooleanTerm(false));
+        } else if s == "template" {
+            return self.tokenize_template();
         } else {
             return Ok(Token::NameTerm(s));
         }
+    }
+
+    fn tokenize_template(&mut self) -> Fallible<Token> {
+        self.skip_space();
+        let name = self.tokenize_identifier()?;
+        self.skip_space();
+        ensure!(
+            self.peek(0)? == '[',
+            "expected template to be surrounded with []"
+        );
+        self.offset += 1;
+        let start_offset = self.offset;
+        println!("In template: {}, {}", name, start_offset);
+        while self.peek(0)? != ']' {
+            println!("skip: {}", self.peek(0)?);
+            self.offset += 1;
+        }
+        let template_chars = &self.chars[start_offset..self.offset];
+        let template_str = template_chars.iter().collect::<String>();
+        self.offset += 1;
+        let template_tokens = TreeTokenizer::tokenize(&template_str)?;
+        println!("template name: {} => {:?}", name, template_tokens);
+        return Ok(Token::Template);
     }
 
     fn tokenize_subtract_or_number(&mut self) -> Result<Token, Error> {
@@ -230,6 +266,8 @@ impl TreeTokenizer {
     }
 
     fn tokenize_location(&mut self) -> Result<Token, Error> {
+        ensure!(self.peek(0)? == '@', "expected location start token");
+        self.offset += 1;
         let start = self.offset;
         while !self.is_empty() {
             if self.chars[self.offset].is_whitespace() {
@@ -239,6 +277,21 @@ impl TreeTokenizer {
         }
         let span = self.chars[start..self.offset].iter().collect::<String>();
         return Ok(Token::Location(Dimension2::from_str(&span)?));
+    }
+
+    fn tokenize_size(&mut self) -> Fallible<Token> {
+        ensure!(self.peek(0)? == '<', "expected size start token0");
+        ensure!(self.peek(1)? == '>', "expected size start token1");
+        self.offset += 2;
+        let start = self.offset;
+        while !self.is_empty() {
+            if self.chars[self.offset].is_whitespace() {
+                break;
+            }
+            self.offset += 1;
+        }
+        let span = self.chars[start..self.offset].iter().collect::<String>();
+        return Ok(Token::Size(Dimension2::from_str(&span)?));
     }
 
     fn tokenize_string(&mut self) -> Result<Token, Error> {
@@ -268,12 +321,8 @@ impl TreeTokenizer {
         bail!("tokenize error: unmatched \"");
     }
 
-    fn tokenize_comes_from_or_less_than(&mut self) -> Result<Token, Error> {
+    fn tokenize_comes_from_or_less_than_or_size(&mut self) -> Result<Token, Error> {
         match self.maybe_peek(1) {
-            None => {
-                self.offset += 1;
-                return Ok(Token::LessThan);
-            }
             Some('-') => {
                 if self.maybe_peek(2) == Some('\\') {
                     self.offset += 3;
@@ -285,6 +334,13 @@ impl TreeTokenizer {
             Some('=') => {
                 self.offset += 2;
                 return Ok(Token::LessThanOrEquals);
+            }
+            Some('>') => {
+                return self.tokenize_size();
+            }
+            None => {
+                self.offset += 1;
+                return Ok(Token::LessThan);
             }
             _ => {
                 self.offset += 1;
@@ -470,7 +526,18 @@ d";
         assert_eq!(
             TT::tokenize("@1'1\"x2'2\"").unwrap(),
             vec![
-                Token::Location(Dimension2::from_str("@1'1\"x2'2\"").unwrap()),
+                Token::Location(Dimension2::from_str("1'1\"x2'2\"").unwrap()),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_size() {
+        assert_eq!(
+            TT::tokenize("<>1'1\"x2'2\"").unwrap(),
+            vec![
+                Token::Size(Dimension2::from_str("1'1\"x2'2\"").unwrap()),
                 Token::Newline,
             ]
         );

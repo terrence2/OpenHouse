@@ -57,8 +57,10 @@ pub struct Dimension2 {
 
 impl Dimension2 {
     pub fn from_str(s: &str) -> Result<Self, Error> {
-        ensure!(s.starts_with('@'), "invalid dimension: must start with @");
-        let parts = s[1..].splitn(2, 'x').collect::<Vec<&str>>();
+        assert!(!s.starts_with('@'));
+        assert!(!s.starts_with('<'));
+        assert!(!s.starts_with('>'));
+        let parts = s.splitn(2, 'x').collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "invalid dimension: no x in middle");
         ensure!(parts[0].len() > 0, "invalid dimension: empty X part");
         ensure!(parts[1].len() > 0, "invalid dimension: empty Y part");
@@ -79,27 +81,27 @@ mod test {
             x_len: Length::Meters(1.),
             y_len: Length::Meters(1.),
         };
-        assert_eq!(Dimension2::from_str("@1x1").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1.x1").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1x1.0").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1mx1m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1mx1.m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1mx1.0m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1x1m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1mx1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1x1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1.x1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1x1.0").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1mx1m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1mx1.m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1mx1.0m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1x1m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1mx1").unwrap(), d);
 
         let d = Dimension2 {
             x_len: Length::Meters(-1.),
             y_len: Length::Meters(-1.),
         };
-        assert_eq!(Dimension2::from_str("@-1x-1").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1.x-1").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1x-1.0").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1mx-1m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1mx-1.m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1mx-1.0m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1x-1m").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1mx-1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1x-1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1.x-1").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1x-1.0").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1mx-1m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1mx-1.m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1mx-1.0m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1x-1m").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1mx-1").unwrap(), d);
     }
 
     #[test]
@@ -108,13 +110,13 @@ mod test {
             x_len: Length::Imperial(1, 0.),
             y_len: Length::Imperial(1, 0.),
         };
-        assert_eq!(Dimension2::from_str("@1'x1'").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1'x1'").unwrap(), d);
 
         let d = Dimension2 {
             x_len: Length::Imperial(-1, 0.),
             y_len: Length::Imperial(-1, 0.),
         };
-        assert_eq!(Dimension2::from_str("@-1'x-1'").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1'x-1'").unwrap(), d);
     }
 
     #[test]
@@ -123,19 +125,19 @@ mod test {
             x_len: Length::Imperial(0, 1.),
             y_len: Length::Imperial(0, 1.),
         };
-        assert_eq!(Dimension2::from_str("@1\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1.\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1.0\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@1.0000\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1.\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1.0\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("1.0000\"x1\"").unwrap(), d);
 
         let d = Dimension2 {
             x_len: Length::Imperial(0, -1.),
             y_len: Length::Imperial(0, -1.),
         };
-        assert_eq!(Dimension2::from_str("@-1\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1.\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1.0\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-1.0000\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1.\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1.0\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-1.0000\"x-1\"").unwrap(), d);
     }
 
     #[test]
@@ -144,18 +146,18 @@ mod test {
             x_len: Length::Imperial(2, 1.),
             y_len: Length::Imperial(0, 1.),
         };
-        assert_eq!(Dimension2::from_str("@2'1\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@2'1.\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@2'1.0\"x1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@2'1.0000\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("2'1\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("2'1.\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("2'1.0\"x1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("2'1.0000\"x1\"").unwrap(), d);
 
         let d = Dimension2 {
             x_len: Length::Imperial(-2, -1.),
             y_len: Length::Imperial(0, -1.),
         };
-        assert_eq!(Dimension2::from_str("@-2'-1\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-2'-1.\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-2'-1.0\"x-1\"").unwrap(), d);
-        assert_eq!(Dimension2::from_str("@-2'-1.0000\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-2'-1\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-2'-1.\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-2'-1.0\"x-1\"").unwrap(), d);
+        assert_eq!(Dimension2::from_str("-2'-1.0000\"x-1\"").unwrap(), d);
     }
 }

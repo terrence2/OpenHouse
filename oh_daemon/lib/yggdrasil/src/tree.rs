@@ -527,6 +527,21 @@ impl NodeRef {
     }
 
     pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
+        // FIXME: -> copy children... probably needs to be lexical?
+
+        // Simple sigils.
+        // location: Option<Dimension2>,
+        // dimensions: Option<Dimension2>,
+
+        // Input data binding can either be an external system or a computed value
+        // pulling inputs from external systems and other computed values. Or
+        // nothing; it's fine for a node to just be structural.
+        // input: Option<NodeInput>,
+        // _cache: Option<Sample>,
+
+        // Optional output data binding.
+        // sink: Option<(String, SinkRef)>,
+
         if let Some(dim) = template.location() {
             self.set_location(dim)?;
         }
@@ -671,8 +686,8 @@ mod tests {
         let tree = Tree::new_empty();
         assert_eq!(None, tree.root().location());
 
-        let d10 = Dimension2::from_str("@10x10").unwrap();
-        let d20 = Dimension2::from_str("@20x20").unwrap();
+        let d10 = Dimension2::from_str("10x10").unwrap();
+        let d20 = Dimension2::from_str("20x20").unwrap();
 
         let child = tree.lookup("/").unwrap().add_child("foopy").unwrap();
         child.set_location(d10.clone()).unwrap();
