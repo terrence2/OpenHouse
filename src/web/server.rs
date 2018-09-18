@@ -72,47 +72,22 @@ pub fn build_server(
     addr: &str,
     port: u16,
 ) -> Fallible<Addr<Server>> {
-    let mut ssl_builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    ssl_builder.set_private_key_file("key.pem", SslFiletype::PEM)?;
-    ssl_builder.set_certificate_chain_file("cert.pem")?;
-
-    // return Ok(server::new(move || {
-    //     build_app(AppState {
-    //         db,
-    //         button_path_map,
-    //     })
-    // }).server_hostname(addr.to_owned())
-    //     .bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?
-    //     .start());
+    // let mut ssl_builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+    // ssl_builder.set_private_key_file("key.pem", SslFiletype::PEM)?;
+    // ssl_builder.set_certificate_chain_file("cert.pem")?;
 
     let server = server::new(move || {
         App::with_state(AppState {
             db: db.clone(),
             button_path_map: button_path_map.clone(),
         }).middleware(middleware::Logger::default())
-            // .route("/index.html", http::Method::GET, |_: HttpRequest| {
-            //     index_html()
-            // })
-            // .resource("/", |r| {
-            //     r.method(http::Method::GET).f(|req| {
-            //         HttpResponse::Found()
-            //             .header("LOCATION", "/index.html")
-            //             .finish()
-            //     })
-            // })
-
-            // let app = App::new().resource("/index.html", |r| {
-            //     r.method(http::Method::GET)
-            //            .with_config(index, |cfg| { // <- register handler with extractor params
-            //               cfg.0.limit(4096);  // <- limit size of the payload
-            //             })
-            // });
-
             .resource("/event", |res| {
-                res.method(Method::POST).a(|req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
-                    trace!("server handling POST on /event");
-                    return handle_event(req);
-                })
+                res.method(Method::POST).a(
+                    |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
+                        trace!("server handling POST on /event");
+                        return handle_event(req);
+                    },
+                )
             })
     }).server_hostname(hostname.to_string())
         .bind(&format!("{}:{}", addr, port))?;

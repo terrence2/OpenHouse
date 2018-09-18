@@ -1,3 +1,0 @@
-[submodule "sensors/mpfshell"]
-	path = sensors/mpfshell
-	url = https://github.com/wendlers/mpfshell

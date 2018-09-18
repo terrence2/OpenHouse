@@ -1,4 +1,0 @@
-This button-board was built with an off-brand node-mcu part labeled "amica" and nothing else.
-
-Unlike with the Adafruit Huzzah, however, the silkscreen labels seem to correspond with the pin
-numbers exposed by NodeMCU, so that's convenient.
