@@ -2,9 +2,9 @@ OpenHouse
 ===
 
 OpenHouse is:
-* Entirely local -- no broadcasting your every movement across the internet to
+* Secure -- no broadcasting your every movement across the internet to
   hundreds of servers you don't control.
-* Easy -- IoT interations are represented in Yggdrasil: a dataflow language
+* Easy -- IoT interations are represented in Yggdrasil, a dataflow language
   that makes orchestrating complex interactions trivial.
 * Fast -- OpenHouse is 100% Rust. Switching on lights should take
   nanoseconds, not milliseconds.
