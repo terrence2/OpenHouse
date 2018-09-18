@@ -1,0 +1,188 @@
+#    Horizontal: 4 '-' per ft
+#    Vert: 2 '|' per ft
+#    Reference is upper-left corner.
+#    X is left-to-right.
+#    Y is top-to-bottom.
+#    Z is floor-to-ceiling.
+#
+#    ---------------------------------------------------------------------------------------------------+
+#    |                                        |        .            *                                   |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |                                        |        .                                                |
+#    |         Office                         |        .                 Bedroom                        |
+#    |            10ftx13ft                   |________.                    12ftx10ft                   |
+#    |                 (+2ft for closet)      .        |                       (+2ft for closet)        |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        .        |                                                |
+#    |                                        +________+@@@@@@@@@@--------------------------------------+
+#    |                                        @                         @                               |
+#    |                                        @        Hall             @                               |
+#    |                                        @          7' x 6'        @                               |
+#    |                                        @                         @                               |
+#    |@@@@@@-------------------------------------------+          +-----+        Bathroom               |
+#    @                                                 @          @     |                               |
+#    @                                                 @          @     |                               |
+#    @  Entry                                          @          @     |                               |
+#    @    42" x 42"                                    @          @     |                               |
+#    @                                                 @          @     |                               |
+#    +--------------                                   +@@@@@@@@@@+-----+-------------------------------+
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |          Kitchen                               |
+#    |                                                 |             12'x8'                             |
+#    |     Living Room                                 |                                                |
+#    |        13' x 19'9"                              |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 |                                                |
+#    |                                                 +----------------@@@@@@@@@@@@---+@@@@@@@@@@------+
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                      Dining Room                |   Utility      |
+#    |                                                         7'6"x8'6"               |     4'6"x8'6"  |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    |                                                                                 |                |
+#    +-------------------------------------@@@@@@@@@@@@--------------------------------+----------------+
+
+palette
+    hue
+        on        <- "bhs(255, 34495, 255)"
+        low       <- "bhs(64, 34495, 255)"
+        moonlight <- "none"
+        default   <- "bhs(255, 0, 255)"
+        off       <- "none"
+    
+    hue-highlight
+        on        <- "none"
+        low       <- "none"
+        moonlight <- "bhs(255, 47000, 255)"
+        default   <- "none"
+        off       <- "none"
+
+rooms
+    bedroom @12'x0' <>12'x10'
+        closet @-2'x0' <>2'x5'
+        bedroom-lightswitch.eyrie
+            ^legacy-mcu
+            ip <-"10.0.5.43"
+        color <- ./bedroom-lightswitch.eyrie
+        bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{./color}
+        bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{./color}
+        bedroom-dresser    $hue @10'x2' <-/palette/hue/{./color}
+        bedroom-tree0      $hue @1'x2'  <-/palette/hue/{./color}
+        bedroom-tree1      $hue @1'x1'  <-/palette/hue/{./color}
+        bedroom-tree2      $hue @2'x1'  <-/palette/hue/{./color}
+        bedroom-ceiling    $hue @6'x6'  <-/palette/hue/{./color}
+    
+    office @0'x0' <>10'x13'
+        closet @10'x5' <>2'x5'
+
+        test-switch
+            ^legacy-mcu
+            ip <- "127.0.0.1"
+        
+        office-lightswitch.eyrie
+            ^legacy-mcu
+            ip <-"10.0.5.40"
+        color <-./office-lightswitch.eyrie
+        office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
+        office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
+        office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
+
+    hall @10'x10' <>7'x6'
+        closet @6'x3' <>1'x3'
+        #color:
+        #    formula: |
+        #        (cond
+        #            ((or (= bedroom "off") (= livingroom "off"))                                "off")
+        #            ((or (= bedroom "on") (= livingroom "on") (= kitchen "on") (= office "on")) "on")
+        #            (else                                                                       "low"))
+        #    where:
+        #        bedroom: /room/bedroom/color
+        #        livingroom: /room/livingroom/color
+        #        kitchen: /room/kitchen/color
+        #        office: /room/office/color
+        
+        #color <-\
+        #    if ../bedroom/color == "off" || ../livingroom/color == "off":
+        #        "off"
+        #    elif ../bedroom/color == "on" || ../livingroom/color == "on" || ../kitchen/color == "on" || ../office/color == "on":
+        #        "on"
+        #    else:
+        #        "low"
+
+        color <- ../bedroom/color
+        hall-ceiling0 $hue @4'x2' <-/palette/hue/{./color}
+        hall-ceiling1 $hue @5'x3' <-/palette/hue/{./color}
+
+    bathroom @17'x10' <>7'x6'
+
+    utility @20'6"x24' <>4'6"x8'6"
+        color <- ../kitchen/kitchen-lightswitch.eyrie
+        utility-ceiling $hue @2'x4' <-/palette/hue/{./color}
+
+    kitchen @13'x16' <>11'x8'
+        kitchen-lightswitch.eyrie
+            ^legacy-mcu
+            ip <- "10.0.5.41"
+        color <- ./kitchen-lightswitch.eyrie
+        kitchen-sink      $hue @9'x1' <-/palette/hue/{./color}
+        kitchen-ceiling0  $hue @2'x6' <-/palette/hue/{./color}
+        kitchen-ceiling1  $hue @3'x5' <-/palette/hue/{./color}
+        kitchen-ceiling2  $hue @4'x4' <-/palette/hue/{./color}
+        kitchen-ceiling3  $hue @5'x3' <-/palette/hue/{./color}
+        kitchen-ceiling4  $hue @6'x2' <-/palette/hue/{./color}
+
+    livingroom @0'x13' <>13'x19'9"
+        livingroom-lightswitch.eyrie @0'x0'
+            ^legacy-mcu
+            ip <- "10.0.5.42"
+        color <- ./livingroom-lightswitch.eyrie
+        livingroom-couch    $hue @1'x6'   <-/palette/hue/{./color}
+        livingroom-torch    $hue @1'x10'  <-/palette/hue/{./color}
+        livingroom-tower0   $hue @10'x3'  <-/palette/hue/{./color}
+        livingroom-tower1   $hue @10'x2'  <-/palette/hue/{./color}
+        livingroom-tower2   $hue @10'x1'  <-/palette/hue/{./color}
+        livingroom-curtain1 $hue @10'x15' <-/palette/hue/{./color}
+        livingroom-curtain2 $hue @11'x16' <-/palette/hue/{./color}
+        livingroom-curtain3 $hue @12'x17' <-/palette/hue/{./color}
+
+    diningroom @13'x24' <>7'6"x8'6"
+        color <- ../livingroom/livingroom-lightswitch.eyrie
+        diningroom-shelves $hue @6'x7'
+        diningroom-ceiling $hue @3'x4'
+
+meta
+    hue-bridge
+        $hue
+        address <- "hue-bridge.eyrie"
+        username <- "MasterControlProgram"

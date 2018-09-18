@@ -64,7 +64,7 @@ mod test {
 
     #[test]
     fn test_new() -> Fallible<()> {
-        let db = DBServer::new_from_file(Path::new("test/test.oh"))?;
+        let db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
         let _button_path_map = db
             .legacy_mcu
             .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
