@@ -139,21 +139,21 @@ impl Hub {
 
     fn get(&self, path: &str) -> Fallible<String> {
         let url = self.url(path);
-        info!("GET {}", url);
+        trace!("GET {}", url);
         let body = self.client.get(&url).send()?.text()?;
         return Ok(body);
     }
 
     fn post(&self, path: &str, data: String) -> Fallible<JsonValue> {
         let url = self.url(path);
-        info!("POST {} -> {}", url, data);
+        trace!("POST {} -> {}", url, data);
         let body = self.client.post(&url).body(data).send()?.text()?;
         return Ok(parse(&body)?);
     }
 
     fn put(&self, path: &str, data: String) -> Fallible<JsonValue> {
         let url = self.url(path);
-        info!("PUT {} -> {}", url, data);
+        trace!("PUT {} -> {}", url, data);
         let body = self.client.put(&url).body(data).send()?.text()?;
         return Ok(parse(&body)?);
     }

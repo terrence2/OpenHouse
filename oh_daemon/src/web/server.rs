@@ -33,12 +33,19 @@ fn get_caller_ip(req: &HttpRequest<AppState>) -> Fallible<IpAddr> {
 
 fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     let ip = match get_caller_ip(req) {
-        Ok(ip) => ip,
-        Err(_) => return Box::new(ok(HttpResponse::BadRequest().finish())),
+        Ok(ip) => {
+            trace!("server: mapped event to ip {}", ip);
+            ip
+        }
+        Err(e) => {
+            error!("server: failed to get caller ip: {}", e);
+            return Box::new(ok(HttpResponse::BadRequest().finish()));
+        }
     };
 
     let path = req.state().button_path_map.get(&ip);
     if path.is_none() {
+        error!("server: request from ip {} does not map to any path", ip);
         return Box::new(ok(HttpResponse::NotFound().finish()));
     }
 
@@ -103,11 +110,13 @@ pub fn build_server(
 
             .resource("/event", |res| {
                 res.method(Method::POST).a(|req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
+                    trace!("server handling POST on /event");
                     return handle_event(req);
                 })
             })
     }).server_hostname(hostname.to_string())
-        .bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?;
+        .bind(&format!("{}:{}", addr, port))?;
+    //.bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?;
     return Ok(server.start());
 }
 
