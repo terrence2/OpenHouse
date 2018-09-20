@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::{Error, Fallible};
 use path::ConcretePath;
 use script::Script;
 use std::collections::HashMap;
@@ -534,6 +534,92 @@ yz
             Value::Integer(3)
         );
     }
+
+    #[test]
+    fn test_parse_formula_str() -> Fallible<()> {
+        let s = r#"
+foo <- "a" + /bar + "c"
+bar <- "b"
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("abc".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_formula_parens() -> Fallible<()> {
+        let s = r#"
+foo <- "a" + (/bar + /baz) + "c"
+bar <- "b"
+baz <- "b"
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("abbc".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_formula_number() -> Fallible<()> {
+        let s = r#"
+foo <- 2 + (/bar * /baz) + 2
+bar <- 3
+baz <- 3
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(13));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_str() -> Fallible<()> {
+        let s = r#"
+foo <- "a" + str(/bar * /baz) + "b"
+bar <- 3
+baz <- 3
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("a9b".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_str_in_path() -> Fallible<()> {
+        let s = r#"
+foo <- "a" + /{/quux} + "c"
+z6 <- "b"
+bar <- 2
+baz <- 3
+quux <- "z" + str(/bar * /baz)
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("abc".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_modulo() -> Fallible<()> {
+        let s = r#"
+foo <- /bar % 3
+bar <- 2
+"#;
+        let tree = Tree::new_empty().build_from_str(s).unwrap();
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(2));
+        Ok(())
+    }
+
+    //default   <- "bhs(255, " + (/time/seconds/unix % 65535) + ", 255)"
 
     //     #[test]
     //     fn test_parse_indirect_latching() {

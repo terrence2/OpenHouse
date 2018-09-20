@@ -1,18 +1,19 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::{Error, Fallible};
 use graph::Graph;
 use path::{ConcretePath, ScriptPath};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 use tokenizer::Token;
 use tree::{NodeRef, Tree};
 use value::{Value, ValueType};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Expr {
+#[derive(Clone, Debug)]
+pub(super) enum Expr {
     Add(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
+    Call(Box<BuiltinFunc>, Box<Expr>),
     Divide(Box<Expr>, Box<Expr>),
     Equal(Box<Expr>, Box<Expr>),
     GreaterThan(Box<Expr>, Box<Expr>),
@@ -28,6 +29,82 @@ pub enum Expr {
     Value(Value),
 }
 
+pub(super) trait BuiltinFunc {
+    fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value>;
+    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>>;
+    fn find_all_possible_inputs(
+        &self,
+        value_type: ValueType,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Fallible<ValueType>;
+    fn box_clone(&self) -> Box<BuiltinFunc>;
+}
+
+impl Clone for Box<BuiltinFunc> {
+    fn clone(&self) -> Box<BuiltinFunc> {
+        self.box_clone()
+    }
+}
+
+impl fmt::Debug for Box<BuiltinFunc> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TEST")
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ToStr;
+
+impl BuiltinFunc for ToStr {
+    fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value> {
+        Ok(Value::String(match value {
+            Value::String(s) => s,
+            Value::Integer(i) => format!("{}", i),
+            Value::Float(f) => format!("{}", f),
+            Value::Boolean(b) => format!("{}", b),
+            Value::Path(p) => {
+                let noderef = tree.lookup_dynamic_path(&p)?;
+                self.compute(noderef.compute(tree)?, tree)?.as_string()?
+            }
+        }))
+    }
+
+    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>> {
+        let mut results = Vec::new();
+        for v in values {
+            results.push(self.compute(v, tree)?);
+        }
+        return Ok(results);
+    }
+
+    fn find_all_possible_inputs(
+        &self,
+        value_type: ValueType,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Fallible<ValueType> {
+        Ok(ValueType::STRING)
+    }
+
+    fn box_clone(&self) -> Box<BuiltinFunc> {
+        Box::new((*self).clone())
+    }
+}
+
+enum Builtins {
+    ToStr,
+}
+
+impl Builtins {
+    fn from_name(name: &str) -> Fallible<Box<BuiltinFunc>> {
+        Ok(match name {
+            "str" => Box::new(ToStr {}),
+            _ => bail!("parse error: unknown builtin function {}", name),
+        })
+    }
+}
+
 macro_rules! map_values {
     ($self:ident, $f:ident, $reduce:expr, $($args:ident),*) => {
         match $self {
@@ -36,6 +113,9 @@ macro_rules! map_values {
             }
             Expr::And(a, b) => {
                 $reduce(Token::And, a.$f($($args),*)?, b.$f($($args),*)?)
+            }
+            Expr::Call(fun, a) => {
+                fun.$f(a.$f($($args),*)?, $($args),*)
             }
             Expr::Divide(a, b) => {
                 $reduce(Token::Divide, a.$f($($args),*)?, b.$f($($args),*)?)
@@ -206,7 +286,8 @@ impl Script {
     }
 
     pub(super) fn all_inputs(&self) -> Result<Vec<String>, Error> {
-        return Ok(self.input_map
+        return Ok(self
+            .input_map
             .keys()
             .map(|concrete| concrete.to_string())
             .collect::<Vec<_>>());
@@ -279,6 +360,7 @@ lazy_static! {
     static ref OPERATORS: Vec<Operator> = {
         let mut v = Vec::new();
         v.push(Operator::new(Token::Divide, 15, 2, Some(Assoc::Left)));
+        v.push(Operator::new(Token::Modulo, 15, 2, Some(Assoc::Left)));
         v.push(Operator::new(Token::Multiply, 15, 2, Some(Assoc::Left)));
         v.push(Operator::new(Token::Subtract, 14, 1, None));
         v.push(Operator::new(Token::Subtract, 13, 2, Some(Assoc::Left)));
@@ -342,7 +424,8 @@ impl<'a> ExprParser<'a> {
 
     fn exp_p(&mut self, p: usize) -> Result<Expr, Error> {
         let mut t = self.p()?;
-        while self.offset < self.tokens.len() && Operator::is_bin_op(&self.tokens[self.offset])
+        while self.offset < self.tokens.len()
+            && Operator::is_bin_op(&self.tokens[self.offset])
             && Operator::precedence_of(self.peek(), 2) >= p
         {
             let op = self.pop();
@@ -384,7 +467,7 @@ impl<'a> ExprParser<'a> {
             Token::LeftParen => {
                 let t = self.exp_p(0)?;
                 ensure!(
-                    *self.peek() == Token::RightParen,
+                    self.pop() == Token::RightParen,
                     "parse error: expected right paren after sub-expression"
                 );
                 t
@@ -394,6 +477,20 @@ impl<'a> ExprParser<'a> {
                 let q = op.precedence;
                 let t = self.exp_p(q)?;
                 Expr::Negate(Box::new(t))
+            }
+            Token::NameTerm(name) => {
+                ensure!(
+                    self.pop() == Token::LeftParen,
+                    "parse error: expected () in call to {}",
+                    name
+                );
+                let t = self.exp_p(0)?;
+                ensure!(
+                    self.pop() == Token::RightParen,
+                    "parse error: expected right paren after call to {}",
+                    name
+                );
+                Expr::Call(Builtins::from_name(&name)?, Box::new(t))
             }
             t => panic!("parse error: unexpected token {:?}", t),
         });

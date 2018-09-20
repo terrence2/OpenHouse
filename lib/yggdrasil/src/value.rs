@@ -85,7 +85,10 @@ impl Value {
             Token::And => a && b,
             Token::Equals => a == b,
             Token::NotEquals => a != b,
-            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+            _ => bail!(
+                "runtime error: {:?} is not a valid operation on a bool",
+                tok
+            ),
         });
     }
 
@@ -94,14 +97,18 @@ impl Value {
             Token::Add => Value::Integer(a + b),
             Token::Subtract => Value::Integer(a - b),
             Token::Multiply => Value::Integer(a * b),
-            Token::Divide => Value::Integer(a / b), // FIXME: revisit this -- consider auto promotion to float ala python3
+            Token::Divide => Value::Float(Float::new(a as f64)? / Float::new(b as f64)?),
+            Token::Modulo => Value::Integer(a % b),
             Token::Equals => Value::Boolean(a == b),
             Token::NotEquals => Value::Boolean(a != b),
             Token::GreaterThan => Value::Boolean(a > b),
             Token::LessThan => Value::Boolean(a < b),
             Token::GreaterThanOrEquals => Value::Boolean(a >= b),
             Token::LessThanOrEquals => Value::Boolean(a <= b),
-            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+            _ => bail!(
+                "runtime error: {:?} is not a valid operation on an integer",
+                tok
+            ),
         });
     }
 
@@ -117,14 +124,20 @@ impl Value {
             Token::LessThan => Value::Boolean(a < b),
             Token::GreaterThanOrEquals => Value::Boolean(a >= b),
             Token::LessThanOrEquals => Value::Boolean(a <= b),
-            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+            _ => bail!(
+                "runtime error: {:?} is not a valid operation on a float",
+                tok
+            ),
         });
     }
 
     pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Result<String, Error> {
         return Ok(match tok {
             Token::Add => a.to_owned() + &b,
-            _ => bail!("runtime error: {:?} is not a valid operation on an integer"),
+            _ => bail!(
+                "runtime error: {:?} is not a valid operation on a string",
+                tok
+            ),
         });
     }
 
