@@ -26,10 +26,19 @@ pub struct Sample {
 }
 
 pub struct TreeBuilder {
+    // Input and output definitions.
     source_handlers: HashMap<String, SourceRef>,
     sink_handlers: HashMap<String, SinkRef>,
+
+    // Extension functions defined by the embedding.
     nifs: HashMap<String, Box<NativeFunc>>,
-    add_builtins: bool,
+
+    // Add builtin functions to `nifs` before loading. (default: true)
+    add_builtin_nifs: bool,
+
+    // Handle an import of the given name by supplying a tree rather than
+    // searching in the filesystem.
+    import_interceptors: HashMap<String, Tree>,
 }
 
 impl TreeBuilder {
@@ -38,7 +47,8 @@ impl TreeBuilder {
             source_handlers: HashMap::new(),
             sink_handlers: HashMap::new(),
             nifs: HashMap::new(),
-            add_builtins: true,
+            add_builtin_nifs: true,
+            import_interceptors: HashMap::new(),
         }
     }
 
@@ -61,8 +71,19 @@ impl TreeBuilder {
         return Ok(self);
     }
 
+    pub fn intercept_import(mut self, name: &str, content: &str) -> Fallible<TreeBuilder> {
+        let tree = Tree {
+            root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            source_handlers: self.source_handlers.clone(),
+            sink_handlers: self.sink_handlers.clone(),
+        };
+        let tree = TreeParser::from_str(tree, content, &self.nifs, &HashMap::new())?;
+        self.import_interceptors.insert(name.to_owned(), tree);
+        return Ok(self);
+    }
+
     pub fn without_builtins(mut self) -> Fallible<TreeBuilder> {
-        self.add_builtins = false;
+        self.add_builtin_nifs = false;
         return Ok(self);
     }
 
@@ -80,7 +101,7 @@ impl TreeBuilder {
     }
 
     pub fn build_from_str(mut self, s: &str) -> Fallible<Tree> {
-        if self.add_builtins {
+        if self.add_builtin_nifs {
             self.nifs.insert("str".to_owned(), Box::new(ToStr));
         }
 
@@ -90,7 +111,7 @@ impl TreeBuilder {
             sink_handlers: self.sink_handlers,
         };
 
-        let tree = TreeParser::from_str(tree, s, &self.nifs)?
+        let tree = TreeParser::from_str(tree, s, &self.nifs, &self.import_interceptors)?
             .link_and_validate_inputs()?
             .map_inputs_to_outputs()?;
 
@@ -566,6 +587,16 @@ impl NodeRef {
         return Ok(());
     }
 
+    pub fn insert_subtree(&self, subtree: NodeRef) -> Fallible<()> {
+        for (name, child) in subtree.0.borrow().children.iter() {
+            self.0
+                .borrow_mut()
+                .children
+                .insert(name.to_owned(), child.to_owned());
+        }
+        return Ok(());
+    }
+
     pub fn apply_template(&self, template: &NodeRef) -> Fallible<()> {
         // FIXME: -> copy children... probably needs to be lexical?
 
@@ -812,6 +843,49 @@ bar
         tree.handle_event("/a", Value::String("foo".to_owned()))?;
 
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
+        Ok(())
+    }
+
+    #[test]
+    fn test_tree_import_str() -> Fallible<()> {
+        let test_ygg = r#"
+a
+    b
+        c <- "hello"
+"#;
+        let s = r#"
+import(test.ygg)
+foo <- /a/b/c
+"#;
+        let tree = TreeBuilder::new()
+            .intercept_import("test.ygg", test_ygg)?
+            .build_from_str(s)?;
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("hello".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_tree_import_nested() -> Fallible<()> {
+        let test_ygg = r#"
+a
+    b
+        c <- "hello"
+"#;
+        let s = r#"
+mnt
+    import(test.ygg)
+foo <- /mnt/a/b/c
+"#;
+        let tree = TreeBuilder::new()
+            .intercept_import("test.ygg", test_ygg)?
+            .build_from_str(s)?;
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("hello".to_owned())
+        );
         Ok(())
     }
 }

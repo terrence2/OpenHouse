@@ -46,6 +46,16 @@ pub enum Token {
     FloatTerm(Float),   // -?[0-9.]+
     BooleanTerm(bool),  // true|false
     PathTerm(String),   // (\.\.?)?(/identifier)+
+    ImportTerm(String), // import(file.ygg)
+}
+
+impl Token {
+    fn path_string(&self) -> Fallible<&str> {
+        match self {
+            Token::PathTerm(s) => Ok(s),
+            _ => bail!("tokenize error: expected a path token"),
+        }
+    }
 }
 
 pub struct TreeTokenizer {}
@@ -113,7 +123,7 @@ impl LineTokenizer {
     fn tokenize_one(&mut self) -> Fallible<Token> {
         let c = self.peek(0)?;
         let tok = match c {
-            'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword_or_template(),
+            'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword(),
             '0'...'9' => self.tokenize_int_or_float(),
             '/' => self.tokenize_absolute_path_or_division(),
             '.' => self.tokenize_path(),
@@ -156,17 +166,37 @@ impl LineTokenizer {
         return Ok(tok);
     }
 
-    fn tokenize_name_or_keyword_or_template(&mut self) -> Fallible<Token> {
+    fn tokenize_name_or_keyword(&mut self) -> Fallible<Token> {
         let s = self.tokenize_identifier()?;
         if s == "true" {
             return Ok(Token::BooleanTerm(true));
         } else if s == "false" {
             return Ok(Token::BooleanTerm(false));
+        } else if s == "import" {
+            return self.tokenize_import();
         } else if s == "template" {
             return self.tokenize_template();
         } else {
             return Ok(Token::NameTerm(s));
         }
+    }
+
+    fn tokenize_import(&mut self) -> Fallible<Token> {
+        self.skip_space();
+        ensure!(
+            self.peek(0)? == '(',
+            "tokenize error: expected import to take an argument in ()"
+        );
+        self.offset += 1;
+        self.skip_space();
+        let filename = self.tokenize_path()?;
+        self.skip_space();
+        ensure!(
+            self.peek(0)? == ')',
+            "tokenize error: expected closing ) in import"
+        );
+        self.offset += 1;
+        return Ok(Token::ImportTerm(filename.path_string()?.to_owned()));
     }
 
     fn tokenize_template(&mut self) -> Fallible<Token> {
@@ -437,7 +467,7 @@ impl LineTokenizer {
 
 #[cfg(test)]
 mod test {
-    use super::{Dimension2, Float, Token, TreeTokenizer as TT};
+    use super::{Dimension2, Fallible, Float, Token, TreeTokenizer as TT};
 
     #[test]
     fn test_tokenize_dedent1() {
@@ -695,5 +725,14 @@ d";
             TT::tokenize("-1.").unwrap(),
             vec![Token::FloatTerm(Float::new(-1f64).unwrap()), Token::Newline]
         );
+    }
+
+    #[test]
+    fn test_tokenize_import() -> Fallible<()> {
+        assert_eq!(
+            TT::tokenize("import(test.ygg)")?,
+            vec![Token::ImportTerm("test.ygg".to_owned()), Token::Newline]
+        );
+        Ok(())
     }
 }

@@ -3,15 +3,15 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use bif::NativeFunc;
 use failure::Fallible;
-use path::ConcretePath;
 use script::Script;
 use std::collections::HashMap;
 use tokenizer::{Token, TreeTokenizer};
-use tree::{Node, NodeRef, Tree};
+use tree::{NodeRef, Tree};
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
     nifs: &'a HashMap<String, Box<NativeFunc>>,
+    import_interceptors: &'a HashMap<String, Tree>,
     templates: HashMap<String, NodeRef>,
     tokens: Vec<Token>,
     position: usize,
@@ -37,6 +37,7 @@ impl<'a> TreeParser<'a> {
         tree: Tree,
         s: &str,
         nifs: &HashMap<String, Box<NativeFunc>>,
+        import_interceptors: &HashMap<String, Tree>,
     ) -> Fallible<Tree> {
         let sanitized = s.replace('\t', "    ");
 
@@ -45,6 +46,7 @@ impl<'a> TreeParser<'a> {
             let mut parser = TreeParser {
                 tree: &tree,
                 nifs,
+                import_interceptors,
                 templates: HashMap::new(),
                 tokens,
                 position: 0,
@@ -58,33 +60,23 @@ impl<'a> TreeParser<'a> {
     fn consume_root(&mut self, root: &NodeRef) -> Fallible<()> {
         while !self.out_of_input() {
             match self.peek()? {
-                Token::NameTerm(n) => {
-                    if n == "template" {
-                        self.consume_template()?;
-                    } else {
-                        self.consume_tree(root)?;
-                    }
+                Token::NameTerm(_n) => {
+                    self.consume_tree(root)?;
                 }
-                _ => bail!("parse error: expected name at top level"),
+                Token::ImportTerm(filename) => {
+                    self.do_import(&filename, root)?;
+                    self.pop()?;
+                    ensure!(
+                        self.pop()? == Token::Newline,
+                        "parse error: import must be the last thing in the line"
+                    );
+                }
+                _ => bail!(
+                    "parse error: expected name at top level, not: {:?}",
+                    self.peek()?
+                ),
             }
         }
-        return Ok(());
-    }
-
-    fn consume_template(&mut self) -> Fallible<()> {
-        let magic = self.consume_name()?;
-        ensure!(
-            magic == "template",
-            "parse error: expected template to start with 'template'"
-        );
-        let name = self.peek_name()?;
-        trace!("Consuming template: {}", name);
-        let template_root = NodeRef::new(Node::new(
-            ConcretePath::new_root().new_child("template-root"),
-        ));
-        self.consume_tree(&template_root)?;
-        self.templates
-            .insert(name.clone(), template_root.lookup_path(&vec![name])?);
         return Ok(());
     }
 
@@ -189,6 +181,7 @@ impl<'a> TreeParser<'a> {
                 self.position = end;
                 node.set_script(s)?
             }
+            Token::ImportTerm(filename) => self.do_import(&filename, node)?,
             Token::UseTemplate(ref s) => {
                 let template: &NodeRef = self
                     .templates
@@ -199,6 +192,13 @@ impl<'a> TreeParser<'a> {
             _ => bail!("parse error: expected to find a sigil-delimited token"),
         }
         return Ok(());
+    }
+
+    fn do_import(&mut self, filename: &str, parent: &NodeRef) -> Fallible<()> {
+        if let Some(subtree) = self.import_interceptors.get(filename) {
+            return parent.insert_subtree(subtree.root());
+        }
+        bail!("would import {} from file", filename)
     }
 
     fn consume_name(&mut self) -> Fallible<String> {
@@ -230,22 +230,12 @@ impl<'a> TreeParser<'a> {
         );
         return Ok(self.tokens[self.position].clone());
     }
-
-    fn peek_name(&self) -> Fallible<String> {
-        let name = if let Token::NameTerm(n) = self.peek()? {
-            n.clone()
-        } else {
-            bail!("parse error: expected template to have a name");
-        };
-        return Ok(name);
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use physical::Dimension2;
-    use simplelog::*;
     use tree::TreeBuilder;
     use value::{Value, ValueType};
 
@@ -392,7 +382,12 @@ d @4x4";
     #[test]
     #[should_panic]
     fn test_parse_node_before_newline() {
-        TreeParser::from_str(TreeBuilder::empty(), "a b", &HashMap::new()).unwrap();
+        TreeParser::from_str(
+            TreeBuilder::empty(),
+            "a b",
+            &HashMap::new(),
+            &HashMap::new(),
+        ).unwrap();
     }
 
     #[test]
