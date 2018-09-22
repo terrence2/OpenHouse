@@ -89,7 +89,7 @@ impl SinkRef {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::{SubTree, Tree, TreeBuilder};
+    use tree::{SubTree, TreeBuilder};
 
     struct TestSink {}
 

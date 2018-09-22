@@ -458,51 +458,53 @@ mod test {
     }
 
     #[test]
-    fn test_script_basic() {
+    fn test_script_basic() -> Fallible<()> {
         let expect = vec![
             ("2 + 3", Value::Integer(5)),
-            ("2. + 3.", Value::Float(Float::new(5.0).unwrap())),
+            ("2. + 3.", Value::Float(Float::new(5.0)?)),
             (r#" "2" + "3" "#, Value::String("23".to_owned())),
             ("2 - 3", Value::Integer(-1)),
-            ("2. - 3.5", Value::Float(Float::new(-1.5).unwrap())),
+            ("2. - 3.5", Value::Float(Float::new(-1.5)?)),
             ("-2", Value::Integer(-2)),
-            // ("2 - 3", Value::Integer(-1)),
-            // ("2 / 3", Value::Integer(0)),
+            ("2 - 3", Value::Integer(-1)),
+            ("2 / 3", Value::Float(Float::new(2f64 / 3f64)?)),
         ];
         for (expr, value) in expect.iter() {
-            assert_eq!(do_compute(expr).unwrap(), *value);
+            assert_eq!(do_compute(expr)?, *value);
         }
+        Ok(())
     }
 
     #[test]
-    fn test_script_failures() {
+    fn test_script_failures() -> Fallible<()> {
         let expect = vec!["1 + 2.", "true + false", r#" "2" - "3" "#];
         for expr in expect.iter() {
             assert!(do_compute(expr).is_err());
         }
+        Ok(())
     }
 
     #[test]
-    fn test_script_or() {
-        let tok = TreeTokenizer::tokenize("a <- true || true").unwrap();
+    fn test_script_or() -> Fallible<()> {
+        let tok = TreeTokenizer::tokenize("a <- true || true")?;
         ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
-            .eparser()
-            .unwrap();
+            .eparser()?;
+        Ok(())
     }
 
     #[test]
-    fn test_script_inputs() {
-        let tok = TreeTokenizer::tokenize("a <- /foo/bar/baz").unwrap();
+    fn test_script_inputs() -> Fallible<()> {
+        let tok = TreeTokenizer::tokenize("a <- /foo/bar/baz")?;
         ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
-            .eparser()
-            .unwrap();
+            .eparser()?;
+        Ok(())
     }
 
     #[test]
-    fn test_script_negate() {
-        let tok = TreeTokenizer::tokenize("a <- -/foo/bar/baz").unwrap();
+    fn test_script_negate() -> Fallible<()> {
+        let tok = TreeTokenizer::tokenize("a <- -/foo/bar/baz")?;
         ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
-            .eparser()
-            .unwrap();
+            .eparser()?;
+        Ok(())
     }
 }
