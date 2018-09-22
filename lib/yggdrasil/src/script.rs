@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use bif::{tostr::ToStr, BuiltinFunc};
 use failure::{Error, Fallible};
 use graph::Graph;
 use path::{ConcretePath, ScriptPath};
@@ -27,69 +28,6 @@ pub(super) enum Expr {
     Or(Box<Expr>, Box<Expr>),
     Subtract(Box<Expr>, Box<Expr>),
     Value(Value),
-}
-
-pub(super) trait BuiltinFunc {
-    fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value>;
-    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>>;
-    fn find_all_possible_inputs(
-        &self,
-        value_type: ValueType,
-        tree: &Tree,
-        out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType>;
-    fn box_clone(&self) -> Box<BuiltinFunc>;
-}
-
-impl Clone for Box<BuiltinFunc> {
-    fn clone(&self) -> Box<BuiltinFunc> {
-        self.box_clone()
-    }
-}
-
-impl fmt::Debug for Box<BuiltinFunc> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TEST")
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(super) struct ToStr;
-
-impl BuiltinFunc for ToStr {
-    fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value> {
-        Ok(Value::String(match value {
-            Value::String(s) => s,
-            Value::Integer(i) => format!("{}", i),
-            Value::Float(f) => format!("{}", f),
-            Value::Boolean(b) => format!("{}", b),
-            Value::Path(p) => {
-                let noderef = tree.lookup_dynamic_path(&p)?;
-                self.compute(noderef.compute(tree)?, tree)?.as_string()?
-            }
-        }))
-    }
-
-    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>> {
-        let mut results = Vec::new();
-        for v in values {
-            results.push(self.compute(v, tree)?);
-        }
-        return Ok(results);
-    }
-
-    fn find_all_possible_inputs(
-        &self,
-        value_type: ValueType,
-        tree: &Tree,
-        out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
-        Ok(ValueType::STRING)
-    }
-
-    fn box_clone(&self) -> Box<BuiltinFunc> {
-        Box::new((*self).clone())
-    }
 }
 
 enum Builtins {

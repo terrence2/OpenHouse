@@ -15,6 +15,7 @@ extern crate lazy_static;
 extern crate log;
 extern crate simplelog;
 
+mod bif;
 mod float;
 mod graph;
 mod parser;
