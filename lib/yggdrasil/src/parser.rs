@@ -181,8 +181,11 @@ impl<'a> TreeParser<'a> {
             Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(Token::Newline)?;
-                let s =
-                    Script::inline_from_tokens(node.path_str(), &self.tokens[self.position..end])?;
+                let s = Script::inline_from_tokens(
+                    node.path_str(),
+                    &self.tokens[self.position..end],
+                    self.nifs,
+                )?;
                 self.position = end;
                 node.set_script(s)?
             }

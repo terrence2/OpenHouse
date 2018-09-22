@@ -6,7 +6,7 @@ extern crate yggdrasil;
 
 use failure::Fallible;
 use yggdrasil::{
-    Error, SinkRef, SourceRef, SubTree, Tree, TreeBuilder, TreeSink, TreeSource, Value, ValueType,
+    Error, SinkRef, SourceRef, SubTree, TreeBuilder, TreeSink, TreeSource, Value, ValueType,
 };
 
 struct Light {

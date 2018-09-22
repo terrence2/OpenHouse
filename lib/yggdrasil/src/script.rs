@@ -1,8 +1,8 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::{tostr::ToStr, NativeFunc};
-use failure::{Error, Fallible};
+use bif::NativeFunc;
+use failure::{err_msg, Fallible};
 use graph::Graph;
 use path::{ConcretePath, ScriptPath};
 use std::collections::HashMap;
@@ -29,23 +29,6 @@ pub(super) enum Expr {
     Subtract(Box<Expr>, Box<Expr>),
     Value(Value),
 }
-
-enum Builtins {}
-
-impl Builtins {
-    fn from_name(name: &str) -> Fallible<Box<NativeFunc>> {
-        Ok(match name {
-            "str" => Box::new(ToStr {}),
-            _ => bail!("parse error: unknown builtin function {}", name),
-        })
-    }
-}
-
-// fn find_function(name: &str) -> Fallible<&NativeFunc> {
-//     BUILTINS
-//         .get(name)
-//         .ok_or_else(|| err_msg(&format!("unknown function {}", name)))
-// }
 
 macro_rules! map_values {
     ($self:ident, $f:ident, $reduce:expr, $($args:ident),*) => {
@@ -103,7 +86,7 @@ macro_rules! map_values {
 }
 
 impl Expr {
-    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
         map_values!(
             self,
             compute,
@@ -115,7 +98,7 @@ impl Expr {
         )
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
         map_values!(
             self,
             virtually_compute_for_path,
@@ -138,7 +121,7 @@ impl Expr {
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Result<ValueType, Error> {
+    ) -> Fallible<ValueType> {
         trace!("Expr::find_all_possible_inputs({:?})", self);
         map_values!(
             self,
@@ -168,8 +151,12 @@ pub struct Script {
 }
 
 impl Script {
-    pub fn inline_from_tokens(path: String, tokens: &[Token]) -> Result<Self, Error> {
-        let mut parser = ExprParser::from_tokens(path, tokens);
+    pub fn inline_from_tokens(
+        path: String,
+        tokens: &[Token],
+        nifs: &HashMap<String, Box<NativeFunc>>,
+    ) -> Fallible<Self> {
+        let mut parser = ExprParser::from_tokens(path, tokens, nifs);
         let expr = parser.eparser()?;
         let script = Script {
             suite: expr,
@@ -185,7 +172,7 @@ impl Script {
     pub fn build_input_map(
         &self,
         tree: &Tree,
-    ) -> Result<(HashMap<ConcretePath, NodeRef>, ValueType), Error> {
+    ) -> Fallible<(HashMap<ConcretePath, NodeRef>, ValueType)> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         let mut inputs = Vec::new();
         let ty = self.suite.find_all_possible_inputs(tree, &mut inputs)?;
@@ -200,7 +187,7 @@ impl Script {
     pub fn install_input_map(
         &mut self,
         input_map: (HashMap<ConcretePath, NodeRef>, ValueType),
-    ) -> Result<(), Error> {
+    ) -> Fallible<()> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         self.input_map = input_map.0;
         self.nodetype = Some(input_map.1);
@@ -208,14 +195,14 @@ impl Script {
         return Ok(());
     }
 
-    pub fn populate_flow_graph(&self, tgt_node: &NodeRef, graph: &mut Graph) -> Result<(), Error> {
+    pub fn populate_flow_graph(&self, tgt_node: &NodeRef, graph: &mut Graph) -> Fallible<()> {
         for src_node in self.input_map.values() {
             graph.add_edge(src_node, tgt_node);
         }
         return Ok(());
     }
 
-    pub fn nodetype(&self) -> Result<ValueType, Error> {
+    pub fn nodetype(&self) -> Fallible<ValueType> {
         ensure!(
             self.nodetype.is_some(),
             "typecheck error: querying node type before ready"
@@ -227,7 +214,7 @@ impl Script {
         return self.nodetype.is_some();
     }
 
-    pub(super) fn all_inputs(&self) -> Result<Vec<String>, Error> {
+    pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {
         return Ok(self
             .input_map
             .keys()
@@ -235,7 +222,7 @@ impl Script {
             .collect::<Vec<_>>());
     }
 
-    pub(super) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
         ensure!(
             self.phase == CompilationPhase::Ready,
             "runtime error: attempting script usage before ready: {:?} => {:?}",
@@ -245,7 +232,7 @@ impl Script {
         self.suite.compute(tree)
     }
 
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
         self.suite.virtually_compute_for_path(tree)
     }
 }
@@ -333,19 +320,25 @@ struct ExprParser<'a> {
     path: String,
     tokens: &'a [Token],
     offset: usize,
+    nifs: &'a HashMap<String, Box<NativeFunc>>,
 }
 
 // Uses textbook precedence climbing.
 impl<'a> ExprParser<'a> {
-    fn from_tokens(path: String, tokens: &'a [Token]) -> Self {
+    fn from_tokens(
+        path: String,
+        tokens: &'a [Token],
+        nifs: &'a HashMap<String, Box<NativeFunc>>,
+    ) -> Self {
         return Self {
             path,
-            tokens: tokens,
+            tokens,
             offset: 0,
+            nifs,
         };
     }
 
-    fn eparser(&mut self) -> Result<Expr, Error> {
+    fn eparser(&mut self) -> Fallible<Expr> {
         let e = self.exp_p(0)?;
         ensure!(
             self.offset == self.tokens.len(),
@@ -364,7 +357,7 @@ impl<'a> ExprParser<'a> {
         return op;
     }
 
-    fn exp_p(&mut self, p: usize) -> Result<Expr, Error> {
+    fn exp_p(&mut self, p: usize) -> Fallible<Expr> {
         let mut t = self.p()?;
         while self.offset < self.tokens.len()
             && Operator::is_bin_op(&self.tokens[self.offset])
@@ -397,7 +390,7 @@ impl<'a> ExprParser<'a> {
         return Ok(t);
     }
 
-    fn p(&mut self) -> Result<Expr, Error> {
+    fn p(&mut self) -> Fallible<Expr> {
         return Ok(match self.pop() {
             Token::BooleanTerm(b) => Expr::Value(Value::Boolean(b)),
             Token::FloatTerm(f) => Expr::Value(Value::Float(f)),
@@ -432,7 +425,12 @@ impl<'a> ExprParser<'a> {
                     "parse error: expected right paren after call to {}",
                     name
                 );
-                Expr::Call(Builtins::from_name(&name)?, Box::new(t))
+                let nif = self
+                    .nifs
+                    .get(&name)
+                    .ok_or_else(|| err_msg(format!("parse error: no such function {}", name)))?
+                    .clone();
+                Expr::Call(nif, Box::new(t))
             }
             t => panic!("parse error: unexpected token {:?}", t),
         });
@@ -446,9 +444,10 @@ mod test {
     use tokenizer::TreeTokenizer;
     use tree::TreeBuilder;
 
-    fn do_compute(expr: &str) -> Result<Value, Error> {
+    fn do_compute(expr: &str) -> Fallible<Value> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;
-        let mut script = Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])?;
+        let mut script =
+            Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())?;
         let tree = TreeBuilder::empty();
         let input_map = script.build_input_map(&tree)?;
         ensure!(
@@ -486,7 +485,7 @@ mod test {
     #[test]
     fn test_script_or() {
         let tok = TreeTokenizer::tokenize("a <- true || true").unwrap();
-        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])
+        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
             .eparser()
             .unwrap();
     }
@@ -494,7 +493,7 @@ mod test {
     #[test]
     fn test_script_inputs() {
         let tok = TreeTokenizer::tokenize("a <- /foo/bar/baz").unwrap();
-        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])
+        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
             .eparser()
             .unwrap();
     }
@@ -502,7 +501,7 @@ mod test {
     #[test]
     fn test_script_negate() {
         let tok = TreeTokenizer::tokenize("a <- -/foo/bar/baz").unwrap();
-        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])
+        ExprParser::from_tokens("/a".to_owned(), &tok[2..tok.len() - 1], &HashMap::new())
             .eparser()
             .unwrap();
     }
