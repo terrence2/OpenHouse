@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::Fallible;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Length {
@@ -10,7 +10,7 @@ pub enum Length {
 }
 
 impl Length {
-    pub fn from_str(s: &str) -> Result<Self, Error> {
+    pub fn from_str(s: &str) -> Fallible<Self> {
         if s.contains('\'') {
             let parts = s.splitn(2, '\'').collect::<Vec<&str>>();
             let ft = parts[0].parse::<i64>()?;
@@ -56,7 +56,7 @@ pub struct Dimension2 {
 }
 
 impl Dimension2 {
-    pub fn from_str(s: &str) -> Result<Self, Error> {
+    pub fn from_str(s: &str) -> Fallible<Self> {
         assert!(!s.starts_with('@'));
         assert!(!s.starts_with('<'));
         assert!(!s.starts_with('>'));

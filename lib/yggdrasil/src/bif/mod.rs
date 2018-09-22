@@ -9,7 +9,7 @@ use std::fmt;
 use tree::Tree;
 use value::{Value, ValueType};
 
-pub(super) trait BuiltinFunc {
+pub trait NativeFunc {
     fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value>;
     fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>>;
     fn find_all_possible_inputs(
@@ -18,16 +18,16 @@ pub(super) trait BuiltinFunc {
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
     ) -> Fallible<ValueType>;
-    fn box_clone(&self) -> Box<BuiltinFunc>;
+    fn box_clone(&self) -> Box<NativeFunc>;
 }
 
-impl Clone for Box<BuiltinFunc> {
-    fn clone(&self) -> Box<BuiltinFunc> {
+impl Clone for Box<NativeFunc> {
+    fn clone(&self) -> Box<NativeFunc> {
         self.box_clone()
     }
 }
 
-impl fmt::Debug for Box<BuiltinFunc> {
+impl fmt::Debug for Box<NativeFunc> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TEST")
     }

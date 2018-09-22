@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::{Error, Fallible};
+use failure::Fallible;
 use float::Float;
 use physical::Dimension2;
 
@@ -51,7 +51,7 @@ pub enum Token {
 pub struct TreeTokenizer {}
 
 impl TreeTokenizer {
-    pub fn tokenize(s: &str) -> Result<Vec<Token>, Error> {
+    pub fn tokenize(s: &str) -> Fallible<Vec<Token>> {
         let mut tokens = Vec::new();
 
         let mut indent = vec![0];
@@ -110,7 +110,7 @@ impl LineTokenizer {
         return self.offset >= self.chars.len();
     }
 
-    fn tokenize_one(&mut self) -> Result<Token, Error> {
+    fn tokenize_one(&mut self) -> Fallible<Token> {
         let c = self.peek(0)?;
         let tok = match c {
             'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword_or_template(),
@@ -156,7 +156,7 @@ impl LineTokenizer {
         return Ok(tok);
     }
 
-    fn tokenize_name_or_keyword_or_template(&mut self) -> Result<Token, Error> {
+    fn tokenize_name_or_keyword_or_template(&mut self) -> Fallible<Token> {
         let s = self.tokenize_identifier()?;
         if s == "true" {
             return Ok(Token::BooleanTerm(true));
@@ -192,7 +192,7 @@ impl LineTokenizer {
         return Ok(Token::Template);
     }
 
-    fn tokenize_subtract_or_number(&mut self) -> Result<Token, Error> {
+    fn tokenize_subtract_or_number(&mut self) -> Fallible<Token> {
         if let Some(c) = self.maybe_peek(1) {
             if c == ' ' || c == '/' || c == '.' {
                 self.offset += 1;
@@ -202,7 +202,7 @@ impl LineTokenizer {
         return self.tokenize_int_or_float();
     }
 
-    fn tokenize_int_or_float(&mut self) -> Result<Token, Error> {
+    fn tokenize_int_or_float(&mut self) -> Fallible<Token> {
         let negative = match self.peek(0)? {
             '-' => {
                 self.offset += 1;
@@ -231,19 +231,19 @@ impl LineTokenizer {
         return Ok(Token::IntegerTerm(negative * s.parse::<i64>()?));
     }
 
-    fn tokenize_source(&mut self) -> Result<Token, Error> {
+    fn tokenize_source(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '^');
         self.offset += 1;
         return Ok(Token::Source(self.tokenize_identifier()?));
     }
 
-    fn tokenize_sink(&mut self) -> Result<Token, Error> {
+    fn tokenize_sink(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '$');
         self.offset += 1;
         return Ok(Token::Sink(self.tokenize_identifier()?));
     }
 
-    fn tokenize_absolute_path_or_division(&mut self) -> Result<Token, Error> {
+    fn tokenize_absolute_path_or_division(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '/');
         return match self.maybe_peek(1) {
             None | Some(' ') => self.tokenize_division(),
@@ -251,12 +251,12 @@ impl LineTokenizer {
         };
     }
 
-    fn tokenize_division(&mut self) -> Result<Token, Error> {
+    fn tokenize_division(&mut self) -> Fallible<Token> {
         self.offset += 1;
         return Ok(Token::Divide);
     }
 
-    fn tokenize_use_template_or_not_eq(&mut self) -> Result<Token, Error> {
+    fn tokenize_use_template_or_not_eq(&mut self) -> Fallible<Token> {
         if self.peek(1)? == '=' {
             self.offset += 2;
             return Ok(Token::NotEquals);
@@ -265,7 +265,7 @@ impl LineTokenizer {
         return Ok(Token::UseTemplate(self.tokenize_identifier()?));
     }
 
-    fn tokenize_location(&mut self) -> Result<Token, Error> {
+    fn tokenize_location(&mut self) -> Fallible<Token> {
         ensure!(self.peek(0)? == '@', "expected location start token");
         self.offset += 1;
         let start = self.offset;
@@ -294,7 +294,7 @@ impl LineTokenizer {
         return Ok(Token::Size(Dimension2::from_str(&span)?));
     }
 
-    fn tokenize_string(&mut self) -> Result<Token, Error> {
+    fn tokenize_string(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '"');
         let mut out = Vec::new();
         self.offset += 1;
@@ -321,7 +321,7 @@ impl LineTokenizer {
         bail!("tokenize error: unmatched \"");
     }
 
-    fn tokenize_comes_from_or_less_than_or_size(&mut self) -> Result<Token, Error> {
+    fn tokenize_comes_from_or_less_than_or_size(&mut self) -> Fallible<Token> {
         match self.maybe_peek(1) {
             Some('-') => {
                 if self.maybe_peek(2) == Some('\\') {
@@ -349,7 +349,7 @@ impl LineTokenizer {
         }
     }
 
-    fn tokenize_greater_than(&mut self) -> Result<Token, Error> {
+    fn tokenize_greater_than(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '>');
         if self.peek(1)? == '=' {
             return Ok(Token::GreaterThanOrEquals);
@@ -357,7 +357,7 @@ impl LineTokenizer {
         return Ok(Token::GreaterThan);
     }
 
-    fn tokenize_operator_2(&mut self) -> Result<Token, Error> {
+    fn tokenize_operator_2(&mut self) -> Fallible<Token> {
         let t = match self.peek(1)? {
             '&' => {
                 assert!(self.peek(0)? == '&');
@@ -373,7 +373,7 @@ impl LineTokenizer {
         return Ok(t);
     }
 
-    fn tokenize_path(&mut self) -> Result<Token, Error> {
+    fn tokenize_path(&mut self) -> Fallible<Token> {
         // Note: this is identifier with [/.{}] included. It is up to the user to
         //       build a real, well-formed path from this.
         let start = self.offset;
@@ -389,7 +389,7 @@ impl LineTokenizer {
         return Ok(Token::PathTerm(content));
     }
 
-    fn tokenize_identifier(&mut self) -> Result<String, Error> {
+    fn tokenize_identifier(&mut self) -> Fallible<String> {
         let start = self.offset;
         while !self.is_empty() {
             match self.chars[self.offset] {
@@ -407,7 +407,7 @@ impl LineTokenizer {
         return None;
     }
 
-    fn peek(&self, n: usize) -> Result<char, Error> {
+    fn peek(&self, n: usize) -> Fallible<char> {
         ensure!(
             self.offset + n < self.chars.len(),
             "tokenize error: out of input too soon"

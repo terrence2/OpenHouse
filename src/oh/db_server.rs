@@ -6,7 +6,7 @@ use failure::Fallible;
 use oh::hue::Hue;
 use oh::legacy_mcu::LegacyMCU;
 use std::path::Path;
-use yggdrasil::{SinkRef, SourceRef, Tree, Value};
+use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
 
 pub struct DBServer {
     tree: Tree,
@@ -18,7 +18,7 @@ impl DBServer {
     pub fn new_from_file(filename: &Path) -> Fallible<Self> {
         let hue = SinkRef::new(Hue::new()?);
         let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
-        let tree = Tree::new_empty()
+        let tree = TreeBuilder::new()
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .add_sink_handler("hue", &hue)?
             .build_from_file(filename)?;

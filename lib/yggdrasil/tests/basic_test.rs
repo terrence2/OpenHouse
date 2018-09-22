@@ -5,7 +5,9 @@ extern crate failure;
 extern crate yggdrasil;
 
 use failure::Fallible;
-use yggdrasil::{Error, SinkRef, SourceRef, SubTree, Tree, TreeSink, TreeSource, Value, ValueType};
+use yggdrasil::{
+    Error, SinkRef, SourceRef, SubTree, Tree, TreeBuilder, TreeSink, TreeSource, Value, ValueType,
+};
 
 struct Light {
     value: Option<Value>,
@@ -57,7 +59,7 @@ room
 "#;
     let src = SourceRef::new(Box::new(Switch {}));
     let sink = SinkRef::new(Box::new(Light { value: None }));
-    let tree = Tree::new_empty()
+    let tree = TreeBuilder::new()
         .add_source_handler("switch", &src)?
         .add_sink_handler("light", &sink)?
         .build_from_str(program)?;

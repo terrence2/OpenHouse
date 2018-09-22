@@ -108,7 +108,6 @@ impl SourceRef {
 pub(crate) mod test {
     use super::*;
     use std::collections::HashMap;
-    use tree::Tree;
 
     pub struct SimpleSource {
         values: Vec<Value>,

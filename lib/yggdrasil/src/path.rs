@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::Fallible;
 use std::fmt;
 use tree::Tree;
 
@@ -27,7 +27,7 @@ pub struct ScriptPath {
 }
 
 impl ScriptPath {
-    pub fn from_str_at_path(base_path: &str, s: &str) -> Result<Self, Error> {
+    pub fn from_str_at_path(base_path: &str, s: &str) -> Fallible<Self> {
         assert!(base_path.starts_with('/'));
 
         let (start, mut components) = if s.starts_with('/') {
@@ -51,7 +51,7 @@ impl ScriptPath {
         components: &mut Vec<PathComponent>,
         base_path: &str,
         s: &str,
-    ) -> Result<bool, Error> {
+    ) -> Fallible<bool> {
         let mut dynamic = false;
         let parts = Self::tokenize_path(s)?;
         for part in parts.iter() {
@@ -66,7 +66,7 @@ impl ScriptPath {
         components: &mut Vec<PathComponent>,
         base_path: &str,
         part: &str,
-    ) -> Result<bool, Error> {
+    ) -> Fallible<bool> {
         match part {
             "" => bail!(
                 "parse error: empty path component under '{}' in '{:?}'",
@@ -105,7 +105,7 @@ impl ScriptPath {
         }
     }
 
-    fn tokenize_path(s: &str) -> Result<Vec<String>, Error> {
+    fn tokenize_path(s: &str) -> Fallible<Vec<String>> {
         let mut brace_depth = 0;
         let mut part_start = 0;
         let mut offset = 0;
@@ -154,7 +154,7 @@ impl ScriptPath {
         return ConcretePath::from_components(concrete);
     }
 
-    pub fn find_concrete_inputs(&self, inputs: &mut Vec<ConcretePath>) -> Result<(), Error> {
+    pub fn find_concrete_inputs(&self, inputs: &mut Vec<ConcretePath>) -> Fallible<()> {
         if self.is_concrete() {
             inputs.push(self.as_concrete());
             return Ok(());
@@ -174,7 +174,7 @@ impl ScriptPath {
     // because they come from constants or from a switch or button. This lets us
     // use virtual interpretation of all intermediate scripts to get a set of
     // possible values, even if large.
-    pub fn devirtualize(&self, tree: &Tree) -> Result<Vec<ConcretePath>, Error> {
+    pub fn devirtualize(&self, tree: &Tree) -> Fallible<Vec<ConcretePath>> {
         if self.is_concrete() {
             trace!("Path::devirtualize(concrete: {})", self);
             return Ok(vec![self.as_concrete()]);
@@ -256,7 +256,8 @@ impl ScriptPath {
 
 impl fmt::Display for ScriptPath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let parts = self.components
+        let parts = self
+            .components
             .iter()
             .map(|c| format!("{}", c))
             .collect::<Vec<_>>()
@@ -275,7 +276,7 @@ impl ConcretePath {
         Self { components }
     }
 
-    pub fn from_str(path: &str) -> Result<Self, Error> {
+    pub fn from_str(path: &str) -> Fallible<Self> {
         ensure!(
             path.starts_with('/'),
             "invalid path: tree lookups must start at /"

@@ -89,7 +89,7 @@ impl SinkRef {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::{SubTree, Tree};
+    use tree::{SubTree, Tree, TreeBuilder};
 
     struct TestSink {}
 
@@ -118,7 +118,7 @@ mod test {
     #[test]
     fn test_sink_methods() -> Fallible<()> {
         let sink = TestSink::new()?;
-        let tree = Tree::new_empty();
+        let tree = TreeBuilder::empty();
         let subtree = tree.subtree_at(&tree.root())?;
         assert_eq!(sink.nodetype("", &subtree)?, ValueType::STRING);
         sink.add_path("", &subtree)?;

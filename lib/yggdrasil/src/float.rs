@@ -1,8 +1,12 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
-use std::{fmt, cmp::Ordering, ops::{Add, Div, Mul, Neg, Sub}};
+use failure::Fallible;
+use std::{
+    cmp::Ordering,
+    fmt,
+    ops::{Add, Div, Mul, Neg, Sub},
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct Float {
@@ -10,29 +14,29 @@ pub struct Float {
 }
 
 impl Float {
-    pub fn new(value: f64) -> Result<Float, Error> {
+    pub fn new(value: f64) -> Fallible<Float> {
         ensure!(!value.is_infinite(), "numerical error: glimpsed infinity");
         ensure!(!value.is_nan(), "numerical error: not a number");
         Ok(Float { value })
     }
 
-    pub fn checked_add(&self, rhs: &Float) -> Result<Float, Error> {
+    pub fn checked_add(&self, rhs: &Float) -> Fallible<Float> {
         return Float::new(self.value + rhs.value);
     }
 
-    pub fn checked_div(&self, rhs: &Float) -> Result<Float, Error> {
+    pub fn checked_div(&self, rhs: &Float) -> Fallible<Float> {
         return Float::new(self.value / rhs.value);
     }
 
-    pub fn checked_mul(&self, rhs: &Float) -> Result<Float, Error> {
+    pub fn checked_mul(&self, rhs: &Float) -> Fallible<Float> {
         return Float::new(self.value * rhs.value);
     }
 
-    pub fn checked_neg(&self) -> Result<Float, Error> {
+    pub fn checked_neg(&self) -> Fallible<Float> {
         return Float::new(-self.value);
     }
 
-    pub fn checked_sub(&self, rhs: &Float) -> Result<Float, Error> {
+    pub fn checked_sub(&self, rhs: &Float) -> Fallible<Float> {
         return Float::new(self.value - rhs.value);
     }
 }

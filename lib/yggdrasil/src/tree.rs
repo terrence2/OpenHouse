@@ -1,7 +1,8 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::{Error, Fallible};
+use bif::{tostr::ToStr, NativeFunc};
+use failure::Fallible;
 use graph::Graph;
 use parser::TreeParser;
 use path::{ConcretePath, PathComponent, ScriptPath};
@@ -24,14 +25,48 @@ pub struct Sample {
     _at: usize,
 }
 
-pub struct Tree {
-    root: NodeRef,
+pub struct TreeBuilder {
     source_handlers: HashMap<String, SourceRef>,
     sink_handlers: HashMap<String, SinkRef>,
+    nifs: HashMap<String, Box<NativeFunc>>,
+    add_builtins: bool,
 }
 
-impl Tree {
-    pub fn new_empty() -> Self {
+impl TreeBuilder {
+    pub fn new() -> Self {
+        TreeBuilder {
+            source_handlers: HashMap::new(),
+            sink_handlers: HashMap::new(),
+            nifs: HashMap::new(),
+            add_builtins: true,
+        }
+    }
+
+    pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
+        self.source_handlers.insert(name.to_owned(), source.clone());
+        return Ok(self);
+    }
+
+    pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Fallible<TreeBuilder> {
+        self.sink_handlers.insert(name.to_owned(), sink.clone());
+        return Ok(self);
+    }
+
+    pub fn add_native_function(
+        mut self,
+        name: &str,
+        nif: Box<NativeFunc>,
+    ) -> Fallible<TreeBuilder> {
+        self.nifs.insert(name.to_owned(), nif);
+        return Ok(self);
+    }
+
+    pub fn without_builtins(mut self) -> Fallible<TreeBuilder> {
+        self.add_builtins = false;
+        return Ok(self);
+    }
+
+    pub fn empty() -> Tree {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             source_handlers: HashMap::new(),
@@ -39,17 +74,41 @@ impl Tree {
         }
     }
 
-    pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Result<Tree, Error> {
-        self.source_handlers.insert(name.to_owned(), source.clone());
-        return Ok(self);
+    pub fn build_from_file(self, path: &Path) -> Fallible<Tree> {
+        let contents = fs::read_to_string(path)?;
+        return self.build_from_str(&contents);
     }
 
-    pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Result<Tree, Error> {
-        self.sink_handlers.insert(name.to_owned(), sink.clone());
-        return Ok(self);
-    }
+    pub fn build_from_str(mut self, s: &str) -> Fallible<Tree> {
+        if self.add_builtins {
+            self.nifs.insert("str".to_owned(), Box::new(ToStr));
+        }
 
-    pub fn handle_event(&self, path: &str, value: Value) -> Result<(), Error> {
+        let tree = Tree {
+            root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            source_handlers: self.source_handlers,
+            sink_handlers: self.sink_handlers,
+        };
+
+        let tree = TreeParser::from_str(tree, s, &self.nifs)?
+            .link_and_validate_inputs()?
+            .map_inputs_to_outputs()?;
+
+        for sink in tree.sink_handlers.values() {
+            sink.on_ready(&tree.root.subtree_here(&tree)?)?;
+        }
+        return Ok(tree);
+    }
+}
+
+pub struct Tree {
+    root: NodeRef,
+    source_handlers: HashMap<String, SourceRef>,
+    sink_handlers: HashMap<String, SinkRef>,
+}
+
+impl Tree {
+    pub fn handle_event(&self, path: &str, value: Value) -> Fallible<()> {
         let source = self.lookup(path)?;
         source.handle_event(value, self)?;
         let sink_nodes = source.get_sink_nodes_observing()?;
@@ -74,46 +133,31 @@ impl Tree {
         return Ok(());
     }
 
-    pub fn build_from_file(self, path: &Path) -> Result<Tree, Error> {
-        let contents = fs::read_to_string(path)?;
-        return self.build_from_str(&contents);
-    }
-
-    pub fn build_from_str(self, s: &str) -> Result<Tree, Error> {
-        let tree = TreeParser::from_str(self, s)?
-            .link_and_validate_inputs()?
-            .map_inputs_to_outputs()?;
-        for sink in tree.sink_handlers.values() {
-            sink.on_ready(&tree.root.subtree_here(&tree)?)?;
-        }
-        return Ok(tree);
-    }
-
     pub fn root(&self) -> NodeRef {
         self.root.clone()
     }
 
-    pub fn lookup(&self, path: &str) -> Result<NodeRef, Error> {
+    pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
         let concrete = ConcretePath::from_str(path)?;
         return self.lookup_path(&concrete);
     }
 
-    pub fn lookup_path(&self, path: &ConcretePath) -> Result<NodeRef, Error> {
+    pub fn lookup_path(&self, path: &ConcretePath) -> Fallible<NodeRef> {
         self.root.lookup_path(&path.components[0..])
     }
 
-    pub fn lookup_dynamic_path(&self, path: &ScriptPath) -> Result<NodeRef, Error> {
+    pub fn lookup_dynamic_path(&self, path: &ScriptPath) -> Fallible<NodeRef> {
         self.root.lookup_dynamic_path(&path.components[0..], self)
     }
 
     // After the tree has been built, visit all nodes looking up references and
     // storing those references directly in the inputs list per script.
-    fn link_and_validate_inputs(self) -> Result<Tree, Error> {
+    fn link_and_validate_inputs(self) -> Fallible<Tree> {
         self.root.link_and_validate_inputs(&self)?;
         return Ok(self);
     }
 
-    fn map_inputs_to_outputs(self) -> Result<Tree, Error> {
+    fn map_inputs_to_outputs(self) -> Fallible<Tree> {
         let mut graph = Graph::new_empty();
         let mut sinks = Vec::new();
         self.root().populate_flow_graph(&mut graph)?;
@@ -122,7 +166,7 @@ impl Tree {
         Ok(self)
     }
 
-    pub(super) fn subtree_at(&self, root: &NodeRef) -> Result<SubTree, Error> {
+    pub(super) fn subtree_at(&self, root: &NodeRef) -> Fallible<SubTree> {
         SubTree::new(self, root)
     }
 }
@@ -137,7 +181,7 @@ pub struct SubTree<'a> {
 }
 
 impl<'a> SubTree<'a> {
-    fn new(tree: &'a Tree, root: &NodeRef) -> Result<Self, Error> {
+    fn new(tree: &'a Tree, root: &NodeRef) -> Fallible<Self> {
         return Ok(SubTree {
             _tree: tree,
             _root: root.to_owned(),
@@ -168,7 +212,7 @@ impl NodeRef {
         return self_ref;
     }
 
-    pub fn lookup_path(&self, parts: &[String]) -> Result<NodeRef, Error> {
+    pub fn lookup_path(&self, parts: &[String]) -> Fallible<NodeRef> {
         if parts.is_empty() {
             return Ok(self.to_owned());
         }
@@ -182,11 +226,7 @@ impl NodeRef {
         );
     }
 
-    pub fn lookup_dynamic_path(
-        &self,
-        parts: &[PathComponent],
-        tree: &Tree,
-    ) -> Result<NodeRef, Error> {
+    pub fn lookup_dynamic_path(&self, parts: &[PathComponent], tree: &Tree) -> Fallible<NodeRef> {
         trace!(
             "Node::lookup_dynamic_path @ {}, looking up {:?}",
             self.path_str(),
@@ -212,7 +252,7 @@ impl NodeRef {
         ));
     }
 
-    pub fn add_child(&self, name: &str) -> Result<NodeRef, Error> {
+    pub fn add_child(&self, name: &str) -> Fallible<NodeRef> {
         let child = self.0.borrow_mut().create_new_child(name)?;
         child
             .0
@@ -231,7 +271,7 @@ impl NodeRef {
         self.0.borrow().name.clone()
     }
 
-    pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Result<(), Error> {
+    pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
         trace!("+++NodeRef::link_and_validate_input({})", self.path_str());
 
         // If nodetype is already set, we've already recursed through this node,
@@ -291,7 +331,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn enforce_jail(&self) -> Result<(), Error> {
+    fn enforce_jail(&self) -> Fallible<()> {
         trace!("enforcing jail @ {}", self.path_str());
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
@@ -302,7 +342,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn enforce_jail_under(&self, jail_path: &str) -> Result<(), Error> {
+    fn enforce_jail_under(&self, jail_path: &str) -> Fallible<()> {
         trace!("enforcing jail path {} @ {}", jail_path, self.path_str());
         if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
             for input_path in script.all_inputs()?.iter() {
@@ -320,7 +360,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Result<(), Error> {
+    fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Fallible<()> {
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
                 continue;
@@ -333,7 +373,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn populate_flow_graph(&self, graph: &mut Graph) -> Result<(), Error> {
+    fn populate_flow_graph(&self, graph: &mut Graph) -> Fallible<()> {
         graph.add_node(self);
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
@@ -349,7 +389,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn flow_input_to_output(&self, sinks: &Vec<NodeRef>, graph: &Graph) -> Result<(), Error> {
+    fn flow_input_to_output(&self, sinks: &Vec<NodeRef>, graph: &Graph) -> Fallible<()> {
         for (name, child) in self.0.borrow().children.iter() {
             if name == "." || name == ".." {
                 continue;
@@ -399,7 +439,7 @@ impl NodeRef {
         self.0.borrow().children.get(name).map(|v| v.to_owned())
     }
 
-    fn subtree_here<'a>(&'a self, tree: &'a Tree) -> Result<SubTree, Error> {
+    fn subtree_here<'a>(&'a self, tree: &'a Tree) -> Fallible<SubTree> {
         tree.subtree_at(self)
     }
 
@@ -420,7 +460,7 @@ impl NodeRef {
     // If node type has been set, return it, otherwise do link_and_validate in
     // order to find it. This method is only safe to call during compilation. It
     // is public for use by Script during compilation.
-    pub(super) fn get_or_find_node_type(&self, tree: &Tree) -> Result<ValueType, Error> {
+    pub(super) fn get_or_find_node_type(&self, tree: &Tree) -> Fallible<ValueType> {
         ensure!(
             self.has_input(),
             "typeflow error: read from the node @ {} has no inputs",
@@ -437,7 +477,7 @@ impl NodeRef {
         return self.nodetype(tree);
     }
 
-    pub fn nodetype(&self, tree: &Tree) -> Result<ValueType, Error> {
+    pub fn nodetype(&self, tree: &Tree) -> Fallible<ValueType> {
         match self.0.borrow().input {
             None => bail!(
                 "runtime error: nodetype request on a non-input node @ {}",
@@ -469,7 +509,7 @@ impl NodeRef {
         self.0.borrow().location
     }
 
-    pub fn set_location(&self, loc: Dimension2) -> Result<(), Error> {
+    pub fn set_location(&self, loc: Dimension2) -> Fallible<()> {
         ensure!(
             self.0.borrow().location.is_none(),
             "location has already been set"
@@ -482,7 +522,7 @@ impl NodeRef {
         self.0.borrow().dimensions
     }
 
-    pub fn set_dimensions(&self, dim: Dimension2) -> Result<(), Error> {
+    pub fn set_dimensions(&self, dim: Dimension2) -> Fallible<()> {
         ensure!(
             self.0.borrow().dimensions.is_none(),
             "dimensions have already been set"
@@ -491,7 +531,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn set_source(&self, from: &str, tree: &Tree) -> Result<(), Error> {
+    pub fn set_source(&self, from: &str, tree: &Tree) -> Fallible<()> {
         ensure!(
             self.0.borrow().input.is_none(),
             "parse error: input was set twice @ {}",
@@ -510,7 +550,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Result<(), Error> {
+    pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Fallible<()> {
         ensure!(
             self.0.borrow().sink.is_none(),
             "parse error: sink set twice @ {}",
@@ -526,7 +566,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn apply_template(&self, template: &NodeRef) -> Result<(), Error> {
+    pub fn apply_template(&self, template: &NodeRef) -> Fallible<()> {
         // FIXME: -> copy children... probably needs to be lexical?
 
         // Simple sigils.
@@ -548,7 +588,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn set_script(&self, script: Script) -> Result<(), Error> {
+    pub fn set_script(&self, script: Script) -> Fallible<()> {
         ensure!(
             self.0.borrow().input.is_none(),
             "parse error: input was set twice at {}",
@@ -558,7 +598,7 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
         let path = self.path_str();
         trace!("computing @ {}", path);
         match self.0.borrow_mut().input {
@@ -582,7 +622,7 @@ impl NodeRef {
         }
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
         trace!("virtually computing @ {}", self.path_str());
         match self.0.borrow().input {
             None => {
@@ -600,7 +640,7 @@ impl NodeRef {
         }
     }
 
-    pub fn get_sink_nodes_observing(&self) -> Result<Vec<NodeRef>, Error> {
+    pub fn get_sink_nodes_observing(&self) -> Fallible<Vec<NodeRef>> {
         if let Some(NodeInput::Source(_, ref sinks)) = self.0.borrow().input {
             return Ok(sinks.to_owned());
         }
@@ -669,7 +709,7 @@ impl Node {
         };
     }
 
-    fn create_new_child(&mut self, name: &str) -> Result<NodeRef, Error> {
+    fn create_new_child(&mut self, name: &str) -> Fallible<NodeRef> {
         let child = NodeRef::new(Node::new(self.path.new_child(name)));
         self.children.insert(name.to_owned(), child.clone());
         return Ok(child);
@@ -682,36 +722,31 @@ mod tests {
     use source::test::SimpleSource;
 
     #[test]
-    fn test_build_tree() {
-        let tree = Tree::new_empty();
+    fn test_build_tree() -> Fallible<()> {
+        let tree = TreeBuilder::empty();
         assert_eq!(None, tree.root().location());
 
-        let d10 = Dimension2::from_str("10x10").unwrap();
-        let d20 = Dimension2::from_str("20x20").unwrap();
+        let d10 = Dimension2::from_str("10x10")?;
+        let d20 = Dimension2::from_str("20x20")?;
 
-        let child = tree.lookup("/").unwrap().add_child("foopy").unwrap();
-        child.set_location(d10.clone()).unwrap();
+        let child = tree.lookup("/")?.add_child("foopy")?;
+        child.set_location(d10.clone())?;
         assert_eq!(d10, child.location().unwrap());
 
-        let child = tree.lookup("/foopy").unwrap().add_child("barmy").unwrap();
-        child.set_location(d20.clone()).unwrap();
-        child.set_dimensions(d20.clone()).unwrap();
+        let child = tree.lookup("/foopy")?.add_child("barmy")?;
+        child.set_location(d20.clone())?;
+        child.set_dimensions(d20.clone())?;
         assert_eq!(d20, child.location().unwrap());
 
-        assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
-        assert_eq!(
-            d20,
-            tree.lookup("/foopy/barmy").unwrap().location().unwrap()
-        );
-        assert_eq!(
-            d20,
-            tree.lookup("/foopy/barmy").unwrap().location().unwrap()
-        );
-        assert_eq!(d10, tree.lookup("/foopy").unwrap().location().unwrap());
+        assert_eq!(d10, tree.lookup("/foopy")?.location().unwrap());
+        assert_eq!(d20, tree.lookup("/foopy/barmy")?.location().unwrap());
+        assert_eq!(d20, tree.lookup("/foopy/barmy")?.location().unwrap());
+        assert_eq!(d10, tree.lookup("/foopy")?.location().unwrap());
+        Ok(())
     }
 
     #[test]
-    fn test_tree_jail_source_ok() {
+    fn test_tree_jail_source_ok() -> Fallible<()> {
         let s = r#"
 a ^src1
     a <- ./{/a/b} + "2"
@@ -719,49 +754,43 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new(vec![]).unwrap();
-        let tree = Tree::new_empty()
-            .add_source_handler("src1", &src1)
-            .unwrap()
-            .build_from_str(s)
-            .unwrap();
-        let result = tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
+        let src1 = SimpleSource::new(vec![])?;
+        let tree = TreeBuilder::new()
+            .add_source_handler("src1", &src1)?
+            .build_from_str(s)?;
+        let result = tree.lookup("/a/a")?.compute(&tree)?;
         assert_eq!(result, Value::String("d2".to_owned()));
+        Ok(())
     }
 
     #[test]
-    #[should_panic]
-    fn test_tree_jail_source_break_rel() {
+    fn test_tree_jail_source_break_rel() -> Fallible<()> {
         let s = r#"
 a ^src1
     a <- ../b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new(vec![]).unwrap();
-        let tree = Tree::new_empty()
-            .add_source_handler("src1", &src1)
-            .unwrap()
-            .build_from_str(s)
-            .unwrap();
-        tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
+        let src1 = SimpleSource::new(vec![])?;
+        let res = TreeBuilder::new()
+            .add_source_handler("src1", &src1)?
+            .build_from_str(s);
+        assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    #[should_panic]
-    fn test_tree_jail_source_break_abs() {
+    fn test_tree_jail_source_break_abs() -> Fallible<()> {
         let s = r#"
 a ^src1
     a <- /b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new(vec![]).unwrap();
-        let tree = Tree::new_empty()
-            .add_source_handler("src1", &src1)
-            .unwrap()
-            .build_from_str(s)
-            .unwrap();
-        let result = tree.lookup("/a/a").unwrap().compute(&tree).unwrap();
-        assert_eq!(result, Value::String("foo".to_owned()));
+        let src1 = SimpleSource::new(vec![])?;
+        let res = TreeBuilder::new()
+            .add_source_handler("src1", &src1)?
+            .build_from_str(s);
+        assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
@@ -775,7 +804,7 @@ bar
     v<-2
 "#;
         let srcref: SourceRef = SimpleSource::new(vec!["foo".into(), "bar".into()])?;
-        let tree = Tree::new_empty()
+        let tree = TreeBuilder::new()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));

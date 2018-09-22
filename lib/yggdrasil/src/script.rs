@@ -1,11 +1,11 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::{tostr::ToStr, BuiltinFunc};
+use bif::{tostr::ToStr, NativeFunc};
 use failure::{Error, Fallible};
 use graph::Graph;
 use path::{ConcretePath, ScriptPath};
-use std::{collections::HashMap, fmt};
+use std::collections::HashMap;
 use tokenizer::Token;
 use tree::{NodeRef, Tree};
 use value::{Value, ValueType};
@@ -14,7 +14,7 @@ use value::{Value, ValueType};
 pub(super) enum Expr {
     Add(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
-    Call(Box<BuiltinFunc>, Box<Expr>),
+    Call(Box<NativeFunc>, Box<Expr>),
     Divide(Box<Expr>, Box<Expr>),
     Equal(Box<Expr>, Box<Expr>),
     GreaterThan(Box<Expr>, Box<Expr>),
@@ -30,18 +30,22 @@ pub(super) enum Expr {
     Value(Value),
 }
 
-enum Builtins {
-    ToStr,
-}
+enum Builtins {}
 
 impl Builtins {
-    fn from_name(name: &str) -> Fallible<Box<BuiltinFunc>> {
+    fn from_name(name: &str) -> Fallible<Box<NativeFunc>> {
         Ok(match name {
             "str" => Box::new(ToStr {}),
             _ => bail!("parse error: unknown builtin function {}", name),
         })
     }
 }
+
+// fn find_function(name: &str) -> Fallible<&NativeFunc> {
+//     BUILTINS
+//         .get(name)
+//         .ok_or_else(|| err_msg(&format!("unknown function {}", name)))
+// }
 
 macro_rules! map_values {
     ($self:ident, $f:ident, $reduce:expr, $($args:ident),*) => {
@@ -440,11 +444,12 @@ mod test {
     use super::*;
     use float::Float;
     use tokenizer::TreeTokenizer;
+    use tree::TreeBuilder;
 
     fn do_compute(expr: &str) -> Result<Value, Error> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;
         let mut script = Script::inline_from_tokens("/a".to_owned(), &tok[2..tok.len() - 1])?;
-        let tree = Tree::new_empty();
+        let tree = TreeBuilder::empty();
         let input_map = script.build_input_map(&tree)?;
         ensure!(
             script.install_input_map(input_map).is_ok(),

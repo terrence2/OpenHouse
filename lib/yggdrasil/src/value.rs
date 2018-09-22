@@ -1,14 +1,14 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Error;
+use failure::Fallible;
 use float::Float;
 use path::{ConcretePath, ScriptPath};
 use std::{convert::From, fmt};
 use tokenizer::Token;
 use tree::Tree;
 
-fn ensure_same_types(types: &Vec<ValueType>) -> Result<ValueType, Error> {
+fn ensure_same_types(types: &Vec<ValueType>) -> Fallible<ValueType> {
     ensure!(
         !types.is_empty(),
         "typecheck error: trying to reify empty type list"
@@ -42,7 +42,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Result<Vec<Value>, Error> {
+    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
         trace!("Value::virtually_compute_for_path({})", self);
         if let Value::Path(p) = self {
             let noderef = tree.lookup_dynamic_path(p)?;
@@ -51,7 +51,7 @@ impl Value {
         return Ok(vec![self.to_owned()]);
     }
 
-    pub(super) fn compute(&self, tree: &Tree) -> Result<Value, Error> {
+    pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
         if let Value::Path(p) = self {
             let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.compute(tree);
@@ -59,7 +59,7 @@ impl Value {
         return Ok(self.to_owned());
     }
 
-    pub(super) fn apply(&self, tok: &Token, other: &Value) -> Result<Value, Error> {
+    pub(super) fn apply(&self, tok: &Token, other: &Value) -> Fallible<Value> {
         ensure!(
             !self.is_path(),
             "runtime error: attempting to apply a non-path"
@@ -79,7 +79,7 @@ impl Value {
         });
     }
 
-    pub(super) fn apply_boolean(tok: &Token, a: bool, b: bool) -> Result<bool, Error> {
+    pub(super) fn apply_boolean(tok: &Token, a: bool, b: bool) -> Fallible<bool> {
         return Ok(match tok {
             Token::Or => a || b,
             Token::And => a && b,
@@ -92,7 +92,7 @@ impl Value {
         });
     }
 
-    pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Result<Value, Error> {
+    pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Fallible<Value> {
         return Ok(match tok {
             Token::Add => Value::Integer(a + b),
             Token::Subtract => Value::Integer(a - b),
@@ -112,7 +112,7 @@ impl Value {
         });
     }
 
-    pub(super) fn apply_float(tok: &Token, a: Float, b: Float) -> Result<Value, Error> {
+    pub(super) fn apply_float(tok: &Token, a: Float, b: Float) -> Fallible<Value> {
         return Ok(match tok {
             Token::Add => Value::Float(a + b),
             Token::Subtract => Value::Float(a - b),
@@ -131,7 +131,7 @@ impl Value {
         });
     }
 
-    pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Result<String, Error> {
+    pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Fallible<String> {
         return Ok(match tok {
             Token::Add => a.to_owned() + &b,
             _ => bail!(
@@ -148,35 +148,35 @@ impl Value {
         return false;
     }
 
-    pub fn as_boolean(&self) -> Result<bool, Error> {
+    pub fn as_boolean(&self) -> Fallible<bool> {
         if let Value::Boolean(b) = self {
             return Ok(*b);
         }
         bail!("runtime error: attempted to use a non-boolean value in boolean context")
     }
 
-    pub fn as_integer(&self) -> Result<i64, Error> {
+    pub fn as_integer(&self) -> Fallible<i64> {
         if let Value::Integer(i) = self {
             return Ok(*i);
         }
         bail!("runtime error: attempted to use a non-integer value in integer context")
     }
 
-    pub fn as_float(&self) -> Result<Float, Error> {
+    pub fn as_float(&self) -> Fallible<Float> {
         if let Value::Float(f) = self {
             return Ok(*f);
         }
         bail!("runtime error: attempted to use a non-float value in float context")
     }
 
-    pub fn as_string(&self) -> Result<String, Error> {
+    pub fn as_string(&self) -> Fallible<String> {
         if let Value::String(s) = self {
             return Ok(s.to_owned());
         }
         bail!("runtime error: attempted to use a non-stringvalue in string context")
     }
 
-    pub fn as_path_component(&self) -> Result<String, Error> {
+    pub fn as_path_component(&self) -> Fallible<String> {
         match self {
             Value::Integer(i) => Ok(i.to_string()),
             Value::Boolean(b) => Ok(b.to_string()),
@@ -193,7 +193,7 @@ impl Value {
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Result<ValueType, Error> {
+    ) -> Fallible<ValueType> {
         trace!("Value::find_all_possible_inputs: {}", self);
         if let Value::Path(path) = self {
             // Our virtual path will depend on concrete inputs that may or may
