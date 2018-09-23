@@ -78,14 +78,15 @@ palette
         on        <- "bhs(255, 34495, 255)"
         low       <- "bhs(64, 34495, 255)"
         moonlight <- "none"
-        #default   <- "bhs(255, " + str(/time/seconds/unix % 65535) + ", 255)"
         default   <- "bhs(255, 0, 255)"
+        #default   <- "bhs(255, " + str(/sys/time/minutes/hourly * 1092) + ", 255)"
         off       <- "none"
     
     hue-highlight
         on        <- "none"
         low       <- "none"
         moonlight <- "bhs(255, 47000, 255)"
+        #moonlight <- "bhs(255, " + str(/sys/time/seconds/minutly * 1092) + ", 255)"
         default   <- "none"
         off       <- "none"
 

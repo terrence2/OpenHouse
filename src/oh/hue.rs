@@ -91,6 +91,7 @@ impl TreeSink for Hue {
         return Ok(());
     }
 }
+
 struct Hub {
     address: String,
     username: String,

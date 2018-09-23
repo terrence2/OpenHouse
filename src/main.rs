@@ -4,6 +4,7 @@
 extern crate actix;
 extern crate actix_web;
 extern crate bytes;
+extern crate chrono;
 #[macro_use]
 extern crate failure;
 extern crate futures;
@@ -27,7 +28,7 @@ mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
-use oh::{DBServer, LegacyMCU};
+use oh::{Clock, DBServer, LegacyMCU, TickWorker};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -76,6 +77,9 @@ fn run(opt: Opt) -> Fallible<()> {
         .clone();
     let db_addr = db.start();
 
+    let ticker = TickWorker::new(&db_addr);
+    let tick_addr = ticker.start();
+
     let _server_server = build_server(
         db_addr,
         button_path_map,
@@ -84,7 +88,6 @@ fn run(opt: Opt) -> Fallible<()> {
         opt.port.unwrap_or(5000),
     )?;
     //let _server_addr = server.start();
-
     //tree_addr.send(AddHandler())
 
     let _ = sys.run();

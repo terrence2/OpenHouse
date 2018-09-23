@@ -39,6 +39,9 @@ pub struct TreeBuilder {
     // Handle an import of the given name by supplying a tree rather than
     // searching in the filesystem.
     import_interceptors: HashMap<String, Tree>,
+
+    // Any optional preludes to append to the tree being parsed.
+    preludes: Vec<String>,
 }
 
 impl TreeBuilder {
@@ -49,6 +52,7 @@ impl TreeBuilder {
             nifs: HashMap::new(),
             add_builtin_nifs: true,
             import_interceptors: HashMap::new(),
+            preludes: Vec::new(),
         }
     }
 
@@ -59,6 +63,11 @@ impl TreeBuilder {
 
     pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Fallible<TreeBuilder> {
         self.sink_handlers.insert(name.to_owned(), sink.clone());
+        return Ok(self);
+    }
+
+    pub fn add_prelude(mut self, prelude: &str) -> Fallible<TreeBuilder> {
+        self.preludes.push(prelude.to_owned());
         return Ok(self);
     }
 
@@ -111,8 +120,12 @@ impl TreeBuilder {
             sink_handlers: self.sink_handlers,
         };
 
-        let tree = TreeParser::from_str(tree, s, &self.nifs, &self.import_interceptors)?
-            .link_and_validate_inputs()?
+        let tree = TreeParser::from_str(
+            tree,
+            &(self.preludes.join("\n") + s),
+            &self.nifs,
+            &self.import_interceptors,
+        )?.link_and_validate_inputs()?
             .map_inputs_to_outputs()?;
 
         for sink in tree.sink_handlers.values() {
@@ -882,6 +895,24 @@ foo <- /mnt/a/b/c
         let tree = TreeBuilder::new()
             .intercept_import("test.ygg", test_ygg)?
             .build_from_str(s)?;
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::String("hello".to_owned())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_tree_prelude() -> Fallible<()> {
+        let prelude = r#"
+a
+    b
+        c <- "hello"
+"#;
+        let s = r#"
+foo <- /a/b/c
+"#;
+        let tree = TreeBuilder::new().add_prelude(prelude)?.build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("hello".to_owned())

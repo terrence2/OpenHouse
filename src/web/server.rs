@@ -12,6 +12,7 @@ use futures::future::{ok, Future};
 use oh::{DBServer, HandleEvent};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
+use yggdrasil::Value;
 
 struct AppState {
     db: Addr<DBServer>,
@@ -58,7 +59,10 @@ fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
             .and_then(move |bytes: Bytes| {
                 let value = str::from_utf8(&bytes).unwrap().to_string();
                 trace!("http server: recvd legacy mcu event {} <- {}", path, value);
-                let event = HandleEvent { path, value };
+                let event = HandleEvent {
+                    path,
+                    value: Value::String(value),
+                };
                 db.do_send(event);
                 ok(HttpResponse::Ok().into())
             }),

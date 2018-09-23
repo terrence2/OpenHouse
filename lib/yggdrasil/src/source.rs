@@ -34,6 +34,11 @@ pub trait TreeSource: Downcast {
     /// cached indefinitely, This is only called when the value is used as a path
     /// component before a change event has occurred.
     fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value>;
+
+    /// Parsing is finished and we are ready to start the system.
+    fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
+        return Ok(());
+    }
 }
 impl_downcast!(TreeSource);
 
@@ -51,17 +56,24 @@ impl SourceRef {
 
     /// A helper function to make it easy to downcast to a mutable, concrete type
     /// so that the source object can be mutated.
-    pub fn mutate_as<T>(&self, f: &mut FnMut(&mut T)) -> Fallible<()>
+    pub fn mutate_as<T, U>(&self, f: &mut FnMut(&mut T) -> U) -> Fallible<U>
     where
         T: TreeSource,
     {
+        let mut out = Vec::new();
         RefMut::map(self.0.borrow_mut(), |ts| {
             if let Some(real) = ts.downcast_mut::<T>() {
-                f(real);
+                let result = f(real);
+                out.push(result);
             }
             ts
         });
-        return Ok(());
+        ensure!(
+            out.len() > 0,
+            "runtime error: Source::mutate_as did not return a result"
+        );
+        let result = out.remove(0);
+        return Ok(result);
     }
 
     pub fn inspect_as<T, V>(&self, f: &Fn(&T) -> &V) -> Fallible<Ref<V>>
