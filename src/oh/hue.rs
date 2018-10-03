@@ -113,7 +113,10 @@ impl Hub {
         let color = Color::parse(value)?;
         let mut obj = match color {
             Color::Mired(Mired { color_temp: ct }) => object!{"ct" => ct},
-            Color::RGB(RGB { .. }) => bail!("implement support for rgb"),
+            Color::RGB(rgb) => {
+                let bhs = BHS::from_rgb(&rgb)?;
+                object!{"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
+            }
             Color::BHS(BHS {
                 brightness,
                 hue,

@@ -19,6 +19,40 @@ impl BHS {
             saturation,
         })
     }
+
+    pub fn from_rgb(rgb: &RGB) -> Fallible<Self> {
+        let r = rgb.red as f64 / 256.0f64;
+        let g = rgb.green as f64 / 256.0f64;
+        let b = rgb.blue as f64 / 256.0f64;
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+
+        let hue = if max == min {
+            0.0
+        } else if max == r {
+            0.0 + (g - b) / (max - min)
+        } else if max == g {
+            2.0 + (b - r) / (max - min)
+        } else if max == b {
+            4.0 + (r - g) / (max - min)
+        } else {
+            unreachable!()
+        };
+
+        let saturation = if max == 0.0 { 0.0 } else { (max - min) / max };
+        println!("SAT: {}", saturation);
+
+        let v = max;
+
+        let bhs = Self {
+            brightness: (v * 255.0) as u8,
+            hue: (hue * 65536.0) as u16,
+            saturation: (saturation * 255.0) as u8,
+        };
+
+        println!("{:?} => {:?}", rgb, bhs);
+        Ok(bhs)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -155,6 +189,23 @@ mod test {
         assert!(Color::parse("bhs(256,0,0)").is_err());
         assert!(Color::parse("bhs(0,65566,0)").is_err());
         assert!(Color::parse("bhs(0,0,256)").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_bhs_to_rgb() -> Fallible<()> {
+        assert_eq!(
+            BHS::from_rgb(&RGB {
+                red: 128,
+                green: 0,
+                blue: 0,
+            })?,
+            BHS {
+                brightness: 127,
+                hue: 0,
+                saturation: 255,
+            },
+        );
         Ok(())
     }
 }

@@ -78,7 +78,7 @@ palette
         on        <- "bhs(255, 34495, 255)"
         low       <- "bhs(64, 34495, 255)"
         moonlight <- "none"
-        default   <- "bhs(255, 0, 255)"
+        default   <- "rgb(128, 0, 0)"
         #default   <- "bhs(255, " + str(/sys/time/minutes/hourly * 1092) + ", 255)"
         off       <- "none"
     
@@ -87,7 +87,7 @@ palette
         low       <- "none"
         moonlight <- "bhs(255, 47000, 255)"
         #moonlight <- "bhs(255, " + str(/sys/time/seconds/minutly * 1092) + ", 255)"
-        default   <- "none"
+        default   <- "rgb(128, 0, 0)"
         off       <- "none"
 
 rooms
