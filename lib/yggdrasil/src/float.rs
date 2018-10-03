@@ -20,23 +20,23 @@ impl Float {
         Ok(Float { value })
     }
 
-    pub fn checked_add(&self, rhs: &Float) -> Fallible<Float> {
+    pub fn checked_add(self, rhs: Float) -> Fallible<Float> {
         return Float::new(self.value + rhs.value);
     }
 
-    pub fn checked_div(&self, rhs: &Float) -> Fallible<Float> {
+    pub fn checked_div(self, rhs: Float) -> Fallible<Float> {
         return Float::new(self.value / rhs.value);
     }
 
-    pub fn checked_mul(&self, rhs: &Float) -> Fallible<Float> {
+    pub fn checked_mul(self, rhs: Float) -> Fallible<Float> {
         return Float::new(self.value * rhs.value);
     }
 
-    pub fn checked_neg(&self) -> Fallible<Float> {
+    pub fn checked_neg(self) -> Fallible<Float> {
         return Float::new(-self.value);
     }
 
-    pub fn checked_sub(&self, rhs: &Float) -> Fallible<Float> {
+    pub fn checked_sub(self, rhs: Float) -> Fallible<Float> {
         return Float::new(self.value - rhs.value);
     }
 }
@@ -44,14 +44,14 @@ impl Float {
 impl Add for Float {
     type Output = Float;
     fn add(self, rhs: Float) -> Self::Output {
-        return self.checked_add(&rhs).unwrap();
+        return self.checked_add(rhs).unwrap();
     }
 }
 
 impl Div for Float {
     type Output = Float;
     fn div(self, rhs: Float) -> Self::Output {
-        return self.checked_div(&rhs).unwrap();
+        return self.checked_div(rhs).unwrap();
     }
 }
 
@@ -60,7 +60,7 @@ impl Eq for Float {}
 impl Mul for Float {
     type Output = Float;
     fn mul(self, rhs: Float) -> Self::Output {
-        return self.checked_mul(&rhs).unwrap();
+        return self.checked_mul(rhs).unwrap();
     }
 }
 
@@ -80,7 +80,7 @@ impl Ord for Float {
 impl Sub for Float {
     type Output = Float;
     fn sub(self, rhs: Float) -> Self::Output {
-        return self.checked_sub(&rhs).unwrap();
+        return self.checked_sub(rhs).unwrap();
     }
 }
 

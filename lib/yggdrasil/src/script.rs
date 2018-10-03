@@ -105,8 +105,8 @@ impl Expr {
             |tok, lhs: Vec<Value>, rhs: Vec<Value>| {
                 trace!("vcomp: reduce {:?} {:?} {:?}", lhs, tok, rhs);
                 let mut out = Vec::new();
-                for a in lhs.iter() {
-                    for b in rhs.iter() {
+                for a in &lhs {
+                    for b in &rhs {
                         trace!("vcomp: reduce1 {:?} {:?} {:?}", a, tok, b);
                         out.push(a.apply(&tok, b)?);
                     }

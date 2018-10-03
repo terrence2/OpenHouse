@@ -13,8 +13,10 @@ use source::SourceRef;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
+    default::Default,
     fs,
     path::Path,
+    str::FromStr,
     sync::Arc,
 };
 use value::{Value, ValueType};
@@ -44,8 +46,8 @@ pub struct TreeBuilder {
     preludes: Vec<String>,
 }
 
-impl TreeBuilder {
-    pub fn new() -> Self {
+impl Default for TreeBuilder {
+    fn default() -> TreeBuilder {
         TreeBuilder {
             source_handlers: HashMap::new(),
             sink_handlers: HashMap::new(),
@@ -55,7 +57,9 @@ impl TreeBuilder {
             preludes: Vec::new(),
         }
     }
+}
 
+impl TreeBuilder {
     pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
         self.source_handlers.insert(name.to_owned(), source.clone());
         return Ok(self);
@@ -148,7 +152,7 @@ impl Tree {
         let sink_nodes = source.get_sink_nodes_observing()?;
 
         let mut groups = HashMap::new();
-        for node in sink_nodes.iter() {
+        for node in &sink_nodes {
             let next_value = node.compute(self)?;
             let kind = node.sink_kind()?;
             let value = (node.path_str(), next_value);
@@ -161,7 +165,7 @@ impl Tree {
                 }
             }
         }
-        for (kind, values) in groups.iter() {
+        for (kind, values) in &groups {
             self.sink_handlers[kind].values_updated(values)?;
         }
         return Ok(());
@@ -343,7 +347,7 @@ impl NodeRef {
             .map(|s| s.to_owned())
             .collect::<_>();
         children.sort();
-        for name in children.iter() {
+        for name in &children {
             let child = &self.0.borrow().children[name];
             child.link_and_validate_inputs(tree)?;
         }
@@ -367,7 +371,7 @@ impl NodeRef {
 
     fn enforce_jail(&self) -> Fallible<()> {
         trace!("enforcing jail @ {}", self.path_str());
-        for (name, child) in self.0.borrow().children.iter() {
+        for (name, child) in &self.0.borrow().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -379,7 +383,7 @@ impl NodeRef {
     fn enforce_jail_under(&self, jail_path: &str) -> Fallible<()> {
         trace!("enforcing jail path {} @ {}", jail_path, self.path_str());
         if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
-            for input_path in script.all_inputs()?.iter() {
+            for input_path in &script.all_inputs()? {
                 trace!("checking input: {}", input_path);
                 if !input_path.starts_with(jail_path) {
                     bail!(
@@ -395,13 +399,13 @@ impl NodeRef {
     }
 
     fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Fallible<()> {
-        for (name, child) in self.0.borrow().children.iter() {
+        for (name, child) in &self.0.borrow().children {
             if name == "." || name == ".." {
                 continue;
             }
             child.find_all_sinks(sinks)?;
         }
-        if let Some(_) = self.0.borrow().sink {
+        if self.0.borrow().sink.is_some() {
             sinks.push(self.to_owned());
         }
         return Ok(());
@@ -409,7 +413,7 @@ impl NodeRef {
 
     fn populate_flow_graph(&self, graph: &mut Graph) -> Fallible<()> {
         graph.add_node(self);
-        for (name, child) in self.0.borrow().children.iter() {
+        for (name, child) in &self.0.borrow().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -423,8 +427,8 @@ impl NodeRef {
         return Ok(());
     }
 
-    fn flow_input_to_output(&self, sinks: &Vec<NodeRef>, graph: &Graph) -> Fallible<()> {
-        for (name, child) in self.0.borrow().children.iter() {
+    fn flow_input_to_output(&self, sinks: &[NodeRef], graph: &Graph) -> Fallible<()> {
+        for (name, child) in &self.0.borrow().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -447,7 +451,8 @@ impl NodeRef {
             if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.borrow_mut().input {
                 assert!(
                     sinks.is_empty(),
-                    "dataflow error: found connected sinks at {}, but sinks already set"
+                    "dataflow error: found connected sinks at {}, but sinks already set",
+                    self.path_str()
                 );
                 sinks.append(&mut connected_sinks.unwrap());
             } else {
@@ -600,8 +605,8 @@ impl NodeRef {
         return Ok(());
     }
 
-    pub fn insert_subtree(&self, subtree: NodeRef) -> Fallible<()> {
-        for (name, child) in subtree.0.borrow().children.iter() {
+    pub fn insert_subtree(&self, subtree: &NodeRef) -> Fallible<()> {
+        for (name, child) in &subtree.0.borrow().children {
             self.0
                 .borrow_mut()
                 .children
@@ -799,7 +804,7 @@ a ^src1
     c1 <- "d"
 "#;
         let src1 = SimpleSource::new(vec![])?;
-        let tree = TreeBuilder::new()
+        let tree = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
@@ -815,7 +820,7 @@ a ^src1
 b <- "foo"
 "#;
         let src1 = SimpleSource::new(vec![])?;
-        let res = TreeBuilder::new()
+        let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
         assert!(res.is_err());
@@ -830,7 +835,7 @@ a ^src1
 b <- "foo"
 "#;
         let src1 = SimpleSource::new(vec![])?;
-        let res = TreeBuilder::new()
+        let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
         assert!(res.is_err());
@@ -848,7 +853,7 @@ bar
     v<-2
 "#;
         let srcref: SourceRef = SimpleSource::new(vec!["foo".into(), "bar".into()])?;
-        let tree = TreeBuilder::new()
+        let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
@@ -870,7 +875,7 @@ a
 import(test.ygg)
 foo <- /a/b/c
 "#;
-        let tree = TreeBuilder::new()
+        let tree = TreeBuilder::default()
             .intercept_import("test.ygg", test_ygg)?
             .build_from_str(s)?;
         assert_eq!(
@@ -892,7 +897,7 @@ mnt
     import(test.ygg)
 foo <- /mnt/a/b/c
 "#;
-        let tree = TreeBuilder::new()
+        let tree = TreeBuilder::default()
             .intercept_import("test.ygg", test_ygg)?
             .build_from_str(s)?;
         assert_eq!(
@@ -912,7 +917,9 @@ a
         let s = r#"
 foo <- /a/b/c
 "#;
-        let tree = TreeBuilder::new().add_prelude(prelude)?.build_from_str(s)?;
+        let tree = TreeBuilder::default()
+            .add_prelude(prelude)?
+            .build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("hello".to_owned())

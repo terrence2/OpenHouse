@@ -1,14 +1,14 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use actix::{Actor, Addr, AsyncContext, Context, Message};
-use chrono::{DateTime, Datelike, Duration, Local, Timelike};
-use failure::{err_msg, Fallible};
+use actix::{Actor, Addr, AsyncContext, Context};
+use chrono::{DateTime, Datelike, Local, Timelike};
+use failure::Fallible;
 use oh::{DBServer, TickEvent};
 use std::{collections::HashMap, time::Duration as StdDuration};
-use yggdrasil::{SubTree, Tree, TreeSource, Value, ValueType};
+use yggdrasil::{SubTree, TreeSource, Value, ValueType};
 
-pub(crate) const CLOCK_PRELUDE: &'static str = r#"
+pub(crate) const CLOCK_PRELUDE: &str = r#"
 sys
     time
         seconds
@@ -140,20 +140,20 @@ impl ClockWrap {
     fn seconds(&self, now: &DateTime<Local>) -> i64 {
         const SECS_PER_DAY: u32 = 60 * 60 * 24;
         match self {
-            ClockWrap::Minutly => now.time().second() as i64,
-            ClockWrap::Hourly => (now.time().minute() * 60 + now.time().second()) as i64,
-            ClockWrap::Daily => now.time().num_seconds_from_midnight() as i64,
+            ClockWrap::Minutly => i64::from(now.time().second()),
+            ClockWrap::Hourly => i64::from(now.time().minute() * 60 + now.time().second()),
+            ClockWrap::Daily => i64::from(now.time().num_seconds_from_midnight()),
             ClockWrap::Weekly => {
                 let day = now.date().weekday().num_days_from_sunday(); // day of week, 0 on sunday
-                (day * SECS_PER_DAY + now.time().num_seconds_from_midnight()) as i64
+                i64::from(day * SECS_PER_DAY + now.time().num_seconds_from_midnight())
             }
             ClockWrap::Monthly => {
                 let day = now.date().day0(); // day of month, 0 based
-                (day * SECS_PER_DAY + now.time().num_seconds_from_midnight()) as i64
+                i64::from(day * SECS_PER_DAY + now.time().num_seconds_from_midnight())
             }
             ClockWrap::Yearly => {
                 let day = now.date().ordinal() - 1; // day of year, 1 based
-                (day * SECS_PER_DAY + now.time().num_seconds_from_midnight()) as i64
+                i64::from(day * SECS_PER_DAY + now.time().num_seconds_from_midnight())
             }
             ClockWrap::Never => now.timestamp(),
         }
@@ -168,7 +168,6 @@ struct ClockDef {
 
 impl ClockDef {
     fn new(interval: ClockInterval, wrap: ClockWrap) -> Self {
-        let now = Local::now();
         ClockDef {
             interval,
             wrap,
@@ -204,7 +203,7 @@ impl Clock {
     pub fn handle_tick(&mut self) -> Vec<(String, i64)> {
         let mut out = Vec::new();
         let now = Local::now();
-        for (path, clock) in self.clocks.iter_mut() {
+        for (path, clock) in &mut self.clocks {
             if let Some(value) = clock.tick(&now) {
                 out.push((path.to_owned(), value));
             }

@@ -153,10 +153,10 @@ impl<'a> TreeParser<'a> {
         return Ok(());
     }
 
-    fn find_next_token(&self, tok: Token) -> Fallible<usize> {
+    fn find_next_token(&self, tok: &Token) -> Fallible<usize> {
         let mut i = self.position;
         while i < self.tokens.len() {
-            if self.tokens[i] == tok {
+            if &self.tokens[i] == tok {
                 return Ok(i);
             }
             i += 1;
@@ -172,7 +172,7 @@ impl<'a> TreeParser<'a> {
             Token::Source(ref s) => node.set_source(s, &self.tree)?,
             Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
             Token::ComesFromInline => {
-                let end = self.find_next_token(Token::Newline)?;
+                let end = self.find_next_token(&Token::Newline)?;
                 let s = Script::inline_from_tokens(
                     node.path_str(),
                     &self.tokens[self.position..end],
@@ -186,7 +186,7 @@ impl<'a> TreeParser<'a> {
                 let template: &NodeRef = self
                     .templates
                     .get(s)
-                    .ok_or(format_err!("parse error: unknown template: {}", s))?;
+                    .ok_or_else(|| format_err!("parse error: unknown template: {}", s))?;
                 node.apply_template(template)?
             }
             _ => bail!("parse error: expected to find a sigil-delimited token"),
@@ -196,7 +196,7 @@ impl<'a> TreeParser<'a> {
 
     fn do_import(&mut self, filename: &str, parent: &NodeRef) -> Fallible<()> {
         if let Some(subtree) = self.import_interceptors.get(filename) {
-            return parent.insert_subtree(subtree.root());
+            return parent.insert_subtree(&subtree.root());
         }
         bail!("would import {} from file", filename)
     }
@@ -241,13 +241,13 @@ mod test {
 
     #[test]
     fn test_parse_minimal() {
-        let tree = TreeBuilder::new().build_from_str("a").unwrap();
+        let tree = TreeBuilder::default().build_from_str("a").unwrap();
         assert!(tree.lookup("/a").unwrap().location().is_none());
     }
 
     #[test]
     fn test_parse_siblings() {
-        let tree = TreeBuilder::new().build_from_str("a\nb").unwrap();
+        let tree = TreeBuilder::default().build_from_str("a\nb").unwrap();
         assert!(tree.lookup("/a").unwrap().location().is_none());
         assert!(tree.lookup("/b").unwrap().location().is_none());
     }
@@ -258,7 +258,7 @@ mod test {
 a @1x1
     b @2x2
 c @3x3";
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("1x1").unwrap()
@@ -279,7 +279,7 @@ c @3x3";
 a @1x1
     b @2x2
     c @3x3";
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("1x1").unwrap()
@@ -303,7 +303,7 @@ a @1x1 <>1x1
 c @3x3
     <-"bar"
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("1x1").unwrap()
@@ -337,7 +337,7 @@ a @1x1
     b @2x2
         c @3x3
 d @4x4";
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().location().unwrap(),
             Dimension2::from_str("1x1").unwrap()
@@ -368,7 +368,7 @@ d @4x4";
     // a !foo
     // b !bar
     // ";
-    //         let tree = TreeBuilder::new().build_from_str(s).unwrap();
+    //         let tree = TreeBuilder::default().build_from_str(s).unwrap();
     //         assert_eq!(
     //             tree.lookup("/a").unwrap().location().unwrap(),
     //             Dimension2::from_str("1x1").unwrap()
@@ -395,7 +395,7 @@ d @4x4";
         // use simplelog::*;
         // let _ = TermLogger::init(LevelFilter::Trace, Config::default());
         let s = "a <- 2 + 2";
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().compute(&tree).unwrap(),
             Value::Integer(4)
@@ -408,7 +408,7 @@ d @4x4";
 a <-"foo"
 b <-/a
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -425,7 +425,7 @@ b <-/a
 a <-"foo"
 b <-./a
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -443,7 +443,7 @@ a <-"foo"
 b <-./a
     c <-../b
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -465,7 +465,7 @@ a <-"foo"
 b <-./b/c
     c <-../a
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -488,7 +488,7 @@ b <-/{./a}/v
 y
     v <- 2
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -514,7 +514,7 @@ y
 yz
     v <- 3
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/a").unwrap().nodetype(&tree).unwrap(),
             ValueType::STRING
@@ -547,7 +547,7 @@ yz
 foo <- "a" + /bar + "c"
 bar <- "b"
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("abc".to_owned())
@@ -562,7 +562,7 @@ foo <- "a" + (/bar + /baz) + "c"
 bar <- "b"
 baz <- "b"
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("abbc".to_owned())
@@ -577,7 +577,7 @@ foo <- 2 + (/bar * /baz) + 2
 bar <- 3
 baz <- 3
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(13));
         Ok(())
     }
@@ -589,7 +589,7 @@ foo <- "a" + str(/bar * /baz) + "b"
 bar <- 3
 baz <- 3
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("a9b".to_owned())
@@ -606,7 +606,7 @@ bar <- 2
 baz <- 3
 quux <- "z" + str(/bar * /baz)
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
             Value::String("abc".to_owned())
@@ -620,7 +620,7 @@ quux <- "z" + str(/bar * /baz)
 foo <- /bar % 3
 bar <- 2
 "#;
-        let tree = TreeBuilder::new().build_from_str(s).unwrap();
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(2));
         Ok(())
     }
@@ -639,7 +639,7 @@ bar <- 2
     // z
     //     v <- 3
     // "#;
-    //         let tree = TreeParser::from_str(TreeBuilder::new(), s).unwrap();
+    //         let tree = TreeParser::from_str(TreeBuilder::default(), s).unwrap();
     //         assert_eq!(tree.lookup("/a").unwrap().source().unwrap(), "foo");
     //         assert_eq!(
     //             tree.lookup("/a").unwrap().nodetype().unwrap(),

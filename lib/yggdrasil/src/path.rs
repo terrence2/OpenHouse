@@ -1,8 +1,8 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Fallible;
-use std::fmt;
+use failure::{Error, Fallible};
+use std::{fmt, str::FromStr};
 use tree::Tree;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -54,7 +54,7 @@ impl ScriptPath {
     ) -> Fallible<bool> {
         let mut dynamic = false;
         let parts = Self::tokenize_path(s)?;
-        for part in parts.iter() {
+        for part in &parts {
             if Self::parse_part(components, base_path, part)? {
                 dynamic = true;
             }
@@ -78,7 +78,7 @@ impl ScriptPath {
             }
             ".." => {
                 ensure!(
-                    components.len() > 0,
+                    !components.is_empty(),
                     "parse error: looked up parent dir (..) past start of path at '{}' in '{:?}'",
                     base_path,
                     components
@@ -143,7 +143,7 @@ impl ScriptPath {
 
     pub fn as_concrete(&self) -> ConcretePath {
         let mut concrete = Vec::new();
-        for component in self.components.iter() {
+        for component in &self.components {
             match component {
                 PathComponent::Name(name) => concrete.push(name.clone()),
                 PathComponent::Lookup(_) => {
@@ -159,7 +159,7 @@ impl ScriptPath {
             inputs.push(self.as_concrete());
             return Ok(());
         }
-        for component in self.components.iter() {
+        for component in &self.components {
             match component {
                 PathComponent::Name(_) => {}
                 PathComponent::Lookup(path) => {
@@ -181,11 +181,11 @@ impl ScriptPath {
         }
         trace!("Path::devirtualize(dynamic: {})", self);
         let mut working_set = Vec::new();
-        for component in self.components.iter() {
+        for component in &self.components {
             match component {
                 PathComponent::Name(name) => {
                     // Append to all in-progress path fragments.
-                    working_set = Self::explode_paths_1(working_set, name.clone());
+                    working_set = Self::explode_paths_1(working_set, name);
                 }
                 PathComponent::Lookup(script_path) => {
                     // Find all possible paths using this algorithm on the child.
@@ -198,7 +198,7 @@ impl ScriptPath {
 
                     // Find all values that this can take using virtual interpretation.
                     let mut all_names = Vec::new();
-                    for sub_path in concrete_sub_paths.iter() {
+                    for sub_path in &concrete_sub_paths {
                         let noderef = tree.lookup_path(&sub_path)?;
                         for v in noderef.virtually_compute_for_path(tree)? {
                             all_names.push(v.as_path_component()?);
@@ -224,18 +224,18 @@ impl ScriptPath {
         return Ok(working_set);
     }
 
-    fn explode_paths_1(mut paths: Vec<ConcretePath>, name: String) -> Vec<ConcretePath> {
+    fn explode_paths_1(mut paths: Vec<ConcretePath>, name: &str) -> Vec<ConcretePath> {
         if paths.is_empty() {
-            paths.push(ConcretePath::from_components(vec![name.clone()]));
+            paths.push(ConcretePath::from_components(vec![name.to_owned()]));
         } else {
-            for concrete in paths.iter_mut() {
-                concrete.components.push(name.clone());
+            for concrete in &mut paths {
+                concrete.components.push(name.to_owned());
             }
         }
         return paths;
     }
 
-    fn explode_paths_n(mut paths: Vec<ConcretePath>, all_names: &Vec<String>) -> Vec<ConcretePath> {
+    fn explode_paths_n(mut paths: Vec<ConcretePath>, all_names: &[String]) -> Vec<ConcretePath> {
         let mut next_paths = Vec::new();
         if paths.is_empty() {
             for name in all_names.iter() {
@@ -271,12 +271,10 @@ pub struct ConcretePath {
     pub components: Vec<String>,
 }
 
-impl ConcretePath {
-    fn from_components(components: Vec<String>) -> Self {
-        Self { components }
-    }
+impl FromStr for ConcretePath {
+    type Err = Error;
 
-    pub fn from_str(path: &str) -> Fallible<Self> {
+    fn from_str(path: &str) -> Result<Self, Self::Err> {
         ensure!(
             path.starts_with('/'),
             "invalid path: tree lookups must start at /"
@@ -291,6 +289,12 @@ impl ConcretePath {
             components.push(part.to_owned());
         }
         return Ok(Self::from_components(components));
+    }
+}
+
+impl ConcretePath {
+    fn from_components(components: Vec<String>) -> Self {
+        Self { components }
     }
 
     pub fn new_root() -> Self {

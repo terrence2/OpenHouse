@@ -8,13 +8,10 @@ use std::{
     rc::Rc,
 };
 use tree::SubTree;
-use value::{Value, ValueType};
+use value::Value;
 
 /// This Trait allows a Sink to provide required metadata to the Tree.
 pub trait TreeSink: Downcast {
-    /// Return the type of values that the sink takes.
-    fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType>;
-
     /// Note the following path listed as a sink using this handler.
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
 
@@ -24,7 +21,7 @@ pub trait TreeSink: Downcast {
     }
 
     /// Update the given paths to the new values.
-    fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Fallible<()>;
+    fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()>;
 }
 impl_downcast!(TreeSink);
 
@@ -63,14 +60,10 @@ impl SinkRef {
     where
         T: TreeSink,
     {
-        let foo: Ref<V> = Ref::map(self.sink.borrow(), |ts| {
+        let inner: Ref<V> = Ref::map(self.sink.borrow(), |ts| {
             return f(ts.downcast_ref::<T>().unwrap());
         });
-        return Ok(foo);
-    }
-
-    pub(super) fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType> {
-        self.sink.borrow().nodetype(path, tree)
+        return Ok(inner);
     }
 
     pub(super) fn on_ready(&self, tree: &SubTree) -> Fallible<()> {
@@ -81,7 +74,7 @@ impl SinkRef {
         self.sink.borrow_mut().add_path(path, tree)
     }
 
-    pub(super) fn values_updated(&self, values: &Vec<(String, Value)>) -> Fallible<()> {
+    pub(super) fn values_updated(&self, values: &[(String, Value)]) -> Fallible<()> {
         self.sink.borrow_mut().values_updated(values)
     }
 }
@@ -102,15 +95,11 @@ mod test {
     }
 
     impl TreeSink for TestSink {
-        fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-            Ok(ValueType::STRING)
-        }
-
         fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Fallible<()> {
             return Ok(());
         }
 
-        fn values_updated(&mut self, _values: &Vec<(String, Value)>) -> Fallible<()> {
+        fn values_updated(&mut self, _values: &[(String, Value)]) -> Fallible<()> {
             return Ok(());
         }
     }
@@ -120,7 +109,6 @@ mod test {
         let sink = TestSink::new()?;
         let tree = TreeBuilder::empty();
         let subtree = tree.subtree_at(&tree.root())?;
-        assert_eq!(sink.nodetype("", &subtree)?, ValueType::STRING);
         sink.add_path("", &subtree)?;
         sink.values_updated(&vec![])?;
         return Ok(());

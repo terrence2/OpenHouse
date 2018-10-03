@@ -10,7 +10,7 @@ use bytes::Bytes;
 use failure::{err_msg, Fallible};
 use futures::future::{ok, Future};
 use oh::{DBServer, HandleEvent};
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+//use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
 use yggdrasil::Value;
 
@@ -24,7 +24,7 @@ fn get_caller_ip(req: &HttpRequest<AppState>) -> Fallible<IpAddr> {
     let remote_host = info.remote();
     let ip = remote_host
         .ok_or_else(|| err_msg("cannot find remote host for event"))?
-        .split(":")
+        .split(':')
         .collect::<Vec<&str>>()
         .first()
         .ok_or_else(|| err_msg("remote host is empty in event"))?

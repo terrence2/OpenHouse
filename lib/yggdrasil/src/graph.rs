@@ -53,7 +53,7 @@ impl Graph {
         });
     }
 
-    pub fn connected_nodes(&self, from: &NodeRef, to: &Vec<NodeRef>) -> Fallible<Vec<NodeRef>> {
+    pub fn connected_nodes(&self, from: &NodeRef, to: &[NodeRef]) -> Fallible<Vec<NodeRef>> {
         let mut found = HashSet::new();
         let mut visited = HashSet::new();
         let mut targets = HashMap::new();
@@ -89,7 +89,7 @@ impl Graph {
         }
 
         // Find all targets of current.
-        for edge in self.edges.iter() {
+        for edge in &self.edges {
             if edge.start == current_path {
                 // FIXME: is there a way to check for existance up front? Otherwise we need to propogate this error.
                 ensure!(

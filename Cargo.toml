@@ -8,7 +8,6 @@ authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
 
 [dependencies]
 actix = "^0.7"
-#actix-web = { git="https://github.com/actix/actix-web.git", rev="9b7ea836d0a0d850b03ad693c25578697c922076", features=["alpn", "flate2-rust"] }
 actix-web = { version = "0.7.6", features=["alpn", "flate2-rust"] }
 bytes = "0.4.9"
 chrono = "0.4"

@@ -28,7 +28,7 @@ mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
-use oh::{Clock, DBServer, LegacyMCU, TickWorker};
+use oh::{DBServer, LegacyMCU, TickWorker};
 use simplelog::{Config, LevelFilter, TermLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -78,13 +78,13 @@ fn run(opt: Opt) -> Fallible<()> {
     let db_addr = db.start();
 
     let ticker = TickWorker::new(&db_addr);
-    let tick_addr = ticker.start();
+    let _tick_addr = ticker.start();
 
     let _server_server = build_server(
         db_addr,
         button_path_map,
         "openhouse.eyrie",
-        &opt.host.unwrap_or("localhost".to_string()),
+        &opt.host.unwrap_or_else(|| "localhost".to_string()),
         opt.port.unwrap_or(5000),
     )?;
     //let _server_addr = server.start();

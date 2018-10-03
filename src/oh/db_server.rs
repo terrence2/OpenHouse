@@ -23,7 +23,7 @@ impl DBServer {
         let hue = SinkRef::new(Hue::new()?);
         let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
         let clock = SourceRef::new(Clock::new()?);
-        let tree = TreeBuilder::new()
+        let tree = TreeBuilder::default()
             .add_source_handler("clock", &clock)?
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .add_sink_handler("hue", &hue)?
@@ -75,11 +75,11 @@ impl Message for TickEvent {
 impl Handler<TickEvent> for DBServer {
     type Result = Fallible<()>;
 
-    fn handle(&mut self, msg: TickEvent, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: TickEvent, _ctx: &mut Context<Self>) -> Self::Result {
         let updates = self.clock.mutate_as(&mut |c: &mut Clock| c.handle_tick())?;
         //println!("woudl apply updated: {:?}", updates);
-        for (path, value) in updates.iter() {
-            self.tree.handle_event(&path, Value::Integer(*value));
+        for (path, value) in &updates {
+            self.tree.handle_event(&path, Value::Integer(*value))?;
         }
         return Ok(());
     }

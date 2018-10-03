@@ -10,8 +10,8 @@ use oh::{
     json_helpers::{ObjectHelper, ValueHelper},
 };
 use reqwest::Client;
-use std::{collections::HashMap, str, time::Duration};
-use yggdrasil::{ConcretePath, SubTree, TreeSink, Value, ValueType};
+use std::{collections::HashMap, str::FromStr, time::Duration};
+use yggdrasil::{ConcretePath, SubTree, TreeSink, Value};
 
 struct ValuesUpdated {
     values: Vec<(String, Value)>,
@@ -41,10 +41,6 @@ impl Hue {
 }
 
 impl TreeSink for Hue {
-    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-        return Ok(ValueType::STRING);
-    }
-
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()> {
         let concrete = ConcretePath::from_str(path)?;
         let basename = concrete.basename();
@@ -82,7 +78,7 @@ impl TreeSink for Hue {
         return Ok(());
     }
 
-    fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Fallible<()> {
+    fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {
         if let Some(ref worker) = self.worker {
             worker.do_send(ValuesUpdated {
                 values: values.to_owned(),
@@ -117,16 +113,12 @@ impl Hub {
         let color = Color::parse(value)?;
         let mut obj = match color {
             Color::Mired(Mired { color_temp: ct }) => object!{"ct" => ct},
-            Color::RGB(RGB {
-                red: r,
-                green: g,
-                blue: b,
-            }) => bail!("implement support for rgb"),
+            Color::RGB(RGB { .. }) => bail!("implement support for rgb"),
             Color::BHS(BHS {
-                brightness: bri,
-                hue: hue,
-                saturation: sat,
-            }) => object!{"bri" => bri, "hue" => hue, "sat" => sat},
+                brightness,
+                hue,
+                saturation,
+            }) => object!{"bri" => brightness, "hue" => hue, "sat" => saturation},
         };
         obj["on"] = true.into();
         // FIXME: support transition time
@@ -228,7 +220,7 @@ impl HueWorker {
             "apiversion",
         ];
         info!("hue hub info ->");
-        for prop in props.iter() {
+        for prop in &props {
             info!("{:>20}: {}", prop, config.fetch(prop)?);
         }
         return Ok(());
@@ -273,7 +265,7 @@ impl HueWorker {
         return Ok(());
     }
 
-    fn handle_values_updated(&mut self, msg: ValuesUpdated) -> Fallible<()> {
+    fn handle_values_updated(&mut self, msg: &ValuesUpdated) -> Fallible<()> {
         // Group lights by value.
         let groups = msg.values.iter().group_by(|(_, v)| v);
         for (value, group) in &groups {
@@ -313,7 +305,7 @@ impl HueWorker {
         let v = &light_value.as_string()?;
         let obj = Hub::light_state_for_value(v)?;
         let put_data = stringify(obj);
-        let resp = self.hub.put(&url, put_data)?;
+        let _resp = self.hub.put(&url, put_data)?;
         return Ok(());
     }
 }
@@ -322,7 +314,7 @@ impl Handler<ValuesUpdated> for HueWorker {
     type Result = Fallible<()>;
 
     fn handle(&mut self, msg: ValuesUpdated, _: &mut Context<Self>) -> Self::Result {
-        match self.handle_values_updated(msg) {
+        match self.handle_values_updated(&msg) {
             Ok(_) => (),
             Err(e) => error!("hue: value update failed: {}", e),
         }

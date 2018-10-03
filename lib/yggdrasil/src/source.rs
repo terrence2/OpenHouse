@@ -69,7 +69,7 @@ impl SourceRef {
             ts
         });
         ensure!(
-            out.len() > 0,
+            !out.is_empty(),
             "runtime error: Source::mutate_as did not return a result"
         );
         let result = out.remove(0);
@@ -80,10 +80,10 @@ impl SourceRef {
     where
         T: TreeSource,
     {
-        let foo: Ref<V> = Ref::map(self.0.borrow(), |ts| {
+        let inner: Ref<V> = Ref::map(self.0.borrow(), |ts| {
             return f(ts.downcast_ref::<T>().unwrap());
         });
-        return Ok(foo);
+        return Ok(inner);
     }
 
     pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {

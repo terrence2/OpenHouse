@@ -25,20 +25,18 @@ impl Length {
             ensure!(s.ends_with('"'), "expected \" to be at end");
             let stripped = &s[0..s.len() - 1];
             Ok(Length::Imperial(0, stripped.parse::<f64>()?))
+        } else if s.ends_with('m') {
+            let stripped = &s[0..s.len() - 1];
+            Ok(Length::Meters(stripped.parse::<f64>()?))
         } else {
-            if s.ends_with('m') {
-                let stripped = &s[0..s.len() - 1];
-                Ok(Length::Meters(stripped.parse::<f64>()?))
-            } else {
-                Ok(Length::Meters(s.parse::<f64>()?))
-            }
+            Ok(Length::Meters(s.parse::<f64>()?))
         }
     }
 
     pub fn meters(&self) -> f64 {
-        match self {
-            &Length::Meters(meters) => meters,
-            &Length::Imperial(feet, inches) => ((feet as f64) + (inches / 12.)) * 0.3048,
+        match *self {
+            Length::Meters(meters) => meters,
+            Length::Imperial(feet, inches) => ((feet as f64) + (inches / 12.)) * 0.3048,
         }
     }
 }
@@ -62,8 +60,8 @@ impl Dimension2 {
         assert!(!s.starts_with('>'));
         let parts = s.splitn(2, 'x').collect::<Vec<&str>>();
         ensure!(parts.len() == 2, "invalid dimension: no x in middle");
-        ensure!(parts[0].len() > 0, "invalid dimension: empty X part");
-        ensure!(parts[1].len() > 0, "invalid dimension: empty Y part");
+        ensure!(!parts[0].is_empty(), "invalid dimension: empty X part");
+        ensure!(!parts[1].is_empty(), "invalid dimension: empty Y part");
         Ok(Dimension2 {
             x_len: Length::from_str(parts[0])?,
             y_len: Length::from_str(parts[1])?,

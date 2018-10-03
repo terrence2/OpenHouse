@@ -8,7 +8,7 @@ use std::{convert::From, fmt};
 use tokenizer::Token;
 use tree::Tree;
 
-fn ensure_same_types(types: &Vec<ValueType>) -> Fallible<ValueType> {
+fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
     ensure!(
         !types.is_empty(),
         "typecheck error: trying to reify empty type list"
@@ -133,7 +133,7 @@ impl Value {
 
     pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Fallible<String> {
         return Ok(match tok {
-            Token::Add => a.to_owned() + &b,
+            Token::Add => a.to_owned() + b,
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
@@ -201,7 +201,7 @@ impl Value {
             // visited so that we can virtually_compute on them when devirtualizing.
             let mut concrete_inputs = Vec::new();
             path.find_concrete_inputs(&mut concrete_inputs)?;
-            for concrete in concrete_inputs.iter() {
+            for concrete in &concrete_inputs {
                 tree.lookup_path(concrete)?.link_and_validate_inputs(tree)?;
             }
 
@@ -209,7 +209,7 @@ impl Value {
 
             // Do type checking as we collect paths, since we won't have another opportunity.
             let mut value_types = Vec::new();
-            for inp in direct_inputs.iter() {
+            for inp in &direct_inputs {
                 let noderef = tree.lookup_path(inp)?;
                 let nodetype = noderef.get_or_find_node_type(tree)?;
                 value_types.push(nodetype);

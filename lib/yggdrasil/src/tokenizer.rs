@@ -344,7 +344,7 @@ impl LineTokenizer {
                     self.offset += 1;
                     return Ok(Token::StringTerm(out.iter().collect::<String>()));
                 }
-                c @ _ => out.push(c),
+                c => out.push(c),
             }
             self.offset += 1;
         }

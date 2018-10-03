@@ -13,13 +13,10 @@ struct Light {
     value: Option<Value>,
 }
 impl TreeSink for Light {
-    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Result<ValueType, Error> {
-        return Ok(ValueType::STRING);
-    }
     fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
         return Ok(());
     }
-    fn values_updated(&mut self, values: &Vec<(String, Value)>) -> Result<(), Error> {
+    fn values_updated(&mut self, values: &[(String, Value)]) -> Result<(), Error> {
         for (path, value) in values.iter() {
             assert_eq!(*path, "/room/light");
             self.value = Some(value.to_owned());
@@ -59,7 +56,7 @@ room
 "#;
     let src = SourceRef::new(Box::new(Switch {}));
     let sink = SinkRef::new(Box::new(Light { value: None }));
-    let tree = TreeBuilder::new()
+    let tree = TreeBuilder::default()
         .add_source_handler("switch", &src)?
         .add_sink_handler("light", &sink)?
         .build_from_str(program)?;
