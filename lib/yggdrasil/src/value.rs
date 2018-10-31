@@ -24,7 +24,7 @@ fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
             "typecheck error: mismatched types in ensure_same_types"
         );
     }
-    return Ok(expect_type);
+    Ok(expect_type)
 }
 
 bitflags! {
@@ -52,7 +52,7 @@ impl Value {
             let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.virtually_compute_for_path(tree);
         }
-        return Ok(vec![self.to_owned()]);
+        Ok(vec![self.to_owned()])
     }
 
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
@@ -60,7 +60,7 @@ impl Value {
             let noderef = tree.lookup_dynamic_path(p)?;
             return noderef.compute(tree);
         }
-        return Ok(self.to_owned());
+        Ok(self.to_owned())
     }
 
     pub(super) fn apply(&self, tok: &Token, other: &Value) -> Fallible<Value> {
@@ -72,7 +72,7 @@ impl Value {
             !other.is_path(),
             "runtime error: attempting to apply a non-path"
         );
-        return Ok(match self {
+        Ok(match self {
             Value::Boolean(b0) => {
                 Value::Boolean(Self::apply_boolean(tok, *b0, other.as_boolean()?)?)
             }
@@ -80,11 +80,11 @@ impl Value {
             Value::Float(f0) => Self::apply_float(tok, *f0, other.as_float()?)?,
             Value::String(s0) => Value::String(Self::apply_string(tok, s0, &other.as_string()?)?),
             _ => bail!("runtime error: apply reached a path node"),
-        });
+        })
     }
 
     pub(super) fn apply_boolean(tok: &Token, a: bool, b: bool) -> Fallible<bool> {
-        return Ok(match tok {
+        Ok(match tok {
             Token::Or => a || b,
             Token::And => a && b,
             Token::Equals => a == b,
@@ -93,11 +93,11 @@ impl Value {
                 "runtime error: {:?} is not a valid operation on a bool",
                 tok
             ),
-        });
+        })
     }
 
     pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Fallible<Value> {
-        return Ok(match tok {
+        Ok(match tok {
             Token::Add => Value::Integer(a + b),
             Token::Subtract => Value::Integer(a - b),
             Token::Multiply => Value::Integer(a * b),
@@ -113,11 +113,11 @@ impl Value {
                 "runtime error: {:?} is not a valid operation on an integer",
                 tok
             ),
-        });
+        })
     }
 
     pub(super) fn apply_float(tok: &Token, a: Float, b: Float) -> Fallible<Value> {
-        return Ok(match tok {
+        Ok(match tok {
             Token::Add => Value::Float(a + b),
             Token::Subtract => Value::Float(a - b),
             Token::Multiply => Value::Float(a * b),
@@ -132,24 +132,24 @@ impl Value {
                 "runtime error: {:?} is not a valid operation on a float",
                 tok
             ),
-        });
+        })
     }
 
     pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Fallible<String> {
-        return Ok(match tok {
+        Ok(match tok {
             Token::Add => a.to_owned() + b,
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
             ),
-        });
+        })
     }
 
     pub fn is_path(&self) -> bool {
         if let Value::Path(_) = self {
             return true;
         }
-        return false;
+        false
     }
 
     pub fn as_boolean(&self) -> Fallible<bool> {
@@ -226,13 +226,13 @@ impl Value {
 
             return Ok(value_types[0]);
         }
-        return Ok(match self {
+        Ok(match self {
             Value::Boolean(_) => ValueType::BOOLEAN,
             Value::Float(_) => ValueType::FLOAT,
             Value::Integer(_) => ValueType::INTEGER,
             Value::String(_) => ValueType::STRING,
             Value::Path(_) => panic!("typeflow error: we already filtered out path"),
-        });
+        })
     }
 }
 

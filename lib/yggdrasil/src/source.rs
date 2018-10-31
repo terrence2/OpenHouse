@@ -39,7 +39,7 @@ pub trait TreeSource: Downcast {
 
     /// Parsing is finished and we are ready to start the system.
     fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
-        return Ok(());
+        Ok(())
     }
 }
 impl_downcast!(TreeSource);
@@ -75,17 +75,15 @@ impl SourceRef {
             "runtime error: Source::mutate_as did not return a result"
         );
         let result = out.remove(0);
-        return Ok(result);
+        Ok(result)
     }
 
     pub fn inspect_as<T, V>(&self, f: &Fn(&T) -> &V) -> Fallible<Ref<V>>
     where
         T: TreeSource,
     {
-        let inner: Ref<V> = Ref::map(self.0.borrow(), |ts| {
-            return f(ts.downcast_ref::<T>().unwrap());
-        });
-        return Ok(inner);
+        let inner: Ref<V> = Ref::map(self.0.borrow(), |ts| f(ts.downcast_ref::<T>().unwrap()));
+        Ok(inner)
     }
 
     pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
@@ -134,7 +132,7 @@ pub(crate) mod test {
                 values: values.clone(),
                 inputs: HashMap::new(),
             });
-            return Ok(SourceRef::new(src));
+            Ok(SourceRef::new(src))
         }
     }
 
@@ -146,17 +144,17 @@ pub(crate) mod test {
         fn add_path(&mut self, path: &str, _tree: &SubTree) -> Fallible<()> {
             self.inputs
                 .insert(path.into(), Value::String("foo".to_owned()));
-            return Ok(());
+            Ok(())
         }
 
         fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
             let entry = self.inputs.get_mut(path).unwrap();
             *entry = value;
-            return Ok(());
+            Ok(())
         }
 
         fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
-            return Some(self.inputs[path].clone());
+            Some(self.inputs[path].clone())
         }
 
         fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {

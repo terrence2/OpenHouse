@@ -57,7 +57,7 @@ impl<'a> TreeParser<'a> {
             parser.consume_root(&tree.root())?;
         }
 
-        return Ok(tree);
+        Ok(tree)
     }
 
     fn consume_root(&mut self, root: &NodeRef) -> Fallible<()> {
@@ -80,7 +80,7 @@ impl<'a> TreeParser<'a> {
                 ),
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     fn consume_tree(&mut self, parent: &NodeRef) -> Fallible<()> {
@@ -113,7 +113,7 @@ impl<'a> TreeParser<'a> {
                 ),
             };
         }
-        return Ok(());
+        Ok(())
     }
 
     // After name up to the newline.
@@ -132,7 +132,7 @@ impl<'a> TreeParser<'a> {
             }
         }
         // End of file is fine too.
-        return Ok(());
+        Ok(())
     }
 
     // after name + inline_suite + indent up to dedent.
@@ -153,7 +153,7 @@ impl<'a> TreeParser<'a> {
             }
         }
         // Or end of file.
-        return Ok(());
+        Ok(())
     }
 
     fn find_next_token(&self, tok: &Token) -> Fallible<usize> {
@@ -194,7 +194,7 @@ impl<'a> TreeParser<'a> {
             }
             _ => bail!("parse error: expected to find a sigil-delimited token"),
         }
-        return Ok(());
+        Ok(())
     }
 
     fn do_import(&mut self, filename: &str, parent: &NodeRef) -> Fallible<()> {
@@ -216,14 +216,14 @@ impl<'a> TreeParser<'a> {
     }
 
     fn out_of_input(&self) -> bool {
-        return self.position >= self.tokens.len();
+        self.position >= self.tokens.len()
     }
 
     fn pop(&mut self) -> Fallible<Token> {
         ensure!(!self.out_of_input(), "parse error: no tokens to pop");
         let out = self.tokens[self.position].clone();
         self.position += 1;
-        return Ok(out);
+        Ok(out)
     }
 
     fn peek(&self) -> Fallible<Token> {
@@ -231,7 +231,7 @@ impl<'a> TreeParser<'a> {
             self.position < self.tokens.len(),
             "parse error: enexpected end of input"
         );
-        return Ok(self.tokens[self.position].clone());
+        Ok(self.tokens[self.position].clone())
     }
 }
 

@@ -65,17 +65,17 @@ impl Default for TreeBuilder {
 impl TreeBuilder {
     pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
         self.source_handlers.insert(name.to_owned(), source.clone());
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Fallible<TreeBuilder> {
         self.sink_handlers.insert(name.to_owned(), sink.clone());
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn add_prelude(mut self, prelude: &str) -> Fallible<TreeBuilder> {
         self.preludes.push(prelude.to_owned());
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn add_native_function(
@@ -84,7 +84,7 @@ impl TreeBuilder {
         nif: Box<NativeFunc>,
     ) -> Fallible<TreeBuilder> {
         self.nifs.insert(name.to_owned(), nif);
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn intercept_import(mut self, name: &str, content: &str) -> Fallible<TreeBuilder> {
@@ -95,12 +95,12 @@ impl TreeBuilder {
         };
         let tree = TreeParser::from_str(tree, content, &self.nifs, &HashMap::new())?;
         self.import_interceptors.insert(name.to_owned(), tree);
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn without_builtins(mut self) -> Fallible<TreeBuilder> {
         self.add_builtin_nifs = false;
-        return Ok(self);
+        Ok(self)
     }
 
     pub fn empty() -> Tree {
@@ -113,7 +113,7 @@ impl TreeBuilder {
 
     pub fn build_from_file(self, path: &Path) -> Fallible<Tree> {
         let contents = fs::read_to_string(path)?;
-        return self.build_from_str(&contents);
+        self.build_from_str(&contents)
     }
 
     pub fn build_from_str(mut self, s: &str) -> Fallible<Tree> {
@@ -138,7 +138,7 @@ impl TreeBuilder {
         for sink in tree.sink_handlers.values() {
             sink.on_ready(&tree.root.subtree_here(&tree)?)?;
         }
-        return Ok(tree);
+        Ok(tree)
     }
 }
 
@@ -171,7 +171,7 @@ impl Tree {
         for (kind, values) in &groups {
             self.sink_handlers[kind].values_updated(values)?;
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn root(&self) -> NodeRef {
@@ -180,7 +180,7 @@ impl Tree {
 
     pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
         let concrete = ConcretePath::from_str(path)?;
-        return self.lookup_path(&concrete);
+        self.lookup_path(&concrete)
     }
 
     pub fn lookup_path(&self, path: &ConcretePath) -> Fallible<NodeRef> {
@@ -195,7 +195,7 @@ impl Tree {
     // storing those references directly in the inputs list per script.
     fn link_and_validate_inputs(self) -> Fallible<Tree> {
         self.root.link_and_validate_inputs(&self)?;
-        return Ok(self);
+        Ok(self)
     }
 
     fn map_inputs_to_outputs(self) -> Fallible<Tree> {
@@ -223,19 +223,19 @@ pub struct SubTree<'a> {
 
 impl<'a> SubTree<'a> {
     fn new(tree: &'a Tree, root: &NodeRef) -> Fallible<Self> {
-        return Ok(SubTree {
+        Ok(SubTree {
             _tree: tree,
             _root: root.to_owned(),
-        });
+        })
     }
 
     pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
         let concrete = ConcretePath::from_str(path)?;
-        return self._root.lookup_path(&concrete.components[0..]);
+        self._root.lookup_path(&concrete.components[0..])
     }
 
     pub fn tree(&self) -> &'a Tree {
-        return self._tree;
+        self._tree
     }
 }
 
@@ -250,7 +250,7 @@ impl NodeRef {
             .borrow_mut()
             .children
             .insert(".".to_owned(), self_ref.clone());
-        return self_ref;
+        self_ref
     }
 
     pub fn lookup_path(&self, parts: &[String]) -> Fallible<NodeRef> {
@@ -305,7 +305,7 @@ impl NodeRef {
             .borrow_mut()
             .children
             .insert("..".to_owned(), self.clone());
-        return Ok(child);
+        Ok(child)
     }
 
     pub fn name(&self) -> String {
@@ -369,7 +369,7 @@ impl NodeRef {
             "---NodeRef::link_and_validate_input({})",
             self.0.borrow().path
         );
-        return Ok(());
+        Ok(())
     }
 
     fn enforce_jail(&self) -> Fallible<()> {
@@ -380,7 +380,7 @@ impl NodeRef {
             }
             child.enforce_jail_under(&self.path_str())?;
         }
-        return Ok(());
+        Ok(())
     }
 
     fn enforce_jail_under(&self, jail_path: &str) -> Fallible<()> {
@@ -398,7 +398,7 @@ impl NodeRef {
                 }
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Fallible<()> {
@@ -411,7 +411,7 @@ impl NodeRef {
         if self.0.borrow().sink.is_some() {
             sinks.push(self.to_owned());
         }
-        return Ok(());
+        Ok(())
     }
 
     fn populate_flow_graph(&self, graph: &mut Graph) -> Fallible<()> {
@@ -427,7 +427,7 @@ impl NodeRef {
             script.populate_flow_graph(self, graph)?;
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn flow_input_to_output(&self, sinks: &[NodeRef], graph: &Graph) -> Fallible<()> {
@@ -463,7 +463,7 @@ impl NodeRef {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     fn has_input(&self) -> bool {
@@ -474,7 +474,7 @@ impl NodeRef {
         if let Some(NodeInput::Script(_)) = self.0.borrow().input {
             return true;
         }
-        return false;
+        false
     }
 
     fn child_at(&self, name: &str) -> Option<NodeRef> {
@@ -496,7 +496,7 @@ impl NodeRef {
         if let Some(ref input) = self.0.borrow().input {
             return input.has_a_nodetype();
         }
-        return false;
+        false
     }
 
     // If node type has been set, return it, otherwise do link_and_validate in
@@ -516,7 +516,7 @@ impl NodeRef {
 
         // We need to recurse in order to typecheck the current node.
         self.link_and_validate_inputs(tree)?;
-        return self.nodetype(tree);
+        self.nodetype(tree)
     }
 
     pub fn nodetype(&self, tree: &Tree) -> Fallible<ValueType> {
@@ -525,11 +525,9 @@ impl NodeRef {
                 "runtime error: nodetype request on a non-input node @ {}",
                 self.0.borrow().path
             ),
-            Some(NodeInput::Script(ref script)) => {
-                return script.nodetype();
-            }
+            Some(NodeInput::Script(ref script)) => script.nodetype(),
             Some(NodeInput::Source(ref source, _)) => {
-                return source.nodetype(&self.path_str(), &self.subtree_here(tree)?);
+                source.nodetype(&self.path_str(), &self.subtree_here(tree)?)
             }
         }
     }
@@ -538,7 +536,7 @@ impl NodeRef {
         let path = &self.path_str();
         match self.0.borrow_mut().input {
             Some(NodeInput::Source(ref mut source, _)) => {
-                return source.handle_event(path, value, &self.subtree_here(tree)?);
+                source.handle_event(path, value, &self.subtree_here(tree)?)
             }
             _ => bail!(
                 "runtime error: handle_event request on a non-source node @ {}",
@@ -557,7 +555,7 @@ impl NodeRef {
             "location has already been set"
         );
         self.0.borrow_mut().location = Some(loc);
-        return Ok(());
+        Ok(())
     }
 
     pub fn dimensions(&self) -> Option<Dimension2> {
@@ -570,7 +568,7 @@ impl NodeRef {
             "dimensions have already been set"
         );
         self.0.borrow_mut().dimensions = Some(dim);
-        return Ok(());
+        Ok(())
     }
 
     pub fn set_source(&self, from: &str, tree: &Tree) -> Fallible<()> {
@@ -589,7 +587,7 @@ impl NodeRef {
             tree.source_handlers[from].to_owned(),
             Vec::new(),
         ));
-        return Ok(());
+        Ok(())
     }
 
     pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Fallible<()> {
@@ -605,7 +603,7 @@ impl NodeRef {
             self.0.borrow().path
         );
         self.0.borrow_mut().sink = Some((tgt.to_owned(), tree.sink_handlers[tgt].to_owned()));
-        return Ok(());
+        Ok(())
     }
 
     pub fn insert_subtree(&self, subtree: &NodeRef) -> Fallible<()> {
@@ -615,7 +613,7 @@ impl NodeRef {
                 .children
                 .insert(name.to_owned(), child.to_owned());
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn apply_template(&self, template: &NodeRef) -> Fallible<()> {
@@ -637,7 +635,7 @@ impl NodeRef {
         if let Some(dim) = template.location() {
             self.set_location(dim)?;
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn set_script(&self, script: Script) -> Fallible<()> {
@@ -647,7 +645,7 @@ impl NodeRef {
             self.0.borrow().path
         );
         self.0.borrow_mut().input = Some(NodeInput::Script(script));
-        return Ok(());
+        Ok(())
     }
 
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
@@ -657,19 +655,17 @@ impl NodeRef {
             None => {
                 bail!("runtime error: computing a non-input path @ {}", path);
             }
-            Some(NodeInput::Script(ref script)) => {
-                return script.compute(tree);
-            }
+            Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(ref source, _)) => {
                 // FIXME: we need to make this entire path mut
                 // if let Some((_, cached)) = self.cache {
                 //     return cached;
                 // }
                 let current = source.get_value(&path, &self.subtree_here(&tree)?);
-                return match current {
+                match current {
                     None => bail!("runtime error: no value @ {}", path),
                     Some(v) => Ok(v),
-                };
+                }
             }
         }
     }
@@ -683,11 +679,9 @@ impl NodeRef {
                     self.path_str()
                 );
             }
-            Some(NodeInput::Script(ref script)) => {
-                return script.virtually_compute_for_path(tree);
-            }
+            Some(NodeInput::Script(ref script)) => script.virtually_compute_for_path(tree),
             Some(NodeInput::Source(ref source, _)) => {
-                return source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?);
+                source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?)
             }
         }
     }
@@ -749,7 +743,7 @@ pub struct Node {
 
 impl Node {
     pub fn new(path: ConcretePath) -> Self {
-        return Node {
+        Node {
             name: path.basename().to_owned(),
             path,
             children: HashMap::new(),
@@ -758,13 +752,13 @@ impl Node {
             input: None,
             _cache: None,
             sink: None,
-        };
+        }
     }
 
     fn create_new_child(&mut self, name: &str) -> Fallible<NodeRef> {
         let child = NodeRef::new(Node::new(self.path.new_child(name)));
         self.children.insert(name.to_owned(), child.clone());
-        return Ok(child);
+        Ok(child)
     }
 }
 

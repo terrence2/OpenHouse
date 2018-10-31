@@ -31,7 +31,7 @@ impl NativeFunc for ToStr {
         for v in values {
             results.push(self.compute(v, tree)?);
         }
-        return Ok(results);
+        Ok(results)
     }
 
     fn find_all_possible_inputs(

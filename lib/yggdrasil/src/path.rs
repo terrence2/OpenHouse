@@ -42,10 +42,10 @@ impl ScriptPath {
             (0, comps)
         };
         let dynamic = Self::parse_parts(&mut components, base_path, &s[start..])?;
-        return Ok(ScriptPath {
+        Ok(ScriptPath {
             components,
             dynamic,
-        });
+        })
     }
 
     fn parse_parts(
@@ -60,7 +60,7 @@ impl ScriptPath {
                 dynamic = true;
             }
         }
-        return Ok(dynamic);
+        Ok(dynamic)
     }
 
     fn parse_part(
@@ -74,9 +74,7 @@ impl ScriptPath {
                 base_path,
                 components
             ),
-            "." => {
-                return Ok(false);
-            }
+            "." => Ok(false),
             ".." => {
                 ensure!(
                     !components.is_empty(),
@@ -85,7 +83,7 @@ impl ScriptPath {
                     components
                 );
                 components.pop();
-                return Ok(false);
+                Ok(false)
             }
             s => {
                 if s.starts_with('{') && s.ends_with('}') {
@@ -94,13 +92,13 @@ impl ScriptPath {
                         &s[1..s.len() - 1],
                     )?);
                     components.push(c);
-                    return Ok(true);
+                    Ok(true)
                 } else {
                     ensure!(!s.contains('{'), "parse error: found { in path part");
                     ensure!(!s.contains('}'), "parse error: found } in path part");
                     let c = PathComponent::Name(s.to_owned());
                     components.push(c);
-                    return Ok(false);
+                    Ok(false)
                 }
             }
         }
@@ -135,11 +133,11 @@ impl ScriptPath {
             s
         );
         parts.push(s[part_start..offset].chars().collect::<String>());
-        return Ok(parts);
+        Ok(parts)
     }
 
     pub fn is_concrete(&self) -> bool {
-        return !self.dynamic;
+        !self.dynamic
     }
 
     pub fn as_concrete(&self) -> ConcretePath {
@@ -152,7 +150,7 @@ impl ScriptPath {
                 }
             }
         }
-        return ConcretePath::from_components(concrete);
+        ConcretePath::from_components(concrete)
     }
 
     pub fn find_concrete_inputs(&self, inputs: &mut Vec<ConcretePath>) -> Fallible<()> {
@@ -168,7 +166,7 @@ impl ScriptPath {
                 }
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     // All inputs to a path must ultimately have a constrained domain, either
@@ -222,7 +220,7 @@ impl ScriptPath {
             );
         }
         trace!("DV: RV: {:?} => {:?}", self.components, working_set);
-        return Ok(working_set);
+        Ok(working_set)
     }
 
     fn explode_paths_1(mut paths: Vec<ConcretePath>, name: &str) -> Vec<ConcretePath> {
@@ -233,7 +231,7 @@ impl ScriptPath {
                 concrete.components.push(name.to_owned());
             }
         }
-        return paths;
+        paths
     }
 
     fn explode_paths_n(mut paths: Vec<ConcretePath>, all_names: &[String]) -> Vec<ConcretePath> {
@@ -251,7 +249,7 @@ impl ScriptPath {
                 }
             }
         }
-        return next_paths;
+        next_paths
     }
 }
 
@@ -289,7 +287,7 @@ impl FromStr for ConcretePath {
             ensure!(!part.is_empty(), "invalid path: empty path component");
             components.push(part.to_owned());
         }
-        return Ok(Self::from_components(components));
+        Ok(Self::from_components(components))
     }
 }
 
@@ -307,14 +305,14 @@ impl ConcretePath {
     pub fn new_child(&self, name: &str) -> Self {
         let mut components = self.components.clone();
         components.push(name.to_owned());
-        return Self { components };
+        Self { components }
     }
 
     pub fn basename(&self) -> &str {
         if self.components.is_empty() {
             return "";
         }
-        return &self.components[self.components.len() - 1];
+        &self.components[self.components.len() - 1]
     }
 }
 

@@ -16,7 +16,7 @@ pub trait TreeSink: Downcast {
 
     /// Parsing is finished and we are ready to start the system.
     fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
-        return Ok(());
+        Ok(())
     }
 
     /// Update the given paths to the new values.
@@ -52,17 +52,15 @@ impl SinkRef {
             }
             ts
         });
-        return Ok(());
+        Ok(())
     }
 
     pub fn inspect_as<T, V>(&self, f: &Fn(&T) -> &V) -> Fallible<Ref<V>>
     where
         T: TreeSink,
     {
-        let inner: Ref<V> = Ref::map(self.sink.borrow(), |ts| {
-            return f(ts.downcast_ref::<T>().unwrap());
-        });
-        return Ok(inner);
+        let inner: Ref<V> = Ref::map(self.sink.borrow(), |ts| f(ts.downcast_ref::<T>().unwrap()));
+        Ok(inner)
     }
 
     pub(super) fn on_ready(&self, tree: &SubTree) -> Fallible<()> {
@@ -87,7 +85,7 @@ mod test {
 
     impl TestSink {
         fn new() -> Fallible<SinkRef> {
-            return Ok(SinkRef::new(Box::new(Self {})));
+            Ok(SinkRef::new(Box::new(Self {})))
         }
 
         fn frob(&mut self) {}
@@ -95,11 +93,11 @@ mod test {
 
     impl TreeSink for TestSink {
         fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Fallible<()> {
-            return Ok(());
+            Ok(())
         }
 
         fn values_updated(&mut self, _values: &[(String, Value)]) -> Fallible<()> {
-            return Ok(());
+            Ok(())
         }
     }
 
@@ -110,13 +108,13 @@ mod test {
         let subtree = tree.subtree_at(&tree.root())?;
         sink.add_path("", &subtree)?;
         sink.values_updated(&vec![])?;
-        return Ok(());
+        Ok(())
     }
 
     #[test]
     fn test_sink_mutate() -> Fallible<()> {
         let sink = TestSink::new()?;
         sink.mutate_as::<TestSink>(&mut |s| s.frob())?;
-        return Ok(());
+        Ok(())
     }
 }

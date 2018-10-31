@@ -168,7 +168,7 @@ impl Script {
             input_map: HashMap::new(),
             nodetype: None,
         };
-        return Ok(script);
+        Ok(script)
     }
 
     // Note that we have to have a separate build and install phase because otherwise we'd be borrowed
@@ -185,7 +185,7 @@ impl Script {
             let node = tree.lookup_path(&input)?;
             input_map.insert(input, node);
         }
-        return Ok((input_map, ty));
+        Ok((input_map, ty))
     }
 
     pub fn install_input_map(
@@ -196,14 +196,14 @@ impl Script {
         self.input_map = input_map.0;
         self.nodetype = Some(input_map.1);
         self.phase = CompilationPhase::Ready;
-        return Ok(());
+        Ok(())
     }
 
     pub fn populate_flow_graph(&self, tgt_node: &NodeRef, graph: &mut Graph) -> Fallible<()> {
         for src_node in self.input_map.values() {
             graph.add_edge(src_node, tgt_node);
         }
-        return Ok(());
+        Ok(())
     }
 
     pub fn nodetype(&self) -> Fallible<ValueType> {
@@ -211,19 +211,19 @@ impl Script {
             self.nodetype.is_some(),
             "typecheck error: querying node type before ready"
         );
-        return Ok(self.nodetype.unwrap());
+        Ok(self.nodetype.unwrap())
     }
 
     pub(super) fn has_a_nodetype(&self) -> bool {
-        return self.nodetype.is_some();
+        self.nodetype.is_some()
     }
 
     pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {
-        return Ok(self
+        Ok(self
             .input_map
             .keys()
             .map(|concrete| concrete.to_string())
-            .collect::<Vec<_>>());
+            .collect::<Vec<_>>())
     }
 
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
@@ -269,11 +269,11 @@ impl Operator {
                 return Some(i);
             }
         }
-        return None;
+        None
     }
 
     fn op(t: &Token, arity: usize) -> &Operator {
-        return Self::maybe_op(t, arity).expect("requested a non-existent operator.");
+        Self::maybe_op(t, arity).expect("requested a non-existent operator.")
     }
 
     fn precedence_of(t: &Token, arity: usize) -> usize {
@@ -334,12 +334,12 @@ impl<'a> ExprParser<'a> {
         tokens: &'a [Token],
         nifs: &'a HashMap<String, Box<NativeFunc>>,
     ) -> Self {
-        return Self {
+        Self {
             path,
             tokens,
             offset: 0,
             nifs,
-        };
+        }
     }
 
     fn eparser(&mut self) -> Fallible<Expr> {
@@ -348,17 +348,17 @@ impl<'a> ExprParser<'a> {
             self.offset == self.tokens.len(),
             "parse error: extra tokens after script"
         );
-        return Ok(e);
+        Ok(e)
     }
 
     fn peek(&self) -> &Token {
-        return &self.tokens[self.offset];
+        &self.tokens[self.offset]
     }
 
     fn pop(&mut self) -> Token {
         let op = self.tokens[self.offset].clone();
         self.offset += 1;
-        return op;
+        op
     }
 
     fn exp_p(&mut self, p: usize) -> Fallible<Expr> {
@@ -391,11 +391,11 @@ impl<'a> ExprParser<'a> {
             };
         }
 
-        return Ok(t);
+        Ok(t)
     }
 
     fn p(&mut self) -> Fallible<Expr> {
-        return Ok(match self.pop() {
+        Ok(match self.pop() {
             Token::BooleanTerm(b) => Expr::Value(Value::Boolean(b)),
             Token::FloatTerm(f) => Expr::Value(Value::Float(f)),
             Token::IntegerTerm(i) => Expr::Value(Value::Integer(i)),
@@ -437,7 +437,7 @@ impl<'a> ExprParser<'a> {
                 Expr::Call(nif, Box::new(t))
             }
             t => panic!("parse error: unexpected token {:?}", t),
-        });
+        })
     }
 }
 

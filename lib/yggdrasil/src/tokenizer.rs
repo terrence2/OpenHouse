@@ -100,7 +100,7 @@ impl TreeTokenizer {
             tokens.push(Token::Newline);
         }
 
-        return Ok(tokens);
+        Ok(tokens)
     }
 }
 
@@ -117,7 +117,7 @@ impl LineTokenizer {
     }
 
     fn is_empty(&self) -> bool {
-        return self.offset >= self.chars.len();
+        self.offset >= self.chars.len()
     }
 
     fn tokenize_one(&mut self) -> Fallible<Token> {
@@ -163,21 +163,21 @@ impl LineTokenizer {
             ),
         }?;
         trace!("tokenize: {} => {:?}", c, tok);
-        return Ok(tok);
+        Ok(tok)
     }
 
     fn tokenize_name_or_keyword(&mut self) -> Fallible<Token> {
         let s = self.tokenize_identifier()?;
         if s == "true" {
-            return Ok(Token::BooleanTerm(true));
+            Ok(Token::BooleanTerm(true))
         } else if s == "false" {
-            return Ok(Token::BooleanTerm(false));
+            Ok(Token::BooleanTerm(false))
         } else if s == "import" {
-            return self.tokenize_import();
+            self.tokenize_import()
         } else if s == "template" {
-            return self.tokenize_template();
+            self.tokenize_template()
         } else {
-            return Ok(Token::NameTerm(s));
+            Ok(Token::NameTerm(s))
         }
     }
 
@@ -196,7 +196,7 @@ impl LineTokenizer {
             "tokenize error: expected closing ) in import"
         );
         self.offset += 1;
-        return Ok(Token::ImportTerm(filename.path_string()?.to_owned()));
+        Ok(Token::ImportTerm(filename.path_string()?.to_owned()))
     }
 
     fn tokenize_template(&mut self) -> Fallible<Token> {
@@ -219,7 +219,7 @@ impl LineTokenizer {
         self.offset += 1;
         let template_tokens = TreeTokenizer::tokenize(&template_str)?;
         println!("template name: {} => {:?}", name, template_tokens);
-        return Ok(Token::Template);
+        Ok(Token::Template)
     }
 
     fn tokenize_subtract_or_number(&mut self) -> Fallible<Token> {
@@ -229,7 +229,7 @@ impl LineTokenizer {
                 return Ok(Token::Subtract);
             }
         }
-        return self.tokenize_int_or_float();
+        self.tokenize_int_or_float()
     }
 
     fn tokenize_int_or_float(&mut self) -> Fallible<Token> {
@@ -258,32 +258,32 @@ impl LineTokenizer {
                 negative as f64 * s.parse::<f64>()?,
             )?));
         }
-        return Ok(Token::IntegerTerm(negative * s.parse::<i64>()?));
+        Ok(Token::IntegerTerm(negative * s.parse::<i64>()?))
     }
 
     fn tokenize_source(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '^');
         self.offset += 1;
-        return Ok(Token::Source(self.tokenize_identifier()?));
+        Ok(Token::Source(self.tokenize_identifier()?))
     }
 
     fn tokenize_sink(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '$');
         self.offset += 1;
-        return Ok(Token::Sink(self.tokenize_identifier()?));
+        Ok(Token::Sink(self.tokenize_identifier()?))
     }
 
     fn tokenize_absolute_path_or_division(&mut self) -> Fallible<Token> {
         assert!(self.peek(0)? == '/');
-        return match self.maybe_peek(1) {
+        match self.maybe_peek(1) {
             None | Some(' ') => self.tokenize_division(),
             _ => self.tokenize_path(),
-        };
+        }
     }
 
     fn tokenize_division(&mut self) -> Fallible<Token> {
         self.offset += 1;
-        return Ok(Token::Divide);
+        Ok(Token::Divide)
     }
 
     fn tokenize_use_template_or_not_eq(&mut self) -> Fallible<Token> {
@@ -292,7 +292,7 @@ impl LineTokenizer {
             return Ok(Token::NotEquals);
         }
         self.offset += 1;
-        return Ok(Token::UseTemplate(self.tokenize_identifier()?));
+        Ok(Token::UseTemplate(self.tokenize_identifier()?))
     }
 
     fn tokenize_location(&mut self) -> Fallible<Token> {
@@ -306,7 +306,7 @@ impl LineTokenizer {
             self.offset += 1;
         }
         let span = self.chars[start..self.offset].iter().collect::<String>();
-        return Ok(Token::Location(Dimension2::from_str(&span)?));
+        Ok(Token::Location(Dimension2::from_str(&span)?))
     }
 
     fn tokenize_size(&mut self) -> Fallible<Token> {
@@ -321,7 +321,7 @@ impl LineTokenizer {
             self.offset += 1;
         }
         let span = self.chars[start..self.offset].iter().collect::<String>();
-        return Ok(Token::Size(Dimension2::from_str(&span)?));
+        Ok(Token::Size(Dimension2::from_str(&span)?))
     }
 
     fn tokenize_string(&mut self) -> Fallible<Token> {
@@ -359,22 +359,20 @@ impl LineTokenizer {
                     return Ok(Token::ComesFromBlock);
                 }
                 self.offset += 2;
-                return Ok(Token::ComesFromInline);
+                Ok(Token::ComesFromInline)
             }
             Some('=') => {
                 self.offset += 2;
-                return Ok(Token::LessThanOrEquals);
+                Ok(Token::LessThanOrEquals)
             }
-            Some('>') => {
-                return self.tokenize_size();
-            }
+            Some('>') => self.tokenize_size(),
             None => {
                 self.offset += 1;
-                return Ok(Token::LessThan);
+                Ok(Token::LessThan)
             }
             _ => {
                 self.offset += 1;
-                return Ok(Token::LessThan);
+                Ok(Token::LessThan)
             }
         }
     }
@@ -384,7 +382,7 @@ impl LineTokenizer {
         if self.peek(1)? == '=' {
             return Ok(Token::GreaterThanOrEquals);
         }
-        return Ok(Token::GreaterThan);
+        Ok(Token::GreaterThan)
     }
 
     fn tokenize_operator_2(&mut self) -> Fallible<Token> {
@@ -400,7 +398,7 @@ impl LineTokenizer {
             _ => bail!("tokenize error: expected && or ||"),
         };
         self.offset += 2;
-        return Ok(t);
+        Ok(t)
     }
 
     fn tokenize_path(&mut self) -> Fallible<Token> {
@@ -416,7 +414,7 @@ impl LineTokenizer {
             }
         }
         let content = self.chars[start..self.offset].iter().collect::<String>();
-        return Ok(Token::PathTerm(content));
+        Ok(Token::PathTerm(content))
     }
 
     fn tokenize_identifier(&mut self) -> Fallible<String> {
@@ -427,14 +425,14 @@ impl LineTokenizer {
                 _ => break,
             }
         }
-        return Ok(self.chars[start..self.offset].iter().collect::<String>());
+        Ok(self.chars[start..self.offset].iter().collect::<String>())
     }
 
     fn maybe_peek(&self, n: usize) -> Option<char> {
         if self.offset + n < self.chars.len() {
             return Some(self.chars[self.offset + n]);
         }
-        return None;
+        None
     }
 
     fn peek(&self, n: usize) -> Fallible<char> {
@@ -442,7 +440,7 @@ impl LineTokenizer {
             self.offset + n < self.chars.len(),
             "tokenize error: out of input too soon"
         );
-        return Ok(self.chars[self.offset + n]);
+        Ok(self.chars[self.offset + n])
     }
 
     fn trim_comment(line_raw: &str) -> String {
@@ -450,7 +448,7 @@ impl LineTokenizer {
         if let Some(offset) = line_raw.find('#') {
             line.truncate(offset);
         }
-        return line.trim_right().to_owned();
+        line.trim_right().to_owned()
     }
 
     fn leading_whitespace(s: &str) -> usize {
@@ -461,7 +459,7 @@ impl LineTokenizer {
             }
             cnt += 1;
         }
-        return cnt;
+        cnt
     }
 }
 

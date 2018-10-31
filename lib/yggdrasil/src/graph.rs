@@ -47,10 +47,10 @@ impl Graph {
                 end: edge.start,
             });
         }
-        return Ok(Self {
+        Ok(Self {
             nodes: self.nodes,
             edges: next_edges,
-        });
+        })
     }
 
     pub fn connected_nodes(&self, from: &NodeRef, to: &[NodeRef]) -> Fallible<Vec<NodeRef>> {
@@ -67,7 +67,7 @@ impl Graph {
                 out.push(node.to_owned());
             }
         }
-        return Ok(out);
+        Ok(out)
     }
 
     fn _connected_at(
@@ -102,6 +102,6 @@ impl Graph {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 }
