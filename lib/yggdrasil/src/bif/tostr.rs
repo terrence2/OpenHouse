@@ -1,11 +1,13 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::NativeFunc;
+use crate::{
+    bif::NativeFunc,
+    path::ConcretePath,
+    tree::Tree,
+    value::{Value, ValueType},
+};
 use failure::Fallible;
-use path::ConcretePath;
-use tree::Tree;
-use value::{Value, ValueType};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ToStr;

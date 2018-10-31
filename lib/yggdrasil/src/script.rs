@@ -1,16 +1,18 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::NativeFunc;
+use crate::{
+    bif::NativeFunc,
+    graph::Graph,
+    path::{ConcretePath, ScriptPath},
+    tokenizer::Token,
+    tree::{NodeRef, Tree},
+    value::{Value, ValueType},
+};
 use failure::{bail, ensure, err_msg, Fallible};
-use graph::Graph;
 use lazy_static::lazy_static;
 use log::trace;
-use path::{ConcretePath, ScriptPath};
 use std::collections::HashMap;
-use tokenizer::Token;
-use tree::{NodeRef, Tree};
-use value::{Value, ValueType};
 
 #[derive(Clone, Debug)]
 pub(super) enum Expr {
@@ -442,9 +444,7 @@ impl<'a> ExprParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use float::Float;
-    use tokenizer::TreeTokenizer;
-    use tree::TreeBuilder;
+    use crate::{float::Float, tokenizer::TreeTokenizer, tree::TreeBuilder};
 
     fn do_compute(expr: &str) -> Fallible<Value> {
         let tok = TreeTokenizer::tokenize(&format!("a <- {}", expr))?;

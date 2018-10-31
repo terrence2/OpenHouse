@@ -1,9 +1,9 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::tree::NodeRef;
 use failure::{bail, ensure, Fallible};
 use std::collections::{HashMap, HashSet};
-use tree::NodeRef;
 
 /// A simplified graph that we can use to find paths from all inputs to the outputs they affect.
 pub struct Graph {

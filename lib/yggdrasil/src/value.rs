@@ -2,13 +2,15 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use bitflags::bitflags;
+use crate::{
+    float::Float,
+    path::{ConcretePath, ScriptPath},
+    tokenizer::Token,
+    tree::Tree,
+};
 use failure::{bail, ensure, Fallible};
-use float::Float;
 use log::trace;
-use path::{ConcretePath, ScriptPath};
 use std::{convert::From, fmt};
-use tokenizer::Token;
-use tree::Tree;
 
 fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
     ensure!(

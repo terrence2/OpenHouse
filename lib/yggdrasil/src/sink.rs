@@ -1,14 +1,13 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::{tree::SubTree, value::Value};
 use downcast_rs::{impl_downcast, Downcast};
 use failure::Fallible;
 use std::{
     cell::{Ref, RefCell, RefMut},
     rc::Rc,
 };
-use tree::SubTree;
-use value::Value;
 
 /// This Trait allows a Sink to provide required metadata to the Tree.
 pub trait TreeSink: Downcast {
@@ -82,7 +81,7 @@ impl SinkRef {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tree::{SubTree, TreeBuilder};
+    use crate::tree::{SubTree, TreeBuilder};
 
     struct TestSink {}
 

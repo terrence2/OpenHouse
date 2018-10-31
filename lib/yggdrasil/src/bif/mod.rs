@@ -3,11 +3,13 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 pub(super) mod tostr;
 
+use crate::{
+    path::ConcretePath,
+    tree::Tree,
+    value::{Value, ValueType},
+};
 use failure::Fallible;
-use path::ConcretePath;
 use std::fmt;
-use tree::Tree;
-use value::{Value, ValueType};
 
 pub trait NativeFunc {
     fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value>;

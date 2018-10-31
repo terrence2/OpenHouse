@@ -1,13 +1,15 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::NativeFunc;
+use crate::{
+    bif::NativeFunc,
+    script::Script,
+    tokenizer::{Token, TreeTokenizer},
+    tree::{NodeRef, Tree},
+};
 use failure::{bail, ensure, format_err, Fallible};
 use log::trace;
-use script::Script;
 use std::collections::HashMap;
-use tokenizer::{Token, TreeTokenizer};
-use tree::{NodeRef, Tree};
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
@@ -236,9 +238,11 @@ impl<'a> TreeParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use physical::Dimension2;
-    use tree::TreeBuilder;
-    use value::{Value, ValueType};
+    use crate::{
+        physical::Dimension2,
+        tree::TreeBuilder,
+        value::{Value, ValueType},
+    };
 
     #[test]
     fn test_parse_minimal() {

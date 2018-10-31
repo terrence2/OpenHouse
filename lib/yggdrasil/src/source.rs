@@ -1,14 +1,16 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::{
+    tree::SubTree,
+    value::{Value, ValueType},
+};
 use downcast_rs::{impl_downcast, Downcast};
 use failure::{bail, ensure, Fallible};
 use std::{
     cell::{Ref, RefCell, RefMut},
     rc::Rc,
 };
-use tree::SubTree;
-use value::{Value, ValueType};
 
 /// This Trait allows a Source to provide required metadata to the Tree.
 pub trait TreeSource: Downcast {

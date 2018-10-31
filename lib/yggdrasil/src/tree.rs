@@ -1,16 +1,19 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bif::{tostr::ToStr, NativeFunc};
+use crate::{
+    bif::{tostr::ToStr, NativeFunc},
+    graph::Graph,
+    parser::TreeParser,
+    path::{ConcretePath, PathComponent, ScriptPath},
+    physical::Dimension2,
+    script::Script,
+    sink::SinkRef,
+    source::SourceRef,
+    value::{Value, ValueType},
+};
 use failure::{bail, ensure, Fallible};
-use graph::Graph;
 use log::{trace, warn};
-use parser::TreeParser;
-use path::{ConcretePath, PathComponent, ScriptPath};
-use physical::Dimension2;
-use script::Script;
-use sink::SinkRef;
-use source::SourceRef;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -20,7 +23,6 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use value::{Value, ValueType};
 
 /// The combination of a Value plus a monotonic ordinal.
 pub struct Sample {
@@ -769,7 +771,7 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use source::test::SimpleSource;
+    use crate::source::test::SimpleSource;
 
     #[test]
     fn test_build_tree() -> Fallible<()> {
