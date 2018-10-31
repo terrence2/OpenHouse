@@ -1,8 +1,8 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use downcast_rs::Downcast;
-use failure::Fallible;
+use downcast_rs::{impl_downcast, Downcast};
+use failure::{bail, ensure, Fallible};
 use std::{
     cell::{Ref, RefCell, RefMut},
     rc::Rc,

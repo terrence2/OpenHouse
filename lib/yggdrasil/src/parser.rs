@@ -2,7 +2,8 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use bif::NativeFunc;
-use failure::Fallible;
+use failure::{bail, ensure, format_err, Fallible};
+use log::trace;
 use script::Script;
 use std::collections::HashMap;
 use tokenizer::{Token, TreeTokenizer};

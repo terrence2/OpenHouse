@@ -1,8 +1,10 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Fallible;
+use bitflags::bitflags;
+use failure::{bail, ensure, Fallible};
 use float::Float;
+use log::trace;
 use path::{ConcretePath, ScriptPath};
 use std::{convert::From, fmt};
 use tokenizer::Token;

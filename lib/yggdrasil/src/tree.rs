@@ -2,8 +2,9 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use bif::{tostr::ToStr, NativeFunc};
-use failure::Fallible;
+use failure::{bail, ensure, Fallible};
 use graph::Graph;
+use log::{trace, warn};
 use parser::TreeParser;
 use path::{ConcretePath, PathComponent, ScriptPath};
 use physical::Dimension2;
@@ -130,7 +131,7 @@ impl TreeBuilder {
             &self.nifs,
             &self.import_interceptors,
         )?.link_and_validate_inputs()?
-            .map_inputs_to_outputs()?;
+        .map_inputs_to_outputs()?;
 
         for sink in tree.sink_handlers.values() {
             sink.on_ready(&tree.root.subtree_here(&tree)?)?;

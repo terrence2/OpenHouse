@@ -2,8 +2,10 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use bif::NativeFunc;
-use failure::{err_msg, Fallible};
+use failure::{bail, ensure, err_msg, Fallible};
 use graph::Graph;
+use lazy_static::lazy_static;
+use log::trace;
 use path::{ConcretePath, ScriptPath};
 use std::collections::HashMap;
 use tokenizer::Token;
