@@ -3,7 +3,8 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
-use failure::Fallible;
+use failure::{bail, ensure, Fallible};
+use log::trace;
 use oh::{DBServer, TickEvent};
 use std::{collections::HashMap, time::Duration as StdDuration};
 use yggdrasil::{SubTree, TreeSource, Value, ValueType};
@@ -214,7 +215,10 @@ impl Clock {
 
 impl TreeSource for Clock {
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()> {
-        let interval = tree.lookup("/interval")?.compute(tree.tree())?.as_string()?;
+        let interval = tree
+            .lookup("/interval")?
+            .compute(tree.tree())?
+            .as_string()?;
         let wrap = tree.lookup("/wrap")?.compute(tree.tree())?.as_string()?;
         let def = ClockDef::new(
             ClockInterval::from_str(&interval)?,

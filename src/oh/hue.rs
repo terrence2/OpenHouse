@@ -4,7 +4,8 @@
 use actix::{Actor, Addr, Context, Handler, Message, System};
 use failure::{err_msg, Fallible};
 use itertools::Itertools;
-use json::{parse, stringify, JsonValue};
+use json::{object, parse, stringify, JsonValue};
+use log::{error, info, trace, warn};
 use oh::{
     color::{Color, Mired, BHS, RGB},
     json_helpers::{ObjectHelper, ValueHelper},
@@ -47,7 +48,10 @@ impl TreeSink for Hue {
 
         if basename == "hue-bridge" {
             let address = tree.lookup("/address")?.compute(tree.tree())?.as_string()?;
-            let username = tree.lookup("/username")?.compute(tree.tree())?.as_string()?;
+            let username = tree
+                .lookup("/username")?
+                .compute(tree.tree())?
+                .as_string()?;
             self.address = Some(address);
             self.username = Some(username);
             return Ok(());
@@ -108,20 +112,20 @@ impl Hub {
 
     fn light_state_for_value(value: &str) -> Fallible<JsonValue> {
         if value == "none" {
-            return Ok(object!{"on" => false});
+            return Ok(object! {"on" => false});
         }
         let color = Color::parse(value)?;
         let mut obj = match color {
-            Color::Mired(Mired { color_temp: ct }) => object!{"ct" => ct},
+            Color::Mired(Mired { color_temp: ct }) => object! {"ct" => ct},
             Color::RGB(rgb) => {
                 let bhs = BHS::from_rgb(&rgb)?;
-                object!{"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
+                object! {"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
             }
             Color::BHS(BHS {
                 brightness,
                 hue,
                 saturation,
-            }) => object!{"bri" => brightness, "hue" => hue, "sat" => saturation},
+            }) => object! {"bri" => brightness, "hue" => hue, "sat" => saturation},
         };
         obj["on"] = true.into();
         // FIXME: support transition time
@@ -296,7 +300,7 @@ impl HueWorker {
         for light in lights {
             arr.push(light.to_string())?;
         }
-        let obj = object!{"lights" => arr};
+        let obj = object! {"lights" => arr};
         let resp = self.hub.post("/groups/", stringify(obj))?;
         let name = resp[0]["success"]["id"].to_str()?.parse()?;
         self.group_map.insert(lights.to_vec(), name);
@@ -337,10 +341,10 @@ mod test {
 
     #[test]
     fn test_light_state() -> Fallible<()> {
-        assert_eq!(Hub::light_state_for_value("none")?, object!{"on" => false});
+        assert_eq!(Hub::light_state_for_value("none")?, object! {"on" => false});
         assert_eq!(
             Hub::light_state_for_value("mired(40)")?,
-            object!{"on" => true, "ct" => 40, "transitiontime" => 10}
+            object! {"on" => true, "ct" => 40, "transitiontime" => 10}
         );
         return Ok(());
     }

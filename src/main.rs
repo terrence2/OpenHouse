@@ -2,24 +2,20 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 extern crate actix;
+extern crate actix_net;
 extern crate actix_web;
 extern crate bytes;
 extern crate chrono;
-#[macro_use]
 extern crate failure;
 extern crate futures;
 extern crate itertools;
-#[macro_use]
 extern crate json;
-#[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate log;
 extern crate openssl;
 extern crate regex;
 extern crate reqwest;
 extern crate simplelog;
-#[macro_use]
 extern crate structopt;
 extern crate yggdrasil;
 

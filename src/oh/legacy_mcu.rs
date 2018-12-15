@@ -2,6 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::{err_msg, Fallible};
+use log::trace;
 use std::{collections::HashMap, net::IpAddr};
 use yggdrasil::{SubTree, TreeSource, Value, ValueType};
 

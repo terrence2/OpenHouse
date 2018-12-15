@@ -3,6 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::prelude::*;
 use failure::Fallible;
+use log::{error, trace};
 use oh::{
     clock::{Clock, CLOCK_PRELUDE},
     hue::Hue,

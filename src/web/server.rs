@@ -2,13 +2,14 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use actix::prelude::*;
+use actix_net::server::Server;
 use actix_web::{
-    http::Method, middleware, server, server::Server, App, FutureResponse, HttpMessage,
-    HttpRequest, HttpResponse,
+    http::Method, middleware, server, App, FutureResponse, HttpMessage, HttpRequest, HttpResponse,
 };
 use bytes::Bytes;
 use failure::{err_msg, Fallible};
 use futures::future::{ok, Future};
+use log::{error, trace};
 use oh::{DBServer, HandleEvent};
 //use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
@@ -80,23 +81,26 @@ pub fn build_server(
     // ssl_builder.set_private_key_file("key.pem", SslFiletype::PEM)?;
     // ssl_builder.set_certificate_chain_file("cert.pem")?;
 
-    let server = server::new(move || {
+    let http_server = server::new(move || {
         App::with_state(AppState {
             db: db.clone(),
             button_path_map: button_path_map.clone(),
-        }).middleware(middleware::Logger::default())
-            .resource("/event", |res| {
-                res.method(Method::POST).a(
-                    |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
-                        trace!("server handling POST on /event");
-                        return handle_event(req);
-                    },
-                )
-            })
-    }).server_hostname(hostname.to_string())
-        .bind(&format!("{}:{}", addr, port))?;
+        })
+        .middleware(middleware::Logger::default())
+        .resource("/event", |res| {
+            res.method(Method::POST).a(
+                |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
+                    trace!("server handling POST on /event");
+                    return handle_event(req);
+                },
+            )
+        })
+    })
+    .server_hostname(hostname.to_string())
+    .bind(&format!("{}:{}", addr, port))?;
     //.bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?;
-    return Ok(server.start());
+    let server = http_server.start();
+    return Ok(server);
 }
 
 #[cfg(test)]
