@@ -2,7 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use approx::relative_eq;
-use failure::{bail, ensure, Fallible};
+use failure::{ensure, Fallible};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Length {

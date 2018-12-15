@@ -6,7 +6,7 @@ use crate::{
     value::{Value, ValueType},
 };
 use downcast_rs::{impl_downcast, Downcast};
-use failure::{bail, ensure, Fallible};
+use failure::{ensure, Fallible};
 use std::{
     cell::{Ref, RefCell, RefMut},
     rc::Rc,

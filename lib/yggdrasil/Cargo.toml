@@ -5,6 +5,7 @@
 name = "yggdrasil"
 version = "0.5.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 approx = "0.1"

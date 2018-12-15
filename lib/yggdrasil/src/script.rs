@@ -9,7 +9,7 @@ use crate::{
     tree::{NodeRef, Tree},
     value::{Value, ValueType},
 };
-use failure::{bail, ensure, err_msg, Fallible};
+use failure::{ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
 use log::trace;
 use std::collections::HashMap;
