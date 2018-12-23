@@ -4,11 +4,7 @@
 use actix::prelude::*;
 use failure::Fallible;
 use log::{error, trace};
-use oh::{
-    clock::{Clock, CLOCK_PRELUDE},
-    hue::Hue,
-    legacy_mcu::LegacyMCU,
-};
+use oh::{clock::Clock, hue::Hue, legacy_mcu::LegacyMCU};
 use std::path::Path;
 use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
 
@@ -28,7 +24,6 @@ impl DBServer {
             .add_source_handler("clock", &clock)?
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .add_sink_handler("hue", &hue)?
-            .add_prelude(CLOCK_PRELUDE)?
             .build_from_file(filename)?;
         let db_server = Self {
             tree,

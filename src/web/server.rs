@@ -76,28 +76,23 @@ fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpRespon
             error!("received panic report from ip {}", ip);
         }
         Err(e) => {
-            error!("received panic report from unknown ip");
+            error!("received panic report from unknown ip: {}", e);
         }
     }
 
-    return Box::new(
-        req.body()
-            .limit(4096)
-            .from_err()
-            .and_then(|bytes: Bytes| {
-                match str::from_utf8(&bytes) {
-                    Ok(s) => {
-                        for line in s.split('\n') {
-                            error!("panic: {}", line);
-                        }
-                    }
-                    Err(e) => {
-                        error!("panic report not decodable: {}", e);
-                    }
+    return Box::new(req.body().limit(4096).from_err().and_then(|bytes: Bytes| {
+        match str::from_utf8(&bytes) {
+            Ok(s) => {
+                for line in s.split('\n') {
+                    error!("panic: {}", line);
                 }
-                ok(HttpResponse::Ok().into())
-            })
-    );
+            }
+            Err(e) => {
+                error!("panic report not decodable: {}", e);
+            }
+        }
+        ok(HttpResponse::Ok().into())
+    }));
 }
 
 pub fn build_server(
@@ -130,7 +125,7 @@ pub fn build_server(
                 |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
                     trace!("server handling POST on /panic_reporter");
                     return handle_panic_report(req);
-                }
+                },
             )
         })
     })

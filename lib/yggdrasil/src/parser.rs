@@ -392,7 +392,8 @@ d @4x4";
             "a b",
             &HashMap::new(),
             &HashMap::new(),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[test]
