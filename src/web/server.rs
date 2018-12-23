@@ -70,6 +70,36 @@ fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     );
 }
 
+fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
+    match get_caller_ip(req) {
+        Ok(ip) => {
+            error!("received panic report from ip {}", ip);
+        }
+        Err(e) => {
+            error!("received panic report from unknown ip");
+        }
+    }
+
+    return Box::new(
+        req.body()
+            .limit(4096)
+            .from_err()
+            .and_then(|bytes: Bytes| {
+                match str::from_utf8(&bytes) {
+                    Ok(s) => {
+                        for line in s.split('\n') {
+                            error!("panic: {}", line);
+                        }
+                    }
+                    Err(e) => {
+                        error!("panic report not decodable: {}", e);
+                    }
+                }
+                ok(HttpResponse::Ok().into())
+            })
+    );
+}
+
 pub fn build_server(
     db: Addr<DBServer>,
     button_path_map: HashMap<IpAddr, String>,
@@ -93,6 +123,14 @@ pub fn build_server(
                     trace!("server handling POST on /event");
                     return handle_event(req);
                 },
+            )
+        })
+        .resource("/panic_report", |res| {
+            res.method(Method::POST).a(
+                |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
+                    trace!("server handling POST on /panic_reporter");
+                    return handle_panic_report(req);
+                }
             )
         })
     })
