@@ -81,7 +81,7 @@ fn run(opt: Opt) -> Fallible<()> {
         button_path_map,
         "openhouse.eyrie",
         &opt.host.unwrap_or_else(|| "localhost".to_string()),
-        opt.port.unwrap_or(5000),
+        opt.port.unwrap_or(8090),
     )?;
     //let _server_addr = server.start();
     //tree_addr.send(AddHandler())

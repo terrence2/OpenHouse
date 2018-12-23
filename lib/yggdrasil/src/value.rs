@@ -1,13 +1,13 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use bitflags::bitflags;
 use crate::{
     float::Float,
     path::{ConcretePath, ScriptPath},
     tokenizer::Token,
     tree::Tree,
 };
+use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
 use log::trace;
 use std::{convert::From, fmt};

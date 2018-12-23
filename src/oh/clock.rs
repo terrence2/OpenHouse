@@ -9,85 +9,16 @@ use oh::{DBServer, TickEvent};
 use std::{collections::HashMap, time::Duration as StdDuration};
 use yggdrasil::{SubTree, TreeSource, Value, ValueType};
 
-pub(crate) const CLOCK_PRELUDE: &str = r#"
-sys
-    time
-        seconds
-            unix
-                ^clock
-                interval <- "second"
-                wrap <- "never"
-            yearly
-                ^clock
-                interval <- "second"
-                wrap <- "yearly"
-            monthly
-                ^clock
-                interval <- "second"
-                wrap <- "monthly"
-            weekly
-                ^clock
-                interval <- "second"
-                wrap <- "weekly"
-            daily
-                ^clock
-                interval <- "second"
-                wrap <- "daily"
-            hourly
-                ^clock
-                interval <- "second"
-                wrap <- "hourly"
-            minutly
-                ^clock
-                interval <- "second"
-                wrap <- "minutly"
-        minutes
-            unix
-                ^clock
-                interval <- "minute"
-                wrap <- "never"
-            yearly
-                ^clock
-                interval <- "minute"
-                wrap <- "yearly"
-            monthly
-                ^clock
-                interval <- "minute"
-                wrap <- "monthly"
-            weekly
-                ^clock
-                interval <- "minute"
-                wrap <- "weekly"
-            daily
-                ^clock
-                interval <- "minute"
-                wrap <- "daily"
-            hourly
-                ^clock
-                interval <- "minute"
-                wrap <- "hourly"
-        hours
-            unix
-                ^clock
-                interval <- "hour"
-                wrap <- "never"
-            yearly
-                ^clock
-                interval <- "hour"
-                wrap <- "yearly"
-            monthly
-                ^clock
-                interval <- "hour"
-                wrap <- "monthly"
-            weekly
-                ^clock
-                interval <- "hour"
-                wrap <- "weekly"
-            daily
-                ^clock
-                interval <- "hour"
-                wrap <- "daily"
-"#;
+/**
+ * Example usage:
+ * sys
+ *    time
+ *        seconds
+ *            yearly
+ *                ^clock
+ *                interval <- "second"
+ *                wrap <- "yearly"
+ */
 
 enum ClockInterval {
     Second,
