@@ -20,7 +20,7 @@ lazy_static = "*"
 log = "0.4"
 openssl = { version=">=0.10", features = ["v110"] }
 regex = "1"
-reqwest = "0.8"
+reqwest = "0.9"
 simplelog = "0.5"
 structopt = "0.2"
 yggdrasil = { path = "./lib/yggdrasil" }
