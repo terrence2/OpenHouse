@@ -84,7 +84,7 @@ impl<'a> TreeParser<'a> {
     }
 
     fn consume_tree(&mut self, parent: &NodeRef) -> Fallible<()> {
-        let name = self.consume_name()?;
+        let name = self.consume_node_name()?;
         trace!(
             "Consuming tree at: {} under parent: {}",
             name,
@@ -103,6 +103,7 @@ impl<'a> TreeParser<'a> {
         while !self.out_of_input() {
             match self.peek()? {
                 Token::NameTerm(ref _s) => self.consume_tree(&child)?,
+                Token::BooleanTerm(ref _b) => self.consume_tree(&child)?,
                 Token::Dedent => {
                     self.pop()?;
                     return Ok(());
@@ -139,7 +140,9 @@ impl<'a> TreeParser<'a> {
     fn consume_block_suite(&mut self, node: &NodeRef) -> Fallible<()> {
         while !self.out_of_input() {
             match self.peek()? {
+                // A name (or bool in this context) is a child and will be parsed elsewhere
                 Token::NameTerm(ref _s) => return Ok(()),
+                Token::BooleanTerm(_v) => return Ok(()),
                 Token::Dedent => return Ok(()),
                 Token::Indent => bail!("parse error: expected a sigil before another indent"),
                 _ => {
@@ -204,15 +207,19 @@ impl<'a> TreeParser<'a> {
         bail!("would import {} from file", filename)
     }
 
-    fn consume_name(&mut self) -> Fallible<String> {
+    fn consume_node_name(&mut self) -> Fallible<String> {
         ensure!(
             !self.out_of_input(),
             "parse error: no tokens to consume when looking for name"
         );
-        match self.pop()? {
-            Token::NameTerm(s) => Ok(s),
+        Ok(match self.pop()? {
+            Token::NameTerm(s) => s,
+            Token::BooleanTerm(b) => {
+                let v = if b { "true" } else { "false" };
+                v.to_owned()
+            }
             _ => bail!("parse error: did not find a name in expected position"),
-        }
+        })
     }
 
     fn out_of_input(&self) -> bool {
@@ -628,6 +635,22 @@ bar <- 2
 "#;
         let tree = TreeBuilder::default().build_from_str(s).unwrap();
         assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(2));
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_bools_in_name_position() -> Fallible<()> {
+        let s = r#"
+foo
+  true <- "hello"
+  false <- "world"
+bar <-/foo/true + " " + /foo/false
+"#;
+        let tree = TreeBuilder::default().build_from_str(s).unwrap();
+        assert_eq!(
+            tree.lookup("/bar")?.compute(&tree)?,
+            Value::String("hello world".to_owned())
+        );
         Ok(())
     }
 

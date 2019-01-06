@@ -32,7 +32,7 @@ pub trait TreeSource: Downcast {
     fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()>;
 
     /// Return the current value of the given source. Sources are generally
-    /// expected to be delivered asyncronously and the latest value will be
+    /// expected to be delivered asynchronously and the latest value will be
     /// cached indefinitely, This is only called when the value is used as a path
     /// component before a change event has occurred.
     fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value>;
