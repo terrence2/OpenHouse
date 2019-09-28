@@ -30,7 +30,7 @@ fn get_caller_ip(req: &HttpRequest<AppState>) -> Fallible<IpAddr> {
         .first()
         .ok_or_else(|| err_msg("remote host is empty in event"))?
         .parse::<IpAddr>()?;
-    return Ok(ip);
+    Ok(ip)
 }
 
 fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
@@ -53,7 +53,7 @@ fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
 
     let path = path.unwrap().to_string();
     let db = req.state().db.clone();
-    return Box::new(
+    Box::new(
         req.body()
             .limit(128)
             .from_err()
@@ -67,7 +67,7 @@ fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
                 db.do_send(event);
                 ok(HttpResponse::Ok().into())
             }),
-    );
+    )
 }
 
 fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
@@ -80,7 +80,7 @@ fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpRespon
         }
     }
 
-    return Box::new(req.body().limit(4096).from_err().and_then(|bytes: Bytes| {
+    Box::new(req.body().limit(4096).from_err().and_then(|bytes: Bytes| {
         match str::from_utf8(&bytes) {
             Ok(s) => {
                 for line in s.split('\n') {
@@ -92,7 +92,7 @@ fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpRespon
             }
         }
         ok(HttpResponse::Ok().into())
-    }));
+    }))
 }
 
 pub fn build_server(
@@ -116,7 +116,7 @@ pub fn build_server(
             res.method(Method::POST).a(
                 |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
                     trace!("server handling POST on /event");
-                    return handle_event(req);
+                    handle_event(req)
                 },
             )
         })
@@ -124,7 +124,7 @@ pub fn build_server(
             res.method(Method::POST).a(
                 |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
                     trace!("server handling POST on /panic_reporter");
-                    return handle_panic_report(req);
+                    handle_panic_report(req)
                 },
             )
         })
@@ -133,7 +133,7 @@ pub fn build_server(
     .bind(&format!("{}:{}", addr, port))?;
     //.bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?;
     let server = http_server.start();
-    return Ok(server);
+    Ok(server)
 }
 
 #[cfg(test)]
@@ -142,6 +142,6 @@ mod test {
 
     #[test]
     fn test_build() -> Fallible<()> {
-        return Ok(());
+        Ok(())
     }
 }

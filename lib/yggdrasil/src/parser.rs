@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
-    nifs: &'a HashMap<String, Box<NativeFunc>>,
+    nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
     import_interceptors: &'a HashMap<String, Tree>,
     templates: HashMap<String, NodeRef>,
     tokens: Vec<Token>,
@@ -39,7 +39,7 @@ impl<'a> TreeParser<'a> {
     pub fn from_str(
         tree: Tree,
         s: &str,
-        nifs: &HashMap<String, Box<NativeFunc>>,
+        nifs: &HashMap<String, Box<dyn NativeFunc>>,
         import_interceptors: &HashMap<String, Tree>,
     ) -> Fallible<Tree> {
         let sanitized = s.replace('\t', "    ");

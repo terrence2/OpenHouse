@@ -31,7 +31,7 @@ impl DBServer {
             legacy_mcu,
             hue,
         };
-        return Ok(db_server);
+        Ok(db_server)
     }
 }
 
@@ -59,7 +59,7 @@ impl Handler<HandleEvent> for DBServer {
             Ok(_) => (),
             Err(e) => error!("db server: failed to handle event: {}", e),
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -77,7 +77,7 @@ impl Handler<TickEvent> for DBServer {
         for (path, value) in &updates {
             self.tree.handle_event(&path, Value::Integer(*value))?;
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -92,6 +92,6 @@ mod test {
             .legacy_mcu
             .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
             .clone();
-        return Ok(());
+        Ok(())
     }
 }

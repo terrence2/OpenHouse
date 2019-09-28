@@ -14,33 +14,33 @@ struct Light {
 }
 impl TreeSink for Light {
     fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
-        return Ok(());
+        Ok(())
     }
     fn values_updated(&mut self, values: &[(String, Value)]) -> Result<(), Error> {
         for (path, value) in values.iter() {
             assert_eq!(*path, "/room/light");
             self.value = Some(value.to_owned());
         }
-        return Ok(());
+        Ok(())
     }
 }
 
 struct Switch {}
 impl TreeSource for Switch {
     fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
-        return Ok(());
+        Ok(())
     }
     fn nodetype(&self, _path: &str, _tree: &SubTree) -> Result<ValueType, Error> {
-        return Ok(ValueType::STRING);
+        Ok(ValueType::STRING)
     }
     fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Result<Vec<Value>, Error> {
-        return Ok(vec![]);
+        Ok(vec![])
     }
     fn handle_event(&mut self, _path: &str, _value: Value, _tree: &SubTree) -> Fallible<()> {
-        return Ok(());
+        Ok(())
     }
     fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
-        return Some(Value::String("foo".to_owned()));
+        Some(Value::String("foo".to_owned()))
     }
 }
 
@@ -67,5 +67,5 @@ room
     let v = sink.inspect_as::<Light, Option<Value>>(&|l| &l.value)?;
     assert_eq!((*v).clone().unwrap(), Value::String("foo".to_owned()));
 
-    return Ok(());
+    Ok(())
 }

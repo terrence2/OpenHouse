@@ -117,7 +117,7 @@ impl ClockDef {
             self.last_value = next_value;
             return Some(next_value);
         }
-        return None;
+        None
     }
 }
 
@@ -140,7 +140,7 @@ impl Clock {
                 out.push((path.to_owned(), value));
             }
         }
-        return out;
+        out
     }
 }
 
@@ -156,11 +156,11 @@ impl TreeSource for Clock {
             ClockWrap::from_str(&wrap)?,
         );
         self.clocks.insert(path.to_owned(), def);
-        return Ok(());
+        Ok(())
     }
 
     fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-        return Ok(ValueType::INTEGER);
+        Ok(ValueType::INTEGER)
     }
 
     fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
@@ -173,12 +173,12 @@ impl TreeSource for Clock {
             self.clocks[path].last_value == value.as_integer()?,
             "runtime error: clock event value does not match cached value"
         );
-        return Ok(());
+        Ok(())
     }
 
     fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
         trace!("CLOCK: get_value @ {}", path);
-        return Some(Value::Integer(self.clocks[path].last_value));
+        Some(Value::Integer(self.clocks[path].last_value))
     }
 }
 

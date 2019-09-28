@@ -4,6 +4,7 @@
 extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
+extern crate approx;
 extern crate bytes;
 extern crate chrono;
 extern crate failure;
@@ -87,5 +88,5 @@ fn run(opt: Opt) -> Fallible<()> {
     //tree_addr.send(AddHandler())
 
     let _ = sys.run();
-    return Ok(());
+    Ok(())
 }

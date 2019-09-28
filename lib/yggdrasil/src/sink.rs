@@ -29,12 +29,12 @@ impl_downcast!(TreeSink);
 /// context.
 #[derive(Clone)]
 pub struct SinkRef {
-    sink: Rc<RefCell<Box<TreeSink>>>,
+    sink: Rc<RefCell<Box<dyn TreeSink>>>,
 }
 
 impl SinkRef {
     /// Create a new SinkRef from a heap-allocated TreeSink implementation.
-    pub fn new(sink: Box<TreeSink>) -> Self {
+    pub fn new(sink: Box<dyn TreeSink>) -> Self {
         SinkRef {
             sink: Rc::new(RefCell::new(sink)),
         }
@@ -42,7 +42,7 @@ impl SinkRef {
 
     /// A helper function to make it easy to downcast to a mutable, concrete type
     /// so that the sink object can be mutated.
-    pub fn mutate_as<T>(&self, f: &mut FnMut(&mut T)) -> Fallible<()>
+    pub fn mutate_as<T>(&self, f: &mut dyn FnMut(&mut T)) -> Fallible<()>
     where
         T: TreeSink,
     {
@@ -55,7 +55,7 @@ impl SinkRef {
         Ok(())
     }
 
-    pub fn inspect_as<T, V>(&self, f: &Fn(&T) -> &V) -> Fallible<Ref<V>>
+    pub fn inspect_as<T, V>(&self, f: &dyn Fn(&T) -> &V) -> Fallible<Ref<V>>
     where
         T: TreeSink,
     {
@@ -84,7 +84,7 @@ mod test {
     struct TestSink {}
 
     impl TestSink {
-        fn new() -> Fallible<SinkRef> {
+        fn new_ref() -> Fallible<SinkRef> {
             Ok(SinkRef::new(Box::new(Self {})))
         }
 
@@ -103,17 +103,17 @@ mod test {
 
     #[test]
     fn test_sink_methods() -> Fallible<()> {
-        let sink = TestSink::new()?;
+        let sink = TestSink::new_ref()?;
         let tree = TreeBuilder::empty();
         let subtree = tree.subtree_at(&tree.root())?;
         sink.add_path("", &subtree)?;
-        sink.values_updated(&vec![])?;
+        sink.values_updated(&[])?;
         Ok(())
     }
 
     #[test]
     fn test_sink_mutate() -> Fallible<()> {
-        let sink = TestSink::new()?;
+        let sink = TestSink::new_ref()?;
         sink.mutate_as::<TestSink>(&mut |s| s.frob())?;
         Ok(())
     }

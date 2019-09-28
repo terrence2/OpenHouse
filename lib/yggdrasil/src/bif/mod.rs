@@ -20,16 +20,16 @@ pub trait NativeFunc {
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
     ) -> Fallible<ValueType>;
-    fn box_clone(&self) -> Box<NativeFunc>;
+    fn box_clone(&self) -> Box<dyn NativeFunc>;
 }
 
-impl Clone for Box<NativeFunc> {
-    fn clone(&self) -> Box<NativeFunc> {
+impl Clone for Box<dyn NativeFunc> {
+    fn clone(&self) -> Box<dyn NativeFunc> {
         self.box_clone()
     }
 }
 
-impl fmt::Debug for Box<NativeFunc> {
+impl fmt::Debug for Box<dyn NativeFunc> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TEST")
     }
