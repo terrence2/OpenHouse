@@ -1,25 +1,6 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-extern crate actix;
-extern crate actix_net;
-extern crate actix_web;
-extern crate approx;
-extern crate bytes;
-extern crate chrono;
-extern crate failure;
-extern crate futures;
-extern crate itertools;
-extern crate json;
-extern crate lazy_static;
-extern crate log;
-extern crate openssl;
-extern crate regex;
-extern crate reqwest;
-extern crate simplelog;
-extern crate structopt;
-extern crate yggdrasil;
-
 mod oh;
 mod web;
 

@@ -1,11 +1,11 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::{DBServer, TickEvent};
 use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, ensure, Fallible};
 use log::trace;
-use oh::{DBServer, TickEvent};
 use std::{collections::HashMap, time::Duration as StdDuration};
 use yggdrasil::{SubTree, TreeSource, Value, ValueType};
 

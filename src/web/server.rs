@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::{DBServer, HandleEvent};
 use actix::prelude::*;
 use actix_net::server::Server;
 use actix_web::{
@@ -10,7 +11,6 @@ use bytes::Bytes;
 use failure::{err_msg, Fallible};
 use futures::future::{ok, Future};
 use log::{error, trace};
-use oh::{DBServer, HandleEvent};
 //use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
 use yggdrasil::Value;

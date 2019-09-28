@@ -5,6 +5,7 @@
 name = "open_house"
 version = "2.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 actix = "^0.7"
