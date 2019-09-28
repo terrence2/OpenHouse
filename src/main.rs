@@ -7,7 +7,7 @@ mod web;
 use actix::prelude::*;
 use failure::Fallible;
 use oh::{DBServer, LegacyMCU, TickWorker};
-use simplelog::{Config, LevelFilter, TermLogger};
+use simplelog::{Config, LevelFilter, TermLogger, WriteLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use web::server::build_server;
@@ -44,7 +44,9 @@ fn run(opt: Opt) -> Fallible<()> {
     };
     let mut log_config = Config::default();
     log_config.time_format = Some("%F %T%.6fZ");
-    TermLogger::init(level, log_config)?;
+    if let Err(_) = TermLogger::init(level, log_config) {
+        WriteLogger::init(level, log_config, std::io::stdout())?
+    }
 
     let sys = System::new("open_house");
 
