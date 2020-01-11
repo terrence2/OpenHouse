@@ -31,12 +31,8 @@ struct Opt {
     config: PathBuf,
 }
 
-fn main() {
+fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    run(opt).unwrap();
-}
-
-fn run(opt: Opt) -> Fallible<()> {
     let level = match opt.verbose {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
