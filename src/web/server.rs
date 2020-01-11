@@ -51,7 +51,7 @@ impl FromRequest for RequestIp {
     }
 }
 
-fn handle_event(body: Bytes, app_data: web::Data<AppState>, request_ip: RequestIp) -> HttpResponse {
+async fn handle_event(body: Bytes, app_data: web::Data<AppState>, request_ip: RequestIp) -> HttpResponse {
     let path = app_data.button_path_map.get(&request_ip.ip);
     if path.is_none() {
         return HttpResponse::NotFound().into();
