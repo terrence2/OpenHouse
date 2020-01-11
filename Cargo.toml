@@ -29,5 +29,5 @@ openssl = { version=">=0.10", features = ["v110"] }
 regex = "1"
 reqwest = "0.9"
 simplelog = "0.5"
-structopt = "0.2"
+structopt = "0.3"
 yggdrasil = { path = "./lib/yggdrasil" }
