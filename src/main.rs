@@ -38,9 +38,13 @@ fn main() -> Fallible<()> {
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
-    let log_config = ConfigBuilder::new().set_time_format_str("%F %T%.6fZ").build();
+    let log_config = ConfigBuilder::new()
+        .set_time_format_str("%F %T%.6fZ")
+        .build();
     if let Err(_) = TermLogger::init(level, log_config, TerminalMode::Stdout) {
-        let log_config = ConfigBuilder::new().set_time_format_str("%F %T%.6fZ").build();
+        let log_config = ConfigBuilder::new()
+            .set_time_format_str("%F %T%.6fZ")
+            .build();
         WriteLogger::init(level, log_config, std::io::stdout())?
     }
 
@@ -66,6 +70,6 @@ fn main() -> Fallible<()> {
     //let _server_addr = server.start();
     //tree_addr.send(AddHandler())
 
-    let _ = sys.run();
+    sys.run()?;
     Ok(())
 }

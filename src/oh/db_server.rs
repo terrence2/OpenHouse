@@ -87,6 +87,7 @@ mod test {
 
     #[test]
     fn test_new() -> Fallible<()> {
+        let _sys = System::new("open_house");
         let db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
         let _button_path_map = db
             .legacy_mcu
