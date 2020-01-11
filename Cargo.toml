@@ -13,14 +13,14 @@ members = [
 ]
 
 [dependencies]
-actix = "^0.7"
-actix-net = "^ 0.2"
-actix-web = { version = "0.7.6", features=["alpn", "flate2-rust"] }
+actix = "^ 0.9"
+actix-server = "^ 1"
+actix-web = "^ 2"
 approx = "^ 0.3"
-bytes = "0.4.9"
+bytes = "^ 0.5"
 chrono = "^ 0.4"
 failure = "^ 0.1"
-futures = "0.1.23"
+futures = "^ 0.3"
 itertools = "^ 0.8"
 json = "^ 0.12"
 lazy_static = "*"
