@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use approx::relative_eq;
 use failure::{bail, ensure, Fallible};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -22,19 +23,19 @@ impl BHS {
     }
 
     pub fn from_rgb(rgb: &RGB) -> Fallible<Self> {
-        let r = rgb.red as f64 / 256.0f64;
-        let g = rgb.green as f64 / 256.0f64;
-        let b = rgb.blue as f64 / 256.0f64;
+        let r = f64::from(rgb.red) / 256.0f64;
+        let g = f64::from(rgb.green) / 256.0f64;
+        let b = f64::from(rgb.blue) / 256.0f64;
         let max = r.max(g).max(b);
         let min = r.min(g).min(b);
 
-        let hue = if max == min {
+        let hue = if relative_eq!(max, min) {
             0.0
-        } else if max == r {
+        } else if relative_eq!(max, r) {
             0.0 + (g - b) / (max - min)
-        } else if max == g {
+        } else if relative_eq!(max, g) {
             2.0 + (b - r) / (max - min)
-        } else if max == b {
+        } else if relative_eq!(max, b) {
             4.0 + (r - g) / (max - min)
         } else {
             unreachable!()

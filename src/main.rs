@@ -1,31 +1,13 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-extern crate actix;
-extern crate actix_net;
-extern crate actix_web;
-extern crate bytes;
-extern crate chrono;
-extern crate failure;
-extern crate futures;
-extern crate itertools;
-extern crate json;
-extern crate lazy_static;
-extern crate log;
-extern crate openssl;
-extern crate regex;
-extern crate reqwest;
-extern crate simplelog;
-extern crate structopt;
-extern crate yggdrasil;
-
 mod oh;
 mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
 use oh::{DBServer, LegacyMCU, TickWorker};
-use simplelog::{Config, LevelFilter, TermLogger};
+use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use web::server::build_server;
@@ -49,20 +31,22 @@ struct Opt {
     config: PathBuf,
 }
 
-fn main() {
+fn main() -> Fallible<()> {
     let opt = Opt::from_args();
-    run(opt).unwrap();
-}
-
-fn run(opt: Opt) -> Fallible<()> {
     let level = match opt.verbose {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
-    let mut log_config = Config::default();
-    log_config.time_format = Some("%F %T%.6fZ");
-    TermLogger::init(level, log_config)?;
+    let log_config = ConfigBuilder::new()
+        .set_time_format_str("%F %T%.6fZ")
+        .build();
+    if let Err(_) = TermLogger::init(level, log_config, TerminalMode::Stdout) {
+        let log_config = ConfigBuilder::new()
+            .set_time_format_str("%F %T%.6fZ")
+            .build();
+        WriteLogger::init(level, log_config, std::io::stdout())?
+    }
 
     let sys = System::new("open_house");
 
@@ -86,6 +70,6 @@ fn run(opt: Opt) -> Fallible<()> {
     //let _server_addr = server.start();
     //tree_addr.send(AddHandler())
 
-    let _ = sys.run();
-    return Ok(());
+    sys.run()?;
+    Ok(())
 }

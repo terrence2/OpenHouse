@@ -1,15 +1,15 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::{
+    color::{Color, Mired, BHS},
+    json_helpers::{ObjectHelper, ValueHelper},
+};
 use actix::{Actor, Addr, Context, Handler, Message, System};
 use failure::{err_msg, Fallible};
 use itertools::Itertools;
 use json::{object, parse, stringify, JsonValue};
 use log::{error, info, trace, warn};
-use oh::{
-    color::{Color, Mired, BHS, RGB},
-    json_helpers::{ObjectHelper, ValueHelper},
-};
 use reqwest::Client;
 use std::{collections::HashMap, str::FromStr, time::Duration};
 use yggdrasil::{ConcretePath, SubTree, TreeSink, Value};
@@ -60,7 +60,7 @@ impl TreeSink for Hue {
         // FIXME: allow the user to override the light name, rather than just
         // assuming it's the last path component.
         self.path_map.insert(path.to_owned(), basename.to_owned());
-        return Ok(());
+        Ok(())
     }
 
     fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
@@ -79,7 +79,7 @@ impl TreeSink for Hue {
         let hub = Hub::new(&address, &username)?;
         let worker = HueWorker::new(hub, &self.path_map);
         self.worker = Some(worker.start());
-        return Ok(());
+        Ok(())
     }
 
     fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {
@@ -88,7 +88,7 @@ impl TreeSink for Hue {
                 values: values.to_owned(),
             });
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -130,7 +130,7 @@ impl Hub {
         obj["on"] = true.into();
         // FIXME: support transition time
         obj["transitiontime"] = 10.into();
-        return Ok(obj);
+        Ok(obj)
     }
 
     fn url(&self, path: &str) -> String {
@@ -141,21 +141,21 @@ impl Hub {
         let url = self.url(path);
         trace!("GET {}", url);
         let body = self.client.get(&url).send()?.text()?;
-        return Ok(body);
+        Ok(body)
     }
 
     fn post(&self, path: &str, data: String) -> Fallible<JsonValue> {
         let url = self.url(path);
         trace!("POST {} -> {}", url, data);
         let body = self.client.post(&url).body(data).send()?.text()?;
-        return Ok(parse(&body)?);
+        Ok(parse(&body)?)
     }
 
     fn put(&self, path: &str, data: String) -> Fallible<JsonValue> {
         let url = self.url(path);
         trace!("PUT {} -> {}", url, data);
         let body = self.client.put(&url).body(data).send()?.text()?;
-        return Ok(parse(&body)?);
+        Ok(parse(&body)?)
     }
 }
 
@@ -182,7 +182,6 @@ impl Actor for HueWorker {
             Err(e) => {
                 error!("hue system: failed to start: {}", e);
                 System::current().stop();
-                ()
             }
         };
     }
@@ -205,7 +204,7 @@ impl HueWorker {
         self.show_configuration(&body)?;
         self.collect_lights(&body)?;
         self.collect_groups(&body)?;
-        return Ok(());
+        Ok(())
     }
 
     fn show_configuration(&self, body: &JsonValue) -> Fallible<()> {
@@ -230,7 +229,7 @@ impl HueWorker {
         for prop in &props {
             info!("{:>20}: {}", prop, config.fetch(prop)?);
         }
-        return Ok(());
+        Ok(())
     }
 
     // Build the light map so that we can bridge from light names to the numbers
@@ -249,7 +248,7 @@ impl HueWorker {
             );
             self.light_map.insert(name.to_owned(), number.parse()?);
         }
-        return Ok(());
+        Ok(())
     }
 
     // Groups are not limited in recent releases of the firmware, so just
@@ -269,7 +268,7 @@ impl HueWorker {
             info!("{:>3} => {:?}", number, lights);
             self.group_map.insert(lights, number.parse()?);
         }
-        return Ok(());
+        Ok(())
     }
 
     fn handle_values_updated(&mut self, msg: &ValuesUpdated) -> Fallible<()> {
@@ -292,7 +291,7 @@ impl HueWorker {
 
             self.update_group(group_name, value)?;
         }
-        return Ok(());
+        Ok(())
     }
 
     fn make_new_group(&mut self, lights: &[u32]) -> Fallible<()> {
@@ -304,7 +303,7 @@ impl HueWorker {
         let resp = self.hub.post("/groups/", stringify(obj))?;
         let name = resp[0]["success"]["id"].to_str()?.parse()?;
         self.group_map.insert(lights.to_vec(), name);
-        return Ok(());
+        Ok(())
     }
 
     fn update_group(&self, group: u32, light_value: &Value) -> Fallible<()> {
@@ -313,7 +312,7 @@ impl HueWorker {
         let obj = Hub::light_state_for_value(v)?;
         let put_data = stringify(obj);
         let _resp = self.hub.put(&url, put_data)?;
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -325,7 +324,7 @@ impl Handler<ValuesUpdated> for HueWorker {
             Ok(_) => (),
             Err(e) => error!("hue: value update failed: {}", e),
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -336,7 +335,7 @@ mod test {
     #[test]
     fn test_new_sink() -> Fallible<()> {
         let _hue = Hue::new();
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -346,6 +345,6 @@ mod test {
             Hub::light_state_for_value("mired(40)")?,
             object! {"on" => true, "ct" => 40, "transitiontime" => 10}
         );
-        return Ok(());
+        Ok(())
     }
 }

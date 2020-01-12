@@ -5,22 +5,29 @@
 name = "open_house"
 version = "2.0.0"
 authors = ["Terrence Cole <terrence.d.cole@gmail.com>"]
+edition = "2018"
+
+[workspace]
+members = [
+    "lib/yggdrasil"
+]
 
 [dependencies]
-actix = "^0.7"
-actix-net = "^0.2"
-actix-web = { version = "0.7.6", features=["alpn", "flate2-rust"] }
-bytes = "0.4.9"
-chrono = "0.4"
-failure = "0.1"
-futures = "0.1.23"
-itertools = "0.7"
-json = "0.11"
+actix = "^ 0.9"
+actix-server = "^ 1"
+actix-web = "^ 2"
+approx = "^ 0.3"
+bytes = "^ 0.5"
+chrono = "^ 0.4"
+failure = "^ 0.1"
+futures = "^ 0.3"
+itertools = "^ 0.8"
+json = "^ 0.12"
 lazy_static = "*"
-log = "0.4"
+log = "^ 0.4"
 openssl = { version=">=0.10", features = ["v110"] }
-regex = "1"
+regex = "^ 1"
 reqwest = "0.9"
-simplelog = "0.5"
-structopt = "0.2"
+simplelog = "^ 0.7"
+structopt = "^ 0.3"
 yggdrasil = { path = "./lib/yggdrasil" }

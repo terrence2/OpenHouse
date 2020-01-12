@@ -43,7 +43,7 @@ impl NativeFunc for ToStr {
         Ok(ValueType::STRING)
     }
 
-    fn box_clone(&self) -> Box<NativeFunc> {
+    fn box_clone(&self) -> Box<dyn NativeFunc> {
         Box::new((*self).clone())
     }
 }

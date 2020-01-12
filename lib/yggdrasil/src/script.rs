@@ -18,7 +18,7 @@ use std::collections::HashMap;
 pub(super) enum Expr {
     Add(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
-    Call(Box<NativeFunc>, Box<Expr>),
+    Call(Box<dyn NativeFunc>, Box<Expr>),
     Divide(Box<Expr>, Box<Expr>),
     Equal(Box<Expr>, Box<Expr>),
     GreaterThan(Box<Expr>, Box<Expr>),
@@ -158,7 +158,7 @@ impl Script {
     pub fn inline_from_tokens(
         path: String,
         tokens: &[Token],
-        nifs: &HashMap<String, Box<NativeFunc>>,
+        nifs: &HashMap<String, Box<dyn NativeFunc>>,
     ) -> Fallible<Self> {
         let mut parser = ExprParser::from_tokens(path, tokens, nifs);
         let expr = parser.eparser()?;
@@ -324,7 +324,7 @@ struct ExprParser<'a> {
     path: String,
     tokens: &'a [Token],
     offset: usize,
-    nifs: &'a HashMap<String, Box<NativeFunc>>,
+    nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
 }
 
 // Uses textbook precedence climbing.
@@ -332,7 +332,7 @@ impl<'a> ExprParser<'a> {
     fn from_tokens(
         path: String,
         tokens: &'a [Token],
-        nifs: &'a HashMap<String, Box<NativeFunc>>,
+        nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
     ) -> Self {
         Self {
             path,

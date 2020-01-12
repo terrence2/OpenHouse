@@ -48,17 +48,17 @@ impl_downcast!(TreeSource);
 /// reference to a source that can be shared by the Tree and the surrounding
 /// context.
 #[derive(Clone)]
-pub struct SourceRef(Rc<RefCell<Box<TreeSource>>>);
+pub struct SourceRef(Rc<RefCell<Box<dyn TreeSource>>>);
 
 impl SourceRef {
     /// Create a new SourceRef from a heap-allocated TreeSource implementation.
-    pub fn new(source: Box<TreeSource>) -> Self {
+    pub fn new(source: Box<dyn TreeSource>) -> Self {
         SourceRef(Rc::new(RefCell::new(source)))
     }
 
     /// A helper function to make it easy to downcast to a mutable, concrete type
     /// so that the source object can be mutated.
-    pub fn mutate_as<T, U>(&self, f: &mut FnMut(&mut T) -> U) -> Fallible<U>
+    pub fn mutate_as<T, U>(&self, f: &mut dyn FnMut(&mut T) -> U) -> Fallible<U>
     where
         T: TreeSource,
     {
@@ -78,7 +78,7 @@ impl SourceRef {
         Ok(result)
     }
 
-    pub fn inspect_as<T, V>(&self, f: &Fn(&T) -> &V) -> Fallible<Ref<V>>
+    pub fn inspect_as<T, V>(&self, f: &dyn Fn(&T) -> &V) -> Fallible<Ref<V>>
     where
         T: TreeSource,
     {
@@ -127,7 +127,7 @@ pub(crate) mod test {
     }
 
     impl SimpleSource {
-        pub fn new(values: Vec<Value>) -> Fallible<SourceRef> {
+        pub fn new_ref(values: Vec<Value>) -> Fallible<SourceRef> {
             let src = Box::new(Self {
                 values: values.clone(),
                 inputs: HashMap::new(),
@@ -164,6 +164,6 @@ pub(crate) mod test {
 
     #[test]
     fn test_source_new() {
-        SimpleSource::new(vec![]).unwrap();
+        SimpleSource::new_ref(vec![]).unwrap();
     }
 }

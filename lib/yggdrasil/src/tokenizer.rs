@@ -123,8 +123,8 @@ impl LineTokenizer {
     fn tokenize_one(&mut self) -> Fallible<Token> {
         let c = self.peek(0)?;
         let tok = match c {
-            'a'...'z' | 'A'...'Z' => self.tokenize_name_or_keyword(),
-            '0'...'9' => self.tokenize_int_or_float(),
+            'a'..='z' | 'A'..='Z' => self.tokenize_name_or_keyword(),
+            '0'..='9' => self.tokenize_int_or_float(),
             '/' => self.tokenize_absolute_path_or_division(),
             '.' => self.tokenize_path(),
             '^' => self.tokenize_source(),
@@ -244,7 +244,7 @@ impl LineTokenizer {
         let mut contains_dot = false;
         while !self.is_empty() {
             match self.peek(0)? {
-                '0'...'9' => self.offset += 1,
+                '0'..='9' => self.offset += 1,
                 '.' => {
                     self.offset += 1;
                     contains_dot = true;
@@ -407,7 +407,7 @@ impl LineTokenizer {
         let start = self.offset;
         while !self.is_empty() {
             match self.peek(0)? {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '/' | '.' | '{' | '}' => {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '/' | '.' | '{' | '}' => {
                     self.offset += 1
                 }
                 _ => break,
@@ -421,7 +421,7 @@ impl LineTokenizer {
         let start = self.offset;
         while !self.is_empty() {
             match self.chars[self.offset] {
-                'a'...'z' | 'A'...'Z' | '0'...'9' | '-' | '_' | '.' => self.offset += 1,
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' => self.offset += 1,
                 _ => break,
             }
         }
@@ -448,7 +448,7 @@ impl LineTokenizer {
         if let Some(offset) = line_raw.find('#') {
             line.truncate(offset);
         }
-        line.trim_right().to_owned()
+        line.trim_end().to_owned()
     }
 
     fn leading_whitespace(s: &str) -> usize {

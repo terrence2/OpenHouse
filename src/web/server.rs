@@ -1,16 +1,16 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::{DBServer, HandleEvent};
 use actix::prelude::*;
-use actix_net::server::Server;
+use actix_server::Server;
 use actix_web::{
-    http::Method, middleware, server, App, FutureResponse, HttpMessage, HttpRequest, HttpResponse,
+    dev, middleware, web, App, Error, FromRequest, HttpRequest, HttpResponse, HttpServer,
 };
 use bytes::Bytes;
 use failure::{err_msg, Fallible};
-use futures::future::{ok, Future};
-use log::{error, trace};
-use oh::{DBServer, HandleEvent};
+use futures::future::{err, ok, Ready};
+use log::trace;
 //use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
 use yggdrasil::Value;
@@ -20,79 +20,51 @@ struct AppState {
     button_path_map: HashMap<IpAddr, String>,
 }
 
-fn get_caller_ip(req: &HttpRequest<AppState>) -> Fallible<IpAddr> {
-    let info = req.connection_info();
-    let remote_host = info.remote();
-    let ip = remote_host
-        .ok_or_else(|| err_msg("cannot find remote host for event"))?
-        .split(':')
-        .collect::<Vec<&str>>()
-        .first()
-        .ok_or_else(|| err_msg("remote host is empty in event"))?
-        .parse::<IpAddr>()?;
-    return Ok(ip);
+struct RequestIp {
+    ip: IpAddr,
 }
 
-fn handle_event(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
-    let ip = match get_caller_ip(req) {
-        Ok(ip) => {
-            trace!("server: mapped event to ip {}", ip);
-            ip
-        }
-        Err(e) => {
-            error!("server: failed to get caller ip: {}", e);
-            return Box::new(ok(HttpResponse::BadRequest().finish()));
-        }
-    };
+impl FromRequest for RequestIp {
+    type Error = Error;
+    type Future = Ready<Result<Self, Self::Error>>;
+    type Config = ();
 
-    let path = req.state().button_path_map.get(&ip);
+    fn from_request(req: &HttpRequest, _payload: &mut dev::Payload) -> Self::Future {
+        let conn_info = req.connection_info();
+        let remote = conn_info.remote();
+        if remote.is_none() {
+            return err(err_msg("no remote host").into());
+        }
+        let addr = remote.unwrap().split(':').collect::<Vec<&str>>();
+        if addr.first().is_none() {
+            return err(err_msg("no address in remote host").into());
+        }
+        let ip = addr.first().unwrap().parse::<IpAddr>();
+        if ip.is_err() {
+            return err(err_msg("failed to parse remote host id").into());
+        }
+        let ip = ip.unwrap();
+        trace!("server: mapped event to {}", ip);
+        ok(RequestIp {
+            ip,
+        })
+    }
+}
+
+async fn handle_event(body: Bytes, app_data: web::Data<AppState>, request_ip: RequestIp) -> HttpResponse {
+    let path = app_data.button_path_map.get(&request_ip.ip);
     if path.is_none() {
-        error!("server: request from ip {} does not map to any path", ip);
-        return Box::new(ok(HttpResponse::NotFound().finish()));
+        return HttpResponse::NotFound().into();
     }
-
     let path = path.unwrap().to_string();
-    let db = req.state().db.clone();
-    return Box::new(
-        req.body()
-            .limit(128)
-            .from_err()
-            .and_then(move |bytes: Bytes| {
-                let value = str::from_utf8(&bytes).unwrap().to_string();
-                trace!("http server: recvd legacy mcu event {} <- {}", path, value);
-                let event = HandleEvent {
-                    path,
-                    value: Value::String(value),
-                };
-                db.do_send(event);
-                ok(HttpResponse::Ok().into())
-            }),
-    );
-}
-
-fn handle_panic_report(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
-    match get_caller_ip(req) {
-        Ok(ip) => {
-            error!("received panic report from ip {}", ip);
-        }
-        Err(e) => {
-            error!("received panic report from unknown ip: {}", e);
-        }
-    }
-
-    return Box::new(req.body().limit(4096).from_err().and_then(|bytes: Bytes| {
-        match str::from_utf8(&bytes) {
-            Ok(s) => {
-                for line in s.split('\n') {
-                    error!("panic: {}", line);
-                }
-            }
-            Err(e) => {
-                error!("panic report not decodable: {}", e);
-            }
-        }
-        ok(HttpResponse::Ok().into())
-    }));
+    let value = str::from_utf8(&body).unwrap().to_string();
+    trace!("http server: recvd legacy mcu event {} <- {}", path, value);
+    let event = HandleEvent {
+        path,
+        value: Value::String(value),
+    };
+    app_data.db.do_send(event);
+    HttpResponse::Ok().finish()
 }
 
 pub fn build_server(
@@ -101,47 +73,23 @@ pub fn build_server(
     hostname: &str,
     addr: &str,
     port: u16,
-) -> Fallible<Addr<Server>> {
+) -> Fallible<Server> {
     // let mut ssl_builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
     // ssl_builder.set_private_key_file("key.pem", SslFiletype::PEM)?;
     // ssl_builder.set_certificate_chain_file("cert.pem")?;
 
-    let http_server = server::new(move || {
-        App::with_state(AppState {
-            db: db.clone(),
-            button_path_map: button_path_map.clone(),
-        })
-        .middleware(middleware::Logger::default())
-        .resource("/event", |res| {
-            res.method(Method::POST).a(
-                |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
-                    trace!("server handling POST on /event");
-                    return handle_event(req);
-                },
-            )
-        })
-        .resource("/panic_report", |res| {
-            res.method(Method::POST).a(
-                |req: &HttpRequest<AppState>| -> FutureResponse<HttpResponse> {
-                    trace!("server handling POST on /panic_reporter");
-                    return handle_panic_report(req);
-                },
-            )
-        })
+    let http_server = HttpServer::new(move || {
+        App::new()
+            .data(AppState {
+                db: db.clone(),
+                button_path_map: button_path_map.clone(),
+            })
+            .wrap(middleware::Logger::default())
+            .service(web::resource("/event").route(web::post().to(handle_event)))
     })
     .server_hostname(hostname.to_string())
     .bind(&format!("{}:{}", addr, port))?;
     //.bind_ssl(&format!("{}:{}", addr, port), ssl_builder)?;
-    let server = http_server.start();
-    return Ok(server);
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_build() -> Fallible<()> {
-        return Ok(());
-    }
+    let server = http_server.run();
+    Ok(server)
 }

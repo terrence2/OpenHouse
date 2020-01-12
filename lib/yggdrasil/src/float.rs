@@ -103,6 +103,7 @@ mod test {
     #[test]
     #[should_panic]
     fn test_float_nan() {
+        #[allow(clippy::eq_op, clippy::zero_divided_by_zero)]
         Float::new(0.0f64 / 0.0f64).unwrap();
     }
 

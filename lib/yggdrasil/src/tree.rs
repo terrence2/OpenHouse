@@ -36,7 +36,7 @@ pub struct TreeBuilder {
     sink_handlers: HashMap<String, SinkRef>,
 
     // Extension functions defined by the embedding.
-    nifs: HashMap<String, Box<NativeFunc>>,
+    nifs: HashMap<String, Box<dyn NativeFunc>>,
 
     // Add builtin functions to `nifs` before loading. (default: true)
     add_builtin_nifs: bool,
@@ -72,7 +72,7 @@ impl TreeBuilder {
     pub fn add_native_function(
         mut self,
         name: &str,
-        nif: Box<NativeFunc>,
+        nif: Box<dyn NativeFunc>,
     ) -> Fallible<TreeBuilder> {
         self.nifs.insert(name.to_owned(), nif);
         Ok(self)
@@ -230,7 +230,7 @@ impl<'a> SubTree<'a> {
 pub struct NodeRef(Arc<RefCell<Node>>);
 
 impl NodeRef {
-    pub fn new(node: Node) -> NodeRef {
+    pub fn new(node: Node) -> Self {
         let self_ref = NodeRef(Arc::new(RefCell::new(node)));
         self_ref
             .0
@@ -425,7 +425,7 @@ impl NodeRef {
             child.flow_input_to_output(sinks, graph)?;
         }
 
-        let mut connected_sinks = None;
+        let mut maybe_connected_sinks = None;
         if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
             let connected = graph.connected_nodes(self, sinks)?;
             if connected.is_empty() {
@@ -434,17 +434,17 @@ impl NodeRef {
                     self.path_str()
                 );
             }
-            connected_sinks = Some(connected);
+            maybe_connected_sinks = Some(connected);
         };
 
-        if connected_sinks.is_some() {
+        if let Some(mut connected_sinks) = maybe_connected_sinks {
             if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.borrow_mut().input {
                 assert!(
                     sinks.is_empty(),
                     "dataflow error: found connected sinks at {}, but sinks already set",
                     self.path_str()
                 );
-                sinks.append(&mut connected_sinks.unwrap());
+                sinks.append(&mut connected_sinks);
             } else {
                 panic!("expected source to not mutate")
             }
@@ -763,12 +763,12 @@ mod tests {
         let d20 = Dimension2::from_str("20x20")?;
 
         let child = tree.lookup("/")?.add_child("foopy")?;
-        child.set_location(d10.clone())?;
+        child.set_location(d10)?;
         assert_eq!(d10, child.location().unwrap());
 
         let child = tree.lookup("/foopy")?.add_child("barmy")?;
-        child.set_location(d20.clone())?;
-        child.set_dimensions(d20.clone())?;
+        child.set_location(d20)?;
+        child.set_dimensions(d20)?;
         assert_eq!(d20, child.location().unwrap());
 
         assert_eq!(d10, tree.lookup("/foopy")?.location().unwrap());
@@ -787,7 +787,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new(vec![])?;
+        let src1 = SimpleSource::new_ref(vec![])?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
@@ -803,7 +803,7 @@ a ^src1
     a <- ../b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new(vec![])?;
+        let src1 = SimpleSource::new_ref(vec![])?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -818,7 +818,7 @@ a ^src1
     a <- /b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new(vec![])?;
+        let src1 = SimpleSource::new_ref(vec![])?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -836,7 +836,7 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = SimpleSource::new(vec!["foo".into(), "bar".into()])?;
+        let srcref: SourceRef = SimpleSource::new_ref(vec!["foo".into(), "bar".into()])?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;

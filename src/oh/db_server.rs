@@ -1,10 +1,10 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::{clock::Clock, hue::Hue, legacy_mcu::LegacyMCU};
 use actix::prelude::*;
 use failure::Fallible;
 use log::{error, trace};
-use oh::{clock::Clock, hue::Hue, legacy_mcu::LegacyMCU};
 use std::path::Path;
 use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
 
@@ -31,7 +31,7 @@ impl DBServer {
             legacy_mcu,
             hue,
         };
-        return Ok(db_server);
+        Ok(db_server)
     }
 }
 
@@ -59,7 +59,7 @@ impl Handler<HandleEvent> for DBServer {
             Ok(_) => (),
             Err(e) => error!("db server: failed to handle event: {}", e),
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -77,7 +77,7 @@ impl Handler<TickEvent> for DBServer {
         for (path, value) in &updates {
             self.tree.handle_event(&path, Value::Integer(*value))?;
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -87,11 +87,12 @@ mod test {
 
     #[test]
     fn test_new() -> Fallible<()> {
+        let _sys = System::new("open_house");
         let db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
         let _button_path_map = db
             .legacy_mcu
             .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
             .clone();
-        return Ok(());
+        Ok(())
     }
 }

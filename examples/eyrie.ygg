@@ -86,9 +86,16 @@ palette
         on        <- "none"
         low       <- "none"
         moonlight <- "bhs(255, 47000, 255)"
-        #moonlight <- "bhs(255, " + str(/sys/time/seconds/minutly * 1092) + ", 255)"
         default   <- "rgb(128, 0, 0)"
         off       <- "none"
+    
+    hue-stream
+        on        <- "bhs(255, 34495, 255)"
+        low       <- "bhs(64, 34495, 255)"
+        moonlight <- "none"
+        default   <- "rgb(128, 0, 0)"
+        off       <- "none"
+
 
 rooms
     bedroom @12'x0' <>12'x10'
@@ -119,6 +126,7 @@ rooms
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
+        diningroom-shelves $hue @11'x0' <-/palette/hue-stream/{./color}
 
     hall @10'x10' <>7'x6'
         closet @6'x3' <>1'x3'
@@ -180,7 +188,6 @@ rooms
 
     diningroom @13'x24' <>7'6"x8'6"
         color <- ../livingroom/livingroom-lightswitch.eyrie
-        diningroom-shelves $hue @6'x7'
         diningroom-ceiling $hue @3'x4'
 
 meta

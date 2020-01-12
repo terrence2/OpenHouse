@@ -30,18 +30,18 @@ impl TreeSource for LegacyMCU {
         self.path_map.insert(ip, path.to_string());
         self.value_map
             .insert(path.to_string(), Value::String("off".to_owned()));
-        return Ok(());
+        Ok(())
     }
 
     fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-        return Ok(ValueType::STRING);
+        Ok(ValueType::STRING)
     }
 
     fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
-        return Ok(vec!["on", "off", "moonlight", "low", "default"]
+        Ok(vec!["on", "off", "moonlight", "low", "default"]
             .iter()
             .map(|v| Value::String(v.to_string()))
-            .collect::<Vec<Value>>());
+            .collect::<Vec<Value>>())
     }
 
     fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
@@ -50,11 +50,11 @@ impl TreeSource for LegacyMCU {
             .get_mut(path)
             .ok_or_else(|| err_msg("recvd event for unknown path"))?;
         *entry = value;
-        return Ok(());
+        Ok(())
     }
 
     fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
         trace!("LegacyMCU: get_value @ {}", path);
-        return self.value_map.get(path).map(|v| v.to_owned());
+        self.value_map.get(path).map(|v| v.to_owned())
     }
 }
