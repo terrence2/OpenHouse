@@ -461,7 +461,7 @@ mod test {
             script.install_input_map(input_map).is_ok(),
             "typecheck failure"
         );
-        return script.compute(&tree);
+        script.compute(&tree)
     }
 
     #[test]

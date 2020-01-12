@@ -40,7 +40,7 @@ impl TreeSource for LegacyMCU {
     fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
         Ok(vec!["on", "off", "moonlight", "low", "default"]
             .iter()
-            .map(|v| Value::String(v.to_string()))
+            .map(|&v| Value::String(v.to_owned()))
             .collect::<Vec<Value>>())
     }
 

@@ -185,7 +185,7 @@ impl<'a> TreeParser<'a> {
             }
             i += 1;
         }
-        return Ok(i);
+        Ok(i)
     }
 
     fn consume_sigil(&mut self, node: &NodeRef) -> Fallible<()> {

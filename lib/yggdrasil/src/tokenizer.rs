@@ -61,6 +61,7 @@ impl Token {
 pub struct TreeTokenizer {}
 
 impl TreeTokenizer {
+    #[allow(clippy::comparison_chain)]
     pub fn tokenize(s: &str) -> Fallible<Vec<Token>> {
         let mut tokens = Vec::new();
 

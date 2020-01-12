@@ -269,7 +269,7 @@ impl NodeRef {
         };
         if let Some(child) = self.child_at(&child_name) {
             if parts.len() == 1 {
-                return Ok(child.to_owned());
+                return Ok(child);
             }
             return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
         }

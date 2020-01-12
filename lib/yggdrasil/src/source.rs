@@ -129,7 +129,7 @@ pub(crate) mod test {
     impl SimpleSource {
         pub fn new_ref(values: Vec<Value>) -> Fallible<SourceRef> {
             let src = Box::new(Self {
-                values: values.clone(),
+                values,
                 inputs: HashMap::new(),
             });
             Ok(SourceRef::new(src))
