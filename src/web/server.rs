@@ -45,13 +45,15 @@ impl FromRequest for RequestIp {
         }
         let ip = ip.unwrap();
         trace!("server: mapped event to {}", ip);
-        ok(RequestIp {
-            ip,
-        })
+        ok(RequestIp { ip })
     }
 }
 
-async fn handle_event(body: Bytes, app_data: web::Data<AppState>, request_ip: RequestIp) -> HttpResponse {
+async fn handle_event(
+    body: Bytes,
+    app_data: web::Data<AppState>,
+    request_ip: RequestIp,
+) -> HttpResponse {
     let path = app_data.button_path_map.get(&request_ip.ip);
     if path.is_none() {
         return HttpResponse::NotFound().into();
