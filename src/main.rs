@@ -41,7 +41,7 @@ fn main() -> Fallible<()> {
     let log_config = ConfigBuilder::new()
         .set_time_format_str("%F %T%.6fZ")
         .build();
-    if let Err(_) = TermLogger::init(level, log_config, TerminalMode::Stdout) {
+    if TermLogger::init(level, log_config, TerminalMode::Stdout).is_err() {
         let log_config = ConfigBuilder::new()
             .set_time_format_str("%F %T%.6fZ")
             .build();

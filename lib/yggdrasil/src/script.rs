@@ -345,8 +345,13 @@ impl<'a> ExprParser<'a> {
     fn eparser(&mut self) -> Fallible<Expr> {
         let e = self.exp_p(0)?;
         ensure!(
-            self.offset == self.tokens.len(),
-            "parse error: extra tokens after script"
+            self.tokens[self.offset..].iter().all(|t| [
+                Token::Newline,
+                Token::Indent,
+                Token::Dedent
+            ]
+            .contains(t)),
+            "parse error: extra non-whitespace tokens after script"
         );
         Ok(e)
     }
@@ -456,7 +461,7 @@ mod test {
             script.install_input_map(input_map).is_ok(),
             "typecheck failure"
         );
-        return script.compute(&tree);
+        script.compute(&tree)
     }
 
     #[test]

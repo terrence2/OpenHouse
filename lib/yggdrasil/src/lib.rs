@@ -1,14 +1,6 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-extern crate approx;
-extern crate bitflags;
-extern crate downcast_rs;
-extern crate failure;
-extern crate lazy_static;
-extern crate log;
-extern crate simplelog;
-
 mod bif;
 mod float;
 mod graph;
