@@ -143,7 +143,7 @@ pub(crate) mod test {
 
         fn add_path(&mut self, path: &str, _tree: &SubTree) -> Fallible<()> {
             self.inputs
-                .insert(path.into(), Value::String("foo".to_owned()));
+                .insert(path.into(), Value::new_str("foo"));
             Ok(())
         }
 

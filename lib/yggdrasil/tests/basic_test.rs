@@ -40,7 +40,7 @@ impl TreeSource for Switch {
         Ok(())
     }
     fn get_value(&self, _path: &str, _tree: &SubTree) -> Option<Value> {
-        Some(Value::String("foo".to_owned()))
+        Some(Value::new_str("foo"))
     }
 }
 
@@ -61,11 +61,11 @@ room
         .add_sink_handler("light", &sink)?
         .build_from_str(program)?;
 
-    tree.handle_event("/room/switch", Value::String("foo".to_owned()))?;
+    tree.handle_event("/room/switch", Value::new_str("foo"))?;
 
-    //assert_eq!(sink.0.borrow().value, Some(Value::String("foo".to_owned())));
+    //assert_eq!(sink.0.borrow().value, Some(Value::new_str("foo")));
     let v = sink.inspect_as::<Light, Option<Value>>(&|l| &l.value)?;
-    assert_eq!((*v).clone().unwrap(), Value::String("foo".to_owned()));
+    assert_eq!((*v).clone().unwrap(), Value::new_str("foo"));
 
     Ok(())
 }

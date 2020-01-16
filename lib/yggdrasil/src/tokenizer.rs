@@ -15,12 +15,12 @@ pub enum Token {
 
     // Sigil-delimited
     Location(Dimension2), // @
-    Size(Dimension2),
-    Source(String),      // ^
-    Sink(String),        // $
-    ComesFromInline,     // <-
-    ComesFromBlock,      // <-\
-    UseTemplate(String), // !
+    Size(Dimension2),     // <>
+    Source(String),       // ^
+    Sink(String),         // $
+    ComesFromInline,      // <-
+    ComesFromBlock,       // <-\
+    UseTemplate(String),  // !
 
     // Operators
     Add,                 // +
@@ -36,6 +36,7 @@ pub enum Token {
     GreaterThan,         // >
     GreaterThanOrEquals, // >=
     Or,                  // ||
+    Latch,               // ::
     LeftParen,           // (
     RightParen,          // )
 
@@ -138,6 +139,7 @@ impl LineTokenizer {
             '|' | '&' => self.tokenize_operator_2(),
             //'=' => tokens.push(self.tokenize_equals()?),
             '-' => self.tokenize_subtract_or_number(),
+            ':' => self.tokenize_latch(),
             '(' => {
                 self.offset += 1;
                 Ok(Token::LeftParen)
@@ -233,6 +235,13 @@ impl LineTokenizer {
         self.tokenize_int_or_float()
     }
 
+    fn tokenize_latch(&mut self) -> Fallible<Token> {
+        ensure!(self.peek(0)? == ':', "Latch should be ::");
+        ensure!(self.peek(1)? == ':', "Latch should be ::");
+        self.offset += 2;
+        Ok(Token::Latch)
+    }
+
     fn tokenize_int_or_float(&mut self) -> Fallible<Token> {
         let negative = match self.peek(0)? {
             '-' => {
@@ -326,7 +335,7 @@ impl LineTokenizer {
     }
 
     fn tokenize_string(&mut self) -> Fallible<Token> {
-        assert!(self.peek(0)? == '"');
+        assert_eq!(self.peek(0)?, '"');
         let mut out = Vec::new();
         self.offset += 1;
         while !self.is_empty() {
@@ -349,7 +358,7 @@ impl LineTokenizer {
             }
             self.offset += 1;
         }
-        bail!("tokenize error: unmatched \"");
+        bail!("tokenize error: unmatched \"")
     }
 
     fn tokenize_comes_from_or_less_than_or_size(&mut self) -> Fallible<Token> {
@@ -697,6 +706,19 @@ d";
             vec![
                 Token::Subtract,
                 Token::PathTerm("/a".to_owned()),
+                Token::Newline,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tokenize_latch() {
+        assert_eq!(
+            TT::tokenize("0 :: 0").unwrap(),
+            vec![
+                Token::IntegerTerm(0),
+                Token::Latch,
+                Token::IntegerTerm(0),
                 Token::Newline,
             ]
         );

@@ -166,7 +166,7 @@ impl<'a> TreeParser<'a> {
             }
             i += 1;
         }
-        bail!("Did not find a matching token for: {:?}", tok);
+        bail!("Did not find a matching token for: {:?}", tok)
     }
 
     fn find_next_matching_dedent(&self) -> Fallible<usize> {
@@ -441,7 +441,7 @@ d @4x4";
     fn test_parse_script() -> Fallible<()> {
         let s = "a <- 2 + 2";
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::Integer(4));
+        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::new_integer(4));
         Ok(())
     }
 
@@ -529,7 +529,7 @@ yz
         assert_eq!(tree.lookup("/y/v")?.nodetype(&tree)?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/yz/v")?.nodetype(&tree)?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/c")?.nodetype(&tree)?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::Integer(3));
+        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::new_integer(3));
         Ok(())
     }
 
@@ -542,7 +542,7 @@ bar <- "b"
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("abc".to_owned())
+            Value::new_str("abc")
         );
         Ok(())
     }
@@ -557,7 +557,7 @@ baz <- "b"
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("abbc".to_owned())
+            Value::new_str("abbc")
         );
         Ok(())
     }
@@ -570,7 +570,7 @@ bar <- 3
 baz <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(13));
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_integer(13));
         Ok(())
     }
 
@@ -584,7 +584,7 @@ baz <- 3
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("a9b".to_owned())
+            Value::new_str("a9b")
         );
         Ok(())
     }
@@ -601,7 +601,7 @@ quux <- "z" + str(/bar * /baz)
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("abc".to_owned())
+            Value::new_str("abc")
         );
         Ok(())
     }
@@ -613,7 +613,7 @@ foo <- /bar % 3
 bar <- 2
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::Integer(2));
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_integer(2));
         Ok(())
     }
 
@@ -628,7 +628,7 @@ bar <-/foo/true + " " + /foo/false
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/bar")?.compute(&tree)?,
-            Value::String("hello world".to_owned())
+            Value::new_str("hello world")
         );
         Ok(())
     }
@@ -643,7 +643,7 @@ b <-\
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/b")?.compute(&tree)?,
-            Value::String("foo".to_owned())
+            Value::new_str("foo")
         );
         Ok(())
     }
@@ -659,7 +659,7 @@ c <- ./b
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/c")?.compute(&tree)?,
-            Value::String("foo".to_owned())
+            Value::new_str("foo")
         );
         Ok(())
     }
@@ -678,7 +678,7 @@ z
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/z/y/x/c")?.compute(&tree)?,
-            Value::String("foo".to_owned())
+            Value::new_str("foo")
         );
         Ok(())
     }
@@ -696,7 +696,7 @@ z
         let tree = TreeBuilder::default().build_from_str(s)?;
         assert_eq!(
             tree.lookup("/z/y/x/b")?.compute(&tree)?,
-            Value::String("foo".to_owned())
+            Value::new_str("foo")
         );
         Ok(())
     }
