@@ -148,6 +148,7 @@ impl Value {
         let next = match tok {
             Token::Or => a || b,
             Token::And => a && b,
+            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
             Token::Equals => a == b,
             Token::NotEquals => a != b,
             _ => bail!(
@@ -167,6 +168,7 @@ impl Value {
             Token::Multiply => ValueData::Integer(a * b),
             Token::Divide => ValueData::Float(Float::new(a as f64)? / Float::new(b as f64)?),
             Token::Modulo => ValueData::Integer(a % b),
+            Token::Latch => ValueData::Integer(if lhs.generation() >= rhs.generation() { a } else { b }),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -189,6 +191,7 @@ impl Value {
             Token::Subtract => ValueData::Float(a - b),
             Token::Multiply => ValueData::Float(a * b),
             Token::Divide => ValueData::Float(a / b),
+            Token::Latch => ValueData::Float(if lhs.generation() >= rhs.generation() { a } else { b }),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -211,6 +214,7 @@ impl Value {
         let b = rhs.as_string()?;
         let s = match tok {
             Token::Add => a.clone() + &b,
+            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
