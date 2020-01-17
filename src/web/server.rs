@@ -63,7 +63,7 @@ async fn handle_event(
     trace!("http server: recvd legacy mcu event {} <- {}", path, value);
     let event = HandleEvent {
         path,
-        value: Value::new_string(value),
+        value: Value::from_string(value),
     };
     app_data.db.do_send(event);
     HttpResponse::Ok().finish()

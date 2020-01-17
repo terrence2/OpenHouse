@@ -75,7 +75,7 @@ impl Handler<TickEvent> for DBServer {
         let updates = self.clock.mutate_as(&mut |c: &mut Clock| c.handle_tick())?;
         //println!("woudl apply updated: {:?}", updates);
         for (path, value) in &updates {
-            self.tree.handle_event(&path, Value::new_integer(*value))?;
+            self.tree.handle_event(&path, Value::from_integer(*value))?;
         }
         Ok(())
     }

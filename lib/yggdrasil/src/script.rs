@@ -407,13 +407,13 @@ impl<'a> ExprParser<'a> {
 
     fn p(&mut self) -> Fallible<Expr> {
         Ok(match self.pop() {
-            Token::BooleanTerm(b) => Expr::Value(Value::new_boolean(b)),
-            Token::FloatTerm(f) => Expr::Value(Value::new_float(f)),
-            Token::IntegerTerm(i) => Expr::Value(Value::new_integer(i)),
+            Token::BooleanTerm(b) => Expr::Value(Value::from_boolean(b)),
+            Token::FloatTerm(f) => Expr::Value(Value::from_float(f)),
+            Token::IntegerTerm(i) => Expr::Value(Value::from_integer(i)),
             Token::PathTerm(p) => {
-                Expr::Value(Value::new_path(ScriptPath::from_str_at_path(&self.path, &p)?))
+                Expr::Value(Value::from_path(ScriptPath::from_str_at_path(&self.path, &p)?))
             }
-            Token::StringTerm(s) => Expr::Value(Value::new_string(s)),
+            Token::StringTerm(s) => Expr::Value(Value::from_string(s)),
             Token::LeftParen => {
                 let t = self.exp_p(0)?;
                 ensure!(
@@ -473,15 +473,15 @@ mod test {
     #[test]
     fn test_script_basic() -> Fallible<()> {
         let expect = vec![
-            ("2 + 3", Value::new_integer(5)),
-            ("2 :: 3", Value::new_integer(2)),
-            ("2. + 3.", Value::new_float(Float::new(5.0)?)),
+            ("2 + 3", Value::from_integer(5)),
+            ("2 :: 3", Value::from_integer(2)),
+            ("2. + 3.", Value::from_float(Float::new(5.0)?)),
             (r#" "2" + "3" "#, Value::new_str("23")),
-            ("2 - 3", Value::new_integer(-1)),
-            ("2. - 3.5", Value::new_float(Float::new(-1.5)?)),
-            ("-2", Value::new_integer(-2)),
-            ("2 - 3", Value::new_integer(-1)),
-            ("2 / 3", Value::new_float(Float::new(2f64 / 3f64)?)),
+            ("2 - 3", Value::from_integer(-1)),
+            ("2. - 3.5", Value::from_float(Float::new(-1.5)?)),
+            ("-2", Value::from_integer(-2)),
+            ("2 - 3", Value::from_integer(-1)),
+            ("2 / 3", Value::from_float(Float::new(2f64 / 3f64)?)),
         ];
         for (expr, value) in expect.iter() {
             assert_eq!(do_compute(expr)?, *value);

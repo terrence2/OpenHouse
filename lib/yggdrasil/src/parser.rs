@@ -441,7 +441,7 @@ d @4x4";
     fn test_parse_script() -> Fallible<()> {
         let s = "a <- 2 + 2";
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::new_integer(4));
+        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::from_integer(4));
         Ok(())
     }
 
@@ -529,7 +529,7 @@ yz
         assert_eq!(tree.lookup("/y/v")?.nodetype(&tree)?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/yz/v")?.nodetype(&tree)?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/c")?.nodetype(&tree)?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::new_integer(3));
+        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::from_integer(3));
         Ok(())
     }
 
@@ -570,7 +570,7 @@ bar <- 3
 baz <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_integer(13));
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::from_integer(13));
         Ok(())
     }
 
@@ -613,7 +613,7 @@ foo <- /bar % 3
 bar <- 2
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_integer(2));
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::from_integer(2));
         Ok(())
     }
 

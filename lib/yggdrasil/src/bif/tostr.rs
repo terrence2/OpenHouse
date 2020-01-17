@@ -14,7 +14,7 @@ pub(crate) struct ToStr;
 
 impl NativeFunc for ToStr {
     fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value> {
-        Ok(Value::new_string(match value.data {
+        Ok(Value::from_string(match value.data {
             ValueData::String(s) => s,
             ValueData::Integer(i) => format!("{}", i),
             ValueData::Float(f) => format!("{}", f),

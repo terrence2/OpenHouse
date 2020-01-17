@@ -51,25 +51,25 @@ pub struct Value {
 }
 
 impl Value {
-    pub fn new_boolean(b: bool) -> Self {
+    pub fn from_boolean(b: bool) -> Self {
         Self {
             data: ValueData::Boolean(b),
         }
     }
 
-    pub fn new_integer(i: i64) -> Self {
+    pub fn from_integer(i: i64) -> Self {
         Self {
             data: ValueData::Integer(i),
         }
     }
 
-    pub fn new_float(f: Float) -> Self {
+    pub fn from_float(f: Float) -> Self {
         Self {
             data: ValueData::Float(f),
         }
     }
 
-    pub fn new_string(s: String) -> Self {
+    pub fn from_string(s: String) -> Self {
         Self {
             data: ValueData::String(s),
         }
@@ -81,7 +81,7 @@ impl Value {
         }
     }
 
-    pub fn new_path(p: ScriptPath) -> Self {
+    pub fn from_path(p: ScriptPath) -> Self {
         Self {
             data: ValueData::Path(p),
         }
@@ -133,7 +133,7 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value::new_boolean(b))
+        Ok(Value::from_boolean(b))
     }
 
     pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Fallible<Value> {
@@ -185,7 +185,7 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value::new_string(s))
+        Ok(Value::from_string(s))
     }
 
     pub fn is_path(&self) -> bool {

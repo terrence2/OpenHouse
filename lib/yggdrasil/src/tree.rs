@@ -836,11 +836,11 @@ bar
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
-        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_integer(1));
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
 
         tree.handle_event("/a", Value::new_str("foo"))?;
 
-        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_integer(1));
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
         Ok(())
     }
 
