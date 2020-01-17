@@ -81,14 +81,14 @@ palette
         default   <- "rgb(128, 0, 0)"
         #default   <- "bhs(255, " + str(/sys/time/minutes/hourly * 1092) + ", 255)"
         off       <- "none"
-    
+
     hue-highlight
         on        <- "none"
         low       <- "none"
         moonlight <- "bhs(255, 47000, 255)"
         default   <- "rgb(128, 0, 0)"
         off       <- "none"
-    
+
     hue-stream
         on        <- "bhs(255, 34495, 255)"
         low       <- "bhs(64, 34495, 255)"
@@ -103,7 +103,7 @@ rooms
         bedroom-lightswitch.eyrie
             ^legacy-mcu
             ip <-"10.0.5.43"
-        color <- ./bedroom-lightswitch.eyrie
+        color <- ../office/office-lightswitch.eyrie
         bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{./color}
         bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{./color}
         bedroom-dresser    $hue @10'x2' <-/palette/hue/{./color}
@@ -111,14 +111,14 @@ rooms
         bedroom-tree1      $hue @1'x1'  <-/palette/hue/{./color}
         bedroom-tree2      $hue @2'x1'  <-/palette/hue/{./color}
         bedroom-ceiling    $hue @6'x6'  <-/palette/hue/{./color}
-    
+
     office @0'x0' <>10'x13'
         closet @10'x5' <>2'x5'
 
         test-switch
             ^legacy-mcu
             ip <- "127.0.0.1"
-        
+
         office-lightswitch.eyrie
             ^legacy-mcu
             ip <-"10.0.5.40"
@@ -141,7 +141,7 @@ rooms
         #        livingroom: /room/livingroom/color
         #        kitchen: /room/kitchen/color
         #        office: /room/office/color
-        
+
         #color <-\
         #    if ../bedroom/color == "off" || ../livingroom/color == "off":
         #        "off"
