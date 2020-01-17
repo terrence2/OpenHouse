@@ -81,6 +81,7 @@ impl TreeBuilder {
     pub fn intercept_import(mut self, name: &str, content: &str) -> Fallible<TreeBuilder> {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: self.source_handlers.clone(),
             sink_handlers: self.sink_handlers.clone(),
         };
@@ -97,6 +98,7 @@ impl TreeBuilder {
     pub fn empty() -> Tree {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: HashMap::new(),
             sink_handlers: HashMap::new(),
         }
@@ -114,6 +116,7 @@ impl TreeBuilder {
 
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: self.source_handlers,
             sink_handlers: self.sink_handlers,
         };
@@ -131,12 +134,17 @@ impl TreeBuilder {
 
 pub struct Tree {
     root: NodeRef,
+    generation: usize,
     source_handlers: HashMap<String, SourceRef>,
     sink_handlers: HashMap<String, SinkRef>,
 }
 
 impl Tree {
-    pub fn handle_event(&self, path: &str, value: Value) -> Fallible<()> {
+    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<()> {
+        // FIXME: make this mutable once we back off systems
+        //self.generation += 1;
+        value.set_generation(self.generation);
+
         let source = self.lookup(path)?;
         source.handle_event(value, self)?;
         let sink_nodes = source.get_sink_nodes_observing()?;
