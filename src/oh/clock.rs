@@ -178,7 +178,7 @@ impl TreeSource for Clock {
 
     fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
         trace!("CLOCK: get_value @ {}", path);
-        Some(Value::Integer(self.clocks[path].last_value))
+        Some(Value::from_integer(self.clocks[path].last_value))
     }
 }
 

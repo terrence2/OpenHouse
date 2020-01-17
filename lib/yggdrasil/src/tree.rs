@@ -81,6 +81,7 @@ impl TreeBuilder {
     pub fn intercept_import(mut self, name: &str, content: &str) -> Fallible<TreeBuilder> {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: self.source_handlers.clone(),
             sink_handlers: self.sink_handlers.clone(),
         };
@@ -97,6 +98,7 @@ impl TreeBuilder {
     pub fn empty() -> Tree {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: HashMap::new(),
             sink_handlers: HashMap::new(),
         }
@@ -114,6 +116,7 @@ impl TreeBuilder {
 
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
+            generation: 0,
             source_handlers: self.source_handlers,
             sink_handlers: self.sink_handlers,
         };
@@ -131,12 +134,17 @@ impl TreeBuilder {
 
 pub struct Tree {
     root: NodeRef,
+    generation: usize,
     source_handlers: HashMap<String, SourceRef>,
     sink_handlers: HashMap<String, SinkRef>,
 }
 
 impl Tree {
-    pub fn handle_event(&self, path: &str, value: Value) -> Fallible<()> {
+    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<()> {
+        // FIXME: make this mutable once we back off systems
+        //self.generation += 1;
+        value.set_generation(self.generation);
+
         let source = self.lookup(path)?;
         source.handle_event(value, self)?;
         let sink_nodes = source.get_sink_nodes_observing()?;
@@ -251,7 +259,7 @@ impl NodeRef {
             "runtime error: lookup on path that does not exist; at {} -> {:?}",
             self.path_str(),
             parts
-        );
+        )
     }
 
     pub fn lookup_dynamic_path(&self, parts: &[PathComponent], tree: &Tree) -> Fallible<NodeRef> {
@@ -277,7 +285,7 @@ impl NodeRef {
             "invalid path: did not find path component '{}' @ {}",
             child_name,
             self.path_str()
-        ));
+        ))
     }
 
     pub fn add_child(&self, name: &str) -> Fallible<NodeRef> {
@@ -639,9 +647,7 @@ impl NodeRef {
         let path = self.path_str();
         trace!("computing @ {}", path);
         match self.0.borrow_mut().input {
-            None => {
-                bail!("runtime error: computing a non-input path @ {}", path);
-            }
+            None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(ref source, _)) => {
                 // FIXME: we need to make this entire path mut
@@ -660,12 +666,10 @@ impl NodeRef {
     pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
         trace!("virtually computing @ {}", self.path_str());
         match self.0.borrow().input {
-            None => {
-                bail!(
-                    "typeflow error: reading input from non-input path @ {}",
-                    self.path_str()
-                );
-            }
+            None => bail!(
+                "typeflow error: reading input from non-input path @ {}",
+                self.path_str()
+            ),
             Some(NodeInput::Script(ref script)) => script.virtually_compute_for_path(tree),
             Some(NodeInput::Source(ref source, _)) => {
                 source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?)
@@ -680,7 +684,7 @@ impl NodeRef {
         bail!(
             "runtime: invalid event; occurred on node {} with no source",
             self.path_str()
-        );
+        )
     }
 
     pub fn sink_kind(&self) -> Fallible<String> {
@@ -690,7 +694,7 @@ impl NodeRef {
         bail!(
             "runtime: tried to get sink kind of the non-sink node at {}",
             self.path_str()
-        );
+        )
     }
 }
 
@@ -792,7 +796,7 @@ a ^src1
             .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
-        assert_eq!(result, Value::String("d2".to_owned()));
+        assert_eq!(result, Value::new_str("d2"));
         Ok(())
     }
 
@@ -840,11 +844,11 @@ bar
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
-        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
 
-        tree.handle_event("/a", Value::String("foo".to_owned()))?;
+        tree.handle_event("/a", Value::new_str("foo"))?;
 
-        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::Integer(1));
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
         Ok(())
     }
 
@@ -864,7 +868,7 @@ foo <- /a/b/c
             .build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("hello".to_owned())
+            Value::new_str("hello")
         );
         Ok(())
     }
@@ -886,7 +890,7 @@ foo <- /mnt/a/b/c
             .build_from_str(s)?;
         assert_eq!(
             tree.lookup("/foo")?.compute(&tree)?,
-            Value::String("hello".to_owned())
+            Value::new_str("hello")
         );
         Ok(())
     }

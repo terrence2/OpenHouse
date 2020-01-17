@@ -31,6 +31,7 @@ pub(super) enum Expr {
     NotEqual(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
     Subtract(Box<Expr>, Box<Expr>),
+    Latch(Box<Expr>, Box<Expr>),
     Value(Value),
 }
 
@@ -81,6 +82,9 @@ macro_rules! map_values {
             }
             Expr::Subtract(a, b) => {
                 $reduce(Token::Subtract, a.$f($($args),*)?, b.$f($($args),*)?)
+            }
+            Expr::Latch(a, b) => {
+                $reduce(Token::Latch, a.$f($($args),*)?, b.$f($($args),*)?)
             }
             Expr::Value(v) => {
                 v.$f($($args),*)
@@ -316,6 +320,7 @@ lazy_static! {
         v.push(Operator::new(Token::NotEquals, 11, 2, Some(Assoc::Left)));
         v.push(Operator::new(Token::And, 10, 2, Some(Assoc::Left)));
         v.push(Operator::new(Token::Or, 9, 2, Some(Assoc::Left)));
+        v.push(Operator::new(Token::Latch, 8, 2, Some(Assoc::Left)));
         v
     };
 }
@@ -392,6 +397,7 @@ impl<'a> ExprParser<'a> {
                 Token::NotEquals => Expr::NotEqual(Box::new(t), Box::new(t1)),
                 Token::Or => Expr::Or(Box::new(t), Box::new(t1)),
                 Token::Subtract => Expr::Subtract(Box::new(t), Box::new(t1)),
+                Token::Latch => Expr::Latch(Box::new(t), Box::new(t1)),
                 _ => panic!("unexpected token {:?} in binop position", op),
             };
         }
@@ -401,13 +407,13 @@ impl<'a> ExprParser<'a> {
 
     fn p(&mut self) -> Fallible<Expr> {
         Ok(match self.pop() {
-            Token::BooleanTerm(b) => Expr::Value(Value::Boolean(b)),
-            Token::FloatTerm(f) => Expr::Value(Value::Float(f)),
-            Token::IntegerTerm(i) => Expr::Value(Value::Integer(i)),
-            Token::PathTerm(p) => {
-                Expr::Value(Value::Path(ScriptPath::from_str_at_path(&self.path, &p)?))
-            }
-            Token::StringTerm(s) => Expr::Value(Value::String(s)),
+            Token::BooleanTerm(b) => Expr::Value(Value::from_boolean(b)),
+            Token::FloatTerm(f) => Expr::Value(Value::from_float(f)),
+            Token::IntegerTerm(i) => Expr::Value(Value::from_integer(i)),
+            Token::PathTerm(p) => Expr::Value(Value::from_path(ScriptPath::from_str_at_path(
+                &self.path, &p,
+            )?)),
+            Token::StringTerm(s) => Expr::Value(Value::from_string(s)),
             Token::LeftParen => {
                 let t = self.exp_p(0)?;
                 ensure!(
@@ -467,14 +473,15 @@ mod test {
     #[test]
     fn test_script_basic() -> Fallible<()> {
         let expect = vec![
-            ("2 + 3", Value::Integer(5)),
-            ("2. + 3.", Value::Float(Float::new(5.0)?)),
-            (r#" "2" + "3" "#, Value::String("23".to_owned())),
-            ("2 - 3", Value::Integer(-1)),
-            ("2. - 3.5", Value::Float(Float::new(-1.5)?)),
-            ("-2", Value::Integer(-2)),
-            ("2 - 3", Value::Integer(-1)),
-            ("2 / 3", Value::Float(Float::new(2f64 / 3f64)?)),
+            ("2 + 3", Value::from_integer(5)),
+            ("2 :: 3", Value::from_integer(2)),
+            ("2. + 3.", Value::from_float(Float::new(5.0)?)),
+            (r#" "2" + "3" "#, Value::new_str("23")),
+            ("2 - 3", Value::from_integer(-1)),
+            ("2. - 3.5", Value::from_float(Float::new(-1.5)?)),
+            ("-2", Value::from_integer(-2)),
+            ("2 - 3", Value::from_integer(-1)),
+            ("2 / 3", Value::from_float(Float::new(2f64 / 3f64)?)),
         ];
         for (expr, value) in expect.iter() {
             assert_eq!(do_compute(expr)?, *value);
