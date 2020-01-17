@@ -48,43 +48,63 @@ pub enum ValueData {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Value {
     pub data: ValueData,
+    generation: usize,
 }
 
 impl Value {
     pub fn from_boolean(b: bool) -> Self {
         Self {
             data: ValueData::Boolean(b),
+            generation: 0,
         }
     }
 
     pub fn from_integer(i: i64) -> Self {
         Self {
             data: ValueData::Integer(i),
+            generation: 0,
         }
     }
 
     pub fn from_float(f: Float) -> Self {
         Self {
             data: ValueData::Float(f),
+            generation: 0,
         }
     }
 
     pub fn from_string(s: String) -> Self {
         Self {
             data: ValueData::String(s),
+            generation: 0,
         }
     }
 
     pub fn new_str(s: &str) -> Self {
         Self {
             data: ValueData::String(s.to_owned()),
+            generation: 0,
         }
     }
 
     pub fn from_path(p: ScriptPath) -> Self {
         Self {
             data: ValueData::Path(p),
+            generation: 0,
         }
+    }
+
+    pub fn generation(&self) -> usize {
+        self.generation
+    }
+
+    pub fn set_generation(&mut self, generation: usize) {
+        self.generation = generation
+    }
+
+    pub fn with_generation(mut self, generation: usize) -> Self {
+        self.generation = generation;
+        self
     }
 
     pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
@@ -114,16 +134,18 @@ impl Value {
             "runtime error: attempting to apply a non-path"
         );
         Ok(match self.data {
-            ValueData::Boolean(b0) => Self::apply_boolean(tok, b0, other.as_boolean()?)?,
-            ValueData::Integer(i0) => Self::apply_integer(tok, i0, other.as_integer()?)?,
-            ValueData::Float(f0) => Self::apply_float(tok, f0, other.as_float()?)?,
-            ValueData::String(ref s0) => Self::apply_string(tok, s0, &other.as_string()?)?,
+            ValueData::Boolean(_) => Self::apply_boolean(tok, self, other)?,
+            ValueData::Integer(_) => Self::apply_integer(tok, self, other)?,
+            ValueData::Float(_) => Self::apply_float(tok, self, other)?,
+            ValueData::String(_) => Self::apply_string(tok, self, other)?,
             _ => bail!("runtime error: apply reached a path node"),
         })
     }
 
-    pub(super) fn apply_boolean(tok: &Token, a: bool, b: bool) -> Fallible<Value> {
-        let b = match tok {
+    pub(super) fn apply_boolean(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
+        let a = lhs.as_boolean()?;
+        let b = rhs.as_boolean()?;
+        let next = match tok {
             Token::Or => a || b,
             Token::And => a && b,
             Token::Equals => a == b,
@@ -133,10 +155,12 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value::from_boolean(b))
+        Ok(Value::from_boolean(next).with_generation(lhs.generation().max(rhs.generation())))
     }
 
-    pub(super) fn apply_integer(tok: &Token, a: i64, b: i64) -> Fallible<Value> {
+    pub(super) fn apply_integer(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
+        let a = lhs.as_integer()?;
+        let b = rhs.as_integer()?;
         let data = match tok {
             Token::Add => ValueData::Integer(a + b),
             Token::Subtract => ValueData::Integer(a - b),
@@ -154,10 +178,12 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value { data })
+        Ok(Value { data, generation: lhs.generation().max(rhs.generation()) })
     }
 
-    pub(super) fn apply_float(tok: &Token, a: Float, b: Float) -> Fallible<Value> {
+    pub(super) fn apply_float(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
+        let a = lhs.as_float()?;
+        let b = rhs.as_float()?;
         let data = match tok {
             Token::Add => ValueData::Float(a + b),
             Token::Subtract => ValueData::Float(a - b),
@@ -174,18 +200,23 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value { data })
+        Ok(Value {
+            data,
+            generation: lhs.generation().max(rhs.generation()),
+        })
     }
 
-    pub(super) fn apply_string(tok: &Token, a: &str, b: &str) -> Fallible<Value> {
+    pub(super) fn apply_string(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
+        let a = lhs.as_string()?;
+        let b = rhs.as_string()?;
         let s = match tok {
-            Token::Add => a.to_owned() + b,
+            Token::Add => a.clone() + &b,
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
             ),
         };
-        Ok(Value::from_string(s))
+        Ok(Value::from_string(s).with_generation(lhs.generation().max(rhs.generation())))
     }
 
     pub fn is_path(&self) -> bool {
@@ -283,6 +314,7 @@ impl<'a> From<&'a str> for Value {
     fn from(t: &str) -> Value {
         Value {
             data: ValueData::String(t.to_owned()),
+            generation: 0,
         }
     }
 }

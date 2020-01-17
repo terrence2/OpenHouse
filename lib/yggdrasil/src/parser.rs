@@ -540,10 +540,7 @@ foo <- "a" + /bar + "c"
 bar <- "b"
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/foo")?.compute(&tree)?,
-            Value::new_str("abc")
-        );
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_str("abc"));
         Ok(())
     }
 
@@ -555,10 +552,7 @@ bar <- "b"
 baz <- "b"
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/foo")?.compute(&tree)?,
-            Value::new_str("abbc")
-        );
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_str("abbc"));
         Ok(())
     }
 
@@ -570,7 +564,10 @@ bar <- 3
 baz <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::from_integer(13));
+        assert_eq!(
+            tree.lookup("/foo")?.compute(&tree)?,
+            Value::from_integer(13)
+        );
         Ok(())
     }
 
@@ -582,10 +579,7 @@ bar <- 3
 baz <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/foo")?.compute(&tree)?,
-            Value::new_str("a9b")
-        );
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_str("a9b"));
         Ok(())
     }
 
@@ -599,10 +593,7 @@ baz <- 3
 quux <- "z" + str(/bar * /baz)
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/foo")?.compute(&tree)?,
-            Value::new_str("abc")
-        );
+        assert_eq!(tree.lookup("/foo")?.compute(&tree)?, Value::new_str("abc"));
         Ok(())
     }
 
@@ -641,10 +632,7 @@ b <-\
     ./a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/b")?.compute(&tree)?,
-            Value::new_str("foo")
-        );
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -657,10 +645,7 @@ b <-\
 c <- ./b
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(
-            tree.lookup("/c")?.compute(&tree)?,
-            Value::new_str("foo")
-        );
+        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 

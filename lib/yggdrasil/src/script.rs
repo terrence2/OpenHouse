@@ -410,9 +410,9 @@ impl<'a> ExprParser<'a> {
             Token::BooleanTerm(b) => Expr::Value(Value::from_boolean(b)),
             Token::FloatTerm(f) => Expr::Value(Value::from_float(f)),
             Token::IntegerTerm(i) => Expr::Value(Value::from_integer(i)),
-            Token::PathTerm(p) => {
-                Expr::Value(Value::from_path(ScriptPath::from_str_at_path(&self.path, &p)?))
-            }
+            Token::PathTerm(p) => Expr::Value(Value::from_path(ScriptPath::from_str_at_path(
+                &self.path, &p,
+            )?)),
             Token::StringTerm(s) => Expr::Value(Value::from_string(s)),
             Token::LeftParen => {
                 let t = self.exp_p(0)?;
