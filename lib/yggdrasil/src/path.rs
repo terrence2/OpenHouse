@@ -186,31 +186,8 @@ impl ScriptPath {
                     // Append to all in-progress path fragments.
                     working_set = Self::explode_paths_1(working_set, name);
                 }
-                PathComponent::Lookup(script_path) => {
-                    // Find all possible paths using this algorithm on the child.
-                    let concrete_sub_paths = script_path.devirtualize(tree)?;
-                    trace!(
-                        "Path::devirtualize: devirtualized component {{{}}} to {:?}",
-                        script_path,
-                        concrete_sub_paths
-                    );
-
-                    // Find all values that this can take using virtual interpretation.
-                    let mut all_names = Vec::new();
-                    for sub_path in &concrete_sub_paths {
-                        let noderef = tree.lookup_path(&sub_path)?;
-                        for v in noderef.virtually_compute_for_path(tree)? {
-                            all_names.push(v.as_path_component()?);
-                        }
-                    }
-                    trace!(
-                        "Path::devirtualize: path {{{}}} has values {:?}",
-                        component,
-                        concrete_sub_paths
-                    );
-
-                    // Explode these new names into the working set.
-                    working_set = Self::explode_paths_n(working_set, &all_names);
+                PathComponent::Lookup(_script_path) => {
+                    working_set = Self::explode_paths_2(working_set, tree)?;
                 }
             }
             trace!(
@@ -234,22 +211,19 @@ impl ScriptPath {
         paths
     }
 
-    fn explode_paths_n(mut paths: Vec<ConcretePath>, all_names: &[String]) -> Vec<ConcretePath> {
-        let mut next_paths = Vec::new();
+    fn explode_paths_2(mut paths: Vec<ConcretePath>, tree: &Tree) -> Fallible<Vec<ConcretePath>> {
         if paths.is_empty() {
-            for name in all_names.iter() {
-                next_paths.push(ConcretePath::from_components(vec![name.clone()]));
-            }
-        } else {
-            for concrete in paths.drain(..) {
-                for name in all_names.iter() {
-                    let mut next = ConcretePath::from_components(concrete.components.clone());
-                    next.components.push(name.to_owned());
-                    next_paths.push(next);
-                }
+            paths.push(ConcretePath::from_components(vec![]));
+        }
+        let mut next_working_set = Vec::new();
+        for base_path in &paths {
+            let noderef = tree.lookup_path(base_path)?;
+            for child_name in noderef.child_names() {
+                let extended_path = base_path.new_child(&child_name);
+                next_working_set.push(extended_path);
             }
         }
-        next_paths
+        Ok(next_working_set)
     }
 }
 

@@ -303,6 +303,16 @@ impl NodeRef {
         Ok(child)
     }
 
+    pub fn child_names(&self) -> Vec<String> {
+        self.0
+            .borrow()
+            .children
+            .keys()
+            .filter(|&f| f != "." && f != "..")
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
     pub fn name(&self) -> String {
         self.0.borrow().name.clone()
     }
@@ -313,10 +323,11 @@ impl NodeRef {
         // If nodetype is already set, we've already recursed through this node,
         // so can skip recursion as well. If we have no input, there is no easy
         // way to tell if we've already visited this node.
-        if self.has_a_nodetype() {
+        if self.0.borrow().linked_and_validated {
             trace!("---NodeRef::link_and_validate_input({})", self.path_str());
             return Ok(());
         }
+        self.0.borrow_mut().linked_and_validated = true;
 
         // Note: this pattern is a little funky! Normally we'd match to test
         // these conditions, but if we did that the borrow would last over the
@@ -328,6 +339,7 @@ impl NodeRef {
             } else {
                 unreachable!();
             };
+            trace!("BUILT INPUT MAP AT: {:?}", self.path_str());
 
             // Re-borrow read-write to install the input map we built above.
             if let Some(NodeInput::Script(ref mut script)) = self.0.borrow_mut().input {
@@ -506,24 +518,25 @@ impl NodeRef {
 
         // If we have already validated this node, return the type.
         if self.has_a_nodetype() {
-            return self.nodetype(tree);
+            return self.nodetype();
         }
 
         // We need to recurse in order to typecheck the current node.
         self.link_and_validate_inputs(tree)?;
-        self.nodetype(tree)
+        self.nodetype()
     }
 
-    pub fn nodetype(&self, tree: &Tree) -> Fallible<ValueType> {
+    pub fn nodetype(&self) -> Fallible<ValueType> {
         match self.0.borrow().input {
             None => bail!(
                 "runtime error: nodetype request on a non-input node @ {}",
                 self.0.borrow().path
             ),
-            Some(NodeInput::Script(ref script)) => script.nodetype(),
-            Some(NodeInput::Source(ref source, _)) => {
-                source.nodetype(&self.path_str(), &self.subtree_here(tree)?)
-            }
+            Some(NodeInput::Script(ref script)) => {
+                trace!("NODE TYPE AT PATH: {}", self.path_str());
+                script.nodetype()
+            },
+            Some(NodeInput::Source(_, _)) => Ok(ValueType::INPUT),
         }
     }
 
@@ -671,9 +684,7 @@ impl NodeRef {
                 self.path_str()
             ),
             Some(NodeInput::Script(ref script)) => script.virtually_compute_for_path(tree),
-            Some(NodeInput::Source(ref source, _)) => {
-                source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?)
-            }
+            Some(NodeInput::Source(_, _)) => Ok(vec![Value::input_flag()]),
         }
     }
 
@@ -717,6 +728,7 @@ pub struct Node {
     name: String,
     path: ConcretePath,
     children: HashMap<String, NodeRef>,
+    linked_and_validated: bool,
 
     // Simple sigils.
     location: Option<Dimension2>,
@@ -738,6 +750,7 @@ impl Node {
             name: path.basename().to_owned(),
             path,
             children: HashMap::new(),
+            linked_and_validated: false,
             location: None,
             dimensions: None,
             input: None,
@@ -791,7 +804,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
@@ -807,7 +820,7 @@ a ^src1
     a <- ../b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -822,7 +835,7 @@ a ^src1
     a <- /b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -840,7 +853,7 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = SimpleSource::new_ref(vec!["foo".into(), "bar".into()])?;
+        let srcref: SourceRef = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;

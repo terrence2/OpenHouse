@@ -7,7 +7,7 @@ use crate::{
     tree::Tree,
     value::{Value, ValueData, ValueType},
 };
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ToStr;
@@ -23,6 +23,7 @@ impl NativeFunc for ToStr {
                 let noderef = tree.lookup_dynamic_path(&p)?;
                 self.compute(noderef.compute(tree)?, tree)?.as_string()?
             }
+            ValueData::InputFlag => bail!("runtime error: InputFlag in ToStr"),
         }))
     }
 

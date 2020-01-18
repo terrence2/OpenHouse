@@ -4,7 +4,7 @@
 use failure::{err_msg, Fallible};
 use log::trace;
 use std::{collections::HashMap, net::IpAddr};
-use yggdrasil::{SubTree, TreeSource, Value, ValueType};
+use yggdrasil::{SubTree, TreeSource, Value};
 
 pub struct LegacyMCU {
     pub path_map: HashMap<IpAddr, String>,
@@ -31,17 +31,6 @@ impl TreeSource for LegacyMCU {
         self.value_map
             .insert(path.to_string(), Value::new_str("off"));
         Ok(())
-    }
-
-    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-        Ok(ValueType::STRING)
-    }
-
-    fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
-        Ok(vec!["on", "off", "moonlight", "low", "default"]
-            .iter()
-            .map(|&v| Value::new_str(v))
-            .collect::<Vec<Value>>())
     }
 
     fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {

@@ -5,9 +5,7 @@ extern crate failure;
 extern crate yggdrasil;
 
 use failure::Fallible;
-use yggdrasil::{
-    Error, SinkRef, SourceRef, SubTree, TreeBuilder, TreeSink, TreeSource, Value, ValueType,
-};
+use yggdrasil::{Error, SinkRef, SourceRef, SubTree, TreeBuilder, TreeSink, TreeSource, Value};
 
 struct Light {
     value: Option<Value>,
@@ -29,12 +27,6 @@ struct Switch {}
 impl TreeSource for Switch {
     fn add_path(&mut self, _path: &str, _tree: &SubTree) -> Result<(), Error> {
         Ok(())
-    }
-    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Result<ValueType, Error> {
-        Ok(ValueType::STRING)
-    }
-    fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Result<Vec<Value>, Error> {
-        Ok(vec![])
     }
     fn handle_event(&mut self, _path: &str, _value: Value, _tree: &SubTree) -> Fallible<()> {
         Ok(())

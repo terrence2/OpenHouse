@@ -29,10 +29,11 @@ fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
 
 bitflags! {
     pub struct ValueType : usize {
-        const BOOLEAN = 0b0001;
-        const FLOAT   = 0b0010;
-        const INTEGER = 0b0100;
-        const STRING  = 0b1000;
+        const BOOLEAN = 0b0000_0001;
+        const FLOAT   = 0b0000_0010;
+        const INTEGER = 0b0000_0100;
+        const STRING  = 0b0000_1000;
+        const INPUT   = 0b0001_0000;
     }
 }
 
@@ -43,6 +44,7 @@ pub enum ValueData {
     Integer(i64),
     Path(ScriptPath),
     String(String),
+    InputFlag, // Our Any type
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,6 +92,13 @@ impl Value {
     pub fn from_path(p: ScriptPath) -> Self {
         Self {
             data: ValueData::Path(p),
+            generation: 0,
+        }
+    }
+
+    pub fn input_flag() -> Self {
+        Self {
+            data: ValueData::InputFlag,
             generation: 0,
         }
     }
@@ -148,7 +157,13 @@ impl Value {
         let next = match tok {
             Token::Or => a || b,
             Token::And => a && b,
-            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
+            Token::Latch => {
+                if lhs.generation() >= rhs.generation() {
+                    a
+                } else {
+                    b
+                }
+            }
             Token::Equals => a == b,
             Token::NotEquals => a != b,
             _ => bail!(
@@ -168,7 +183,11 @@ impl Value {
             Token::Multiply => ValueData::Integer(a * b),
             Token::Divide => ValueData::Float(Float::new(a as f64)? / Float::new(b as f64)?),
             Token::Modulo => ValueData::Integer(a % b),
-            Token::Latch => ValueData::Integer(if lhs.generation() >= rhs.generation() { a } else { b }),
+            Token::Latch => ValueData::Integer(if lhs.generation() >= rhs.generation() {
+                a
+            } else {
+                b
+            }),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -180,7 +199,10 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value { data, generation: lhs.generation().max(rhs.generation()) })
+        Ok(Value {
+            data,
+            generation: lhs.generation().max(rhs.generation()),
+        })
     }
 
     pub(super) fn apply_float(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
@@ -191,7 +213,11 @@ impl Value {
             Token::Subtract => ValueData::Float(a - b),
             Token::Multiply => ValueData::Float(a * b),
             Token::Divide => ValueData::Float(a / b),
-            Token::Latch => ValueData::Float(if lhs.generation() >= rhs.generation() { a } else { b }),
+            Token::Latch => ValueData::Float(if lhs.generation() >= rhs.generation() {
+                a
+            } else {
+                b
+            }),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -214,7 +240,13 @@ impl Value {
         let b = rhs.as_string()?;
         let s = match tok {
             Token::Add => a.clone() + &b,
-            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
+            Token::Latch => {
+                if lhs.generation() >= rhs.generation() {
+                    a
+                } else {
+                    b
+                }
+            }
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
@@ -228,6 +260,10 @@ impl Value {
             return true;
         }
         false
+    }
+
+    pub fn is_input_flag(&self) -> bool {
+        self.data == ValueData::InputFlag
     }
 
     pub fn as_boolean(&self) -> Fallible<bool> {
@@ -267,6 +303,7 @@ impl Value {
                 bail!("runtime error: a float value cannot be used as a path component")
             }
             ValueData::Path(_) => bail!("runtime error: did not expect a path as path component"),
+            ValueData::InputFlag => bail!("runtime error: input flag in as_path_component"),
         }
     }
 
@@ -287,7 +324,14 @@ impl Value {
                 tree.lookup_path(concrete)?.link_and_validate_inputs(tree)?;
             }
 
-            let mut direct_inputs = path.devirtualize(tree)?;
+            // Devirtualization is eager; expansions may result in paths that do not actually
+            // exist in the tree. This may be fine, depending on what inputs real devices produce.
+            // It does mean that we have to filter out impossible paths at this layer.
+            let mut direct_inputs = path
+                .devirtualize(tree)?
+                .drain(..)
+                .filter(|path| tree.lookup_path(path).is_ok())
+                .collect::<Vec<ConcretePath>>();
 
             // Do type checking as we collect paths, since we won't have another opportunity.
             let mut value_types = Vec::new();
@@ -310,6 +354,7 @@ impl Value {
             ValueData::Integer(_) => ValueType::INTEGER,
             ValueData::String(_) => ValueType::STRING,
             ValueData::Path(_) => panic!("typeflow error: we already filtered out path"),
+            ValueData::InputFlag => panic!("typeflow error: found an input flag, now what?"),
         })
     }
 }
@@ -331,6 +376,7 @@ impl fmt::Display for Value {
             ValueData::Float(v) => write!(f, "{}f64", v),
             ValueData::String(ref s) => write!(f, "\"{}\"", s),
             ValueData::Path(ref p) => write!(f, "{}", p),
+            ValueData::InputFlag => write!(f, "InputFlag"),
         }
     }
 }

@@ -1,10 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::{
-    tree::SubTree,
-    value::{Value, ValueType},
-};
+use crate::{tree::SubTree, value::Value};
 use downcast_rs::{impl_downcast, Downcast};
 use failure::{ensure, Fallible};
 use std::{
@@ -16,16 +13,6 @@ use std::{
 pub trait TreeSource: Downcast {
     /// Note the following path listed as a source using this handler.
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
-
-    /// Return the type of the given path.
-    fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType>;
-
-    /// Return all possible values that the given source can take. This is only
-    /// called for sources that are used as a path component in a dynamic path.
-    /// In the event this is called for a source that does not have a constrained
-    /// set of possible values -- floats, arbitrary strings, etc -- return an
-    /// error.
-    fn get_all_possible_values(&self, path: &str, tree: &SubTree) -> Fallible<Vec<Value>>;
 
     /// Called on handle_event, before event processing. The source should be
     /// ready for calls to get_value(path) after this.
@@ -90,18 +77,6 @@ impl SourceRef {
         self.0.borrow_mut().add_path(path, tree)
     }
 
-    pub(super) fn nodetype(&self, path: &str, tree: &SubTree) -> Fallible<ValueType> {
-        self.0.borrow().nodetype(path, tree)
-    }
-
-    pub(super) fn get_all_possible_values(
-        &self,
-        path: &str,
-        tree: &SubTree,
-    ) -> Fallible<Vec<Value>> {
-        self.0.borrow().get_all_possible_values(path, tree)
-    }
-
     pub(super) fn handle_event(
         &mut self,
         path: &str,
@@ -122,14 +97,12 @@ pub(crate) mod test {
     use std::collections::HashMap;
 
     pub struct SimpleSource {
-        values: Vec<Value>,
         inputs: HashMap<String, Value>,
     }
 
     impl SimpleSource {
-        pub fn new_ref(values: Vec<Value>) -> Fallible<SourceRef> {
+        pub fn new_ref() -> Fallible<SourceRef> {
             let src = Box::new(Self {
-                values,
                 inputs: HashMap::new(),
             });
             Ok(SourceRef::new(src))
@@ -137,10 +110,6 @@ pub(crate) mod test {
     }
 
     impl TreeSource for SimpleSource {
-        fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
-            Ok(self.values.clone())
-        }
-
         fn add_path(&mut self, path: &str, _tree: &SubTree) -> Fallible<()> {
             self.inputs.insert(path.into(), Value::new_str("foo"));
             Ok(())
@@ -155,14 +124,10 @@ pub(crate) mod test {
         fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
             Some(self.inputs[path].clone())
         }
-
-        fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-            Ok(ValueType::STRING)
-        }
     }
 
     #[test]
     fn test_source_new() {
-        SimpleSource::new_ref(vec![]).unwrap();
+        SimpleSource::new_ref().unwrap();
     }
 }
