@@ -46,10 +46,7 @@ fn main() -> Fallible<()> {
     let sys = System::new("open_house");
 
     let db = DBServer::new_from_file(&opt.config)?;
-    let button_path_map = db
-        .legacy_mcu
-        .path_map
-        .clone();
+    let button_path_map = db.legacy_mcu.path_map.clone();
     let db_addr = db.start();
 
     let ticker = TickWorker::new(&db_addr);

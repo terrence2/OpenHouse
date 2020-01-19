@@ -480,10 +480,7 @@ impl NodeRef {
             "parse error: input was set twice @ {}",
             self.0.borrow().path
         );
-        self.0.borrow_mut().input = Some(NodeInput::Source(
-            from.to_owned(),
-            Vec::new(),
-        ));
+        self.0.borrow_mut().input = Some(NodeInput::Source(from.to_owned(), Vec::new()));
         Ok(())
     }
 
@@ -687,8 +684,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let tree = TreeBuilder::default()
-            .build_from_str(s)?;
+        let tree = TreeBuilder::default().build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
         assert_eq!(result, Value::new_str("d2"));
         Ok(())
@@ -704,8 +700,7 @@ foo
 bar
     v<-2
 "#;
-        let mut tree = TreeBuilder::default()
-            .build_from_str(s)?;
+        let mut tree = TreeBuilder::default().build_from_str(s)?;
         tree.handle_event("/a", Value::new_str("bar"))?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
 

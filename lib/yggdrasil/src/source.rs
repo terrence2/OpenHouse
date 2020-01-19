@@ -2,7 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::tree::SubTree;
-use failure::{Fallible};
+use failure::Fallible;
 
 /// This Trait allows a Source to provide required metadata to the Tree.
 pub trait TreeSource {

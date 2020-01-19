@@ -16,8 +16,8 @@ mod value;
 
 pub use self::bif::NativeFunc;
 pub use self::path::ConcretePath;
-pub use self::sink::{TreeSink};
-pub use self::source::{TreeSource};
+pub use self::sink::TreeSink;
+pub use self::source::TreeSource;
 pub use self::tree::{SubTree, Tree, TreeBuilder};
 pub use self::value::Value;
 pub use failure::Error;
