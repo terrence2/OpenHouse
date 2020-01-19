@@ -8,8 +8,6 @@ use crate::{
     path::{ConcretePath, PathComponent, ScriptPath},
     physical::Dimension2,
     script::Script,
-    sink::SinkRef,
-    source::SourceRef,
     value::Value,
 };
 use failure::{bail, ensure, Fallible};
@@ -24,17 +22,7 @@ use std::{
 };
 use tracing::{trace, trace_span, warn};
 
-/// The combination of a Value plus a monotonic ordinal.
-pub struct Sample {
-    _value: Value,
-    _at: usize,
-}
-
 pub struct TreeBuilder {
-    // Input and output definitions.
-    source_handlers: HashMap<String, SourceRef>,
-    sink_handlers: HashMap<String, SinkRef>,
-
     // Extension functions defined by the embedding.
     nifs: HashMap<String, Box<dyn NativeFunc>>,
 
@@ -49,8 +37,6 @@ pub struct TreeBuilder {
 impl Default for TreeBuilder {
     fn default() -> TreeBuilder {
         TreeBuilder {
-            source_handlers: HashMap::new(),
-            sink_handlers: HashMap::new(),
             nifs: HashMap::new(),
             add_builtin_nifs: true,
             import_interceptors: HashMap::new(),
@@ -59,16 +45,6 @@ impl Default for TreeBuilder {
 }
 
 impl TreeBuilder {
-    pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
-        self.source_handlers.insert(name.to_owned(), source.clone());
-        Ok(self)
-    }
-
-    pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Fallible<TreeBuilder> {
-        self.sink_handlers.insert(name.to_owned(), sink.clone());
-        Ok(self)
-    }
-
     pub fn add_native_function(
         mut self,
         name: &str,
@@ -82,8 +58,6 @@ impl TreeBuilder {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: self.source_handlers.clone(),
-            sink_handlers: self.sink_handlers.clone(),
         };
         let tree = TreeParser::from_str(tree, content, &self.nifs, &HashMap::new())?;
         self.import_interceptors.insert(name.to_owned(), tree);
@@ -99,8 +73,6 @@ impl TreeBuilder {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: HashMap::new(),
-            sink_handlers: HashMap::new(),
         }
     }
 
@@ -117,8 +89,6 @@ impl TreeBuilder {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: self.source_handlers,
-            sink_handlers: self.sink_handlers,
         };
 
         let tree = TreeParser::from_str(tree, s, &self.nifs, &self.import_interceptors)?
@@ -132,18 +102,19 @@ impl TreeBuilder {
 pub struct Tree {
     root: NodeRef,
     generation: usize,
-    source_handlers: HashMap<String, SourceRef>,
-    sink_handlers: HashMap<String, SinkRef>,
 }
 
 impl Tree {
-    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
-        // FIXME: make this mutable once we back off systems
-        //self.generation += 1;
+    pub fn handle_event(
+        &mut self,
+        path: &str,
+        mut value: Value,
+    ) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
+        self.generation += 1;
         value.set_generation(self.generation);
 
         let source = self.lookup(path)?;
-        source.handle_event(value, self)?; // cache the value
+        source.handle_event(value)?; // cache the value
         let sink_nodes = source.get_sink_nodes_observing()?;
 
         let mut groups = HashMap::new();
@@ -203,6 +174,12 @@ impl Tree {
     pub fn find_sinks(&self, name: &str) -> Vec<String> {
         let mut matching = Vec::new();
         self.root().find_sinks(name, &mut matching);
+        matching
+    }
+
+    pub fn find_sources(&self, name: &str) -> Vec<String> {
+        let mut matching = Vec::new();
+        self.root().find_sources(name, &mut matching);
         matching
     }
 }
@@ -298,6 +275,20 @@ impl NodeRef {
         }
     }
 
+    fn find_sources(&self, source_name: &str, matching: &mut Vec<String>) {
+        if let Some(name) = self.maybe_source_kind() {
+            if name == source_name {
+                matching.push(self.path_str());
+            }
+        }
+        for (name, child) in &self.0.borrow().children {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.find_sources(source_name, matching);
+        }
+    }
+
     pub fn add_child(&self, name: &str) -> Fallible<NodeRef> {
         let child = self.0.borrow_mut().create_new_child(name)?;
         child
@@ -367,45 +358,6 @@ impl NodeRef {
             child.link_and_validate_inputs(tree)?;
         }
 
-        // If this is a source node, tell the associated source handler about it.
-        if let Some(NodeInput::Source(ref source, _)) = self.0.borrow().input {
-            self.enforce_jail()?;
-            source.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
-        }
-        if let Some((ref _kind, ref sink)) = self.0.borrow().sink {
-            self.enforce_jail()?;
-            sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
-        }
-
-        Ok(())
-    }
-
-    fn enforce_jail(&self) -> Fallible<()> {
-        trace!("enforcing jail @ {}", self.path_str());
-        for (name, child) in &self.0.borrow().children {
-            if name == "." || name == ".." {
-                continue;
-            }
-            child.enforce_jail_under(&self.path_str())?;
-        }
-        Ok(())
-    }
-
-    fn enforce_jail_under(&self, jail_path: &str) -> Fallible<()> {
-        trace!("enforcing jail path {} @ {}", jail_path, self.path_str());
-        if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
-            for input_path in &script.all_inputs()? {
-                trace!("checking input: {}", input_path);
-                if !input_path.starts_with(jail_path) {
-                    bail!(
-                        "jailbreak error @ {}: referenced path {} outside of jail in {}",
-                        self.path_str(),
-                        input_path,
-                        jail_path
-                    );
-                }
-            }
-        }
         Ok(())
     }
 
@@ -485,25 +437,15 @@ impl NodeRef {
         self.0.borrow().children.get(name).map(|v| v.to_owned())
     }
 
-    fn subtree_here<'a>(&'a self, tree: &'a Tree) -> Fallible<SubTree> {
-        tree.subtree_at(self)
-    }
-
     pub fn path_str(&self) -> String {
         self.0.borrow().path.to_string()
     }
 
-    pub(super) fn handle_event(&self, value: Value, tree: &Tree) -> Fallible<()> {
-        let path = &self.path_str();
-        match self.0.borrow_mut().input {
-            Some(NodeInput::Source(ref mut source, _)) => {
-                source.handle_event(path, value, &self.subtree_here(tree)?)
-            }
-            _ => bail!(
-                "runtime error: handle_event request on a non-source node @ {}",
-                self.0.borrow().path
-            ),
-        }
+    pub(super) fn handle_event(&self, value: Value) -> Fallible<()> {
+        ensure!(self.is_source(), "received event on non-source node");
+        let mut node = self.0.borrow_mut();
+        node.cache = Some(value);
+        Ok(())
     }
 
     pub fn location(&self) -> Option<Dimension2> {
@@ -532,38 +474,26 @@ impl NodeRef {
         Ok(())
     }
 
-    pub fn set_source(&self, from: &str, tree: &Tree) -> Fallible<()> {
+    pub fn set_source(&self, from: &str) -> Fallible<()> {
         ensure!(
             self.0.borrow().input.is_none(),
             "parse error: input was set twice @ {}",
             self.0.borrow().path
         );
-        ensure!(
-            tree.source_handlers.contains_key(from),
-            "parse error: unknown source kind '{}' referenced @ {}",
-            from,
-            self.0.borrow().path
-        );
         self.0.borrow_mut().input = Some(NodeInput::Source(
-            tree.source_handlers[from].to_owned(),
+            from.to_owned(),
             Vec::new(),
         ));
         Ok(())
     }
 
-    pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Fallible<()> {
+    pub fn set_sink(&self, tgt: &str) -> Fallible<()> {
         ensure!(
             self.0.borrow().sink.is_none(),
             "parse error: sink set twice @ {}",
             self.0.borrow().path
         );
-        ensure!(
-            tree.sink_handlers.contains_key(tgt),
-            "parse error: unknown sink kind '{}' referenced @ {}",
-            tgt,
-            self.0.borrow().path
-        );
-        self.0.borrow_mut().sink = Some((tgt.to_owned(), tree.sink_handlers[tgt].to_owned()));
+        self.0.borrow_mut().sink = Some(tgt.to_owned());
         Ok(())
     }
 
@@ -610,21 +540,22 @@ impl NodeRef {
     }
 
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
+        // FIXME: we need to make this entire path mut, so that we can write back the
+        // FIXME: computed entries as we compute them. For now, we'll be re-computing
+        // FIXME: intermediate nodes. Note: The cache *is* populated for source nodes
+        // FIXME: by handle_event, which is mut.
+        if let Some(ref cached_value) = self.0.borrow().cache {
+            assert!(self.is_source());
+            return Ok(cached_value.to_owned());
+        }
+
         let path = self.path_str();
         trace!("computing @ {}", path);
         match self.0.borrow().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
-            Some(NodeInput::Source(ref source, _)) => {
-                // FIXME: we need to make this entire path mut
-                // if let Some((_, cached)) = self.cache {
-                //     return cached;
-                // }
-                let current = source.get_value(&path, &self.subtree_here(&tree)?);
-                match current {
-                    None => bail!("runtime error: no value @ {}", path),
-                    Some(v) => Ok(v),
-                }
+            Some(NodeInput::Source(_, _)) => {
+                bail!("computing value of a source node; should have been cached by handle_event");
             }
         }
     }
@@ -640,7 +571,7 @@ impl NodeRef {
     }
 
     pub fn sink_kind(&self) -> Fallible<String> {
-        if let Some((ref kind, _)) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.borrow().sink {
             return Ok(kind.to_owned());
         }
         bail!(
@@ -650,7 +581,21 @@ impl NodeRef {
     }
 
     pub fn maybe_sink_kind(&self) -> Option<String> {
-        if let Some((ref kind, _)) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.borrow().sink {
+            return Some(kind.to_owned());
+        }
+        None
+    }
+
+    pub fn is_source(&self) -> bool {
+        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
+            return true;
+        }
+        false
+    }
+
+    pub fn maybe_source_kind(&self) -> Option<String> {
+        if let Some(NodeInput::Source(ref kind, _)) = self.0.borrow().input {
             return Some(kind.to_owned());
         }
         None
@@ -658,7 +603,7 @@ impl NodeRef {
 }
 
 enum NodeInput {
-    Source(SourceRef, Vec<NodeRef>),
+    Source(String, Vec<NodeRef>),
     Script(Script),
 }
 
@@ -677,10 +622,10 @@ pub struct Node {
     // pulling inputs from external systems and other computed values. Or
     // nothing; it's fine for a node to just be structural.
     input: Option<NodeInput>,
-    _cache: Option<Sample>,
+    cache: Option<Value>,
 
     // Optional output data binding.
-    sink: Option<(String, SinkRef)>,
+    sink: Option<String>,
 }
 
 impl Node {
@@ -693,7 +638,7 @@ impl Node {
             location: None,
             dimensions: None,
             input: None,
-            _cache: None,
+            cache: None,
             sink: None,
         }
     }
@@ -708,7 +653,6 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::test::SimpleSource;
 
     #[test]
     fn test_build_tree() -> Fallible<()> {
@@ -743,42 +687,10 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
-            .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
         assert_eq!(result, Value::new_str("d2"));
-        Ok(())
-    }
-
-    #[test]
-    fn test_tree_jail_source_break_rel() -> Fallible<()> {
-        let s = r#"
-a ^src1
-    a <- ../b
-b <- "foo"
-"#;
-        let src1 = SimpleSource::new_ref()?;
-        let res = TreeBuilder::default()
-            .add_source_handler("src1", &src1)?
-            .build_from_str(s);
-        assert!(res.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_tree_jail_source_break_abs() -> Fallible<()> {
-        let s = r#"
-a ^src1
-    a <- /b
-b <- "foo"
-"#;
-        let src1 = SimpleSource::new_ref()?;
-        let res = TreeBuilder::default()
-            .add_source_handler("src1", &src1)?
-            .build_from_str(s);
-        assert!(res.is_err());
         Ok(())
     }
 
@@ -792,14 +704,12 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = SimpleSource::new_ref()?;
-        let tree = TreeBuilder::default()
-            .add_source_handler("src1", &srcref)?
+        let mut tree = TreeBuilder::default()
             .build_from_str(s)?;
-        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
+        tree.handle_event("/a", Value::new_str("bar"))?;
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
 
         tree.handle_event("/a", Value::new_str("foo"))?;
-
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
         Ok(())
     }

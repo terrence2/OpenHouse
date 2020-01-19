@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use tracing::trace;
 
 pub struct TreeParser<'a> {
-    tree: &'a Tree,
     nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
     import_interceptors: &'a HashMap<String, Tree>,
     templates: HashMap<String, NodeRef>,
@@ -47,7 +46,6 @@ impl<'a> TreeParser<'a> {
         {
             let tokens = TreeTokenizer::tokenize(&sanitized)?;
             let mut parser = TreeParser {
-                tree: &tree,
                 nifs,
                 import_interceptors,
                 templates: HashMap::new(),
@@ -193,8 +191,8 @@ impl<'a> TreeParser<'a> {
         match self.pop()? {
             Token::Location(dim) => node.set_location(dim)?,
             Token::Size(dim) => node.set_dimensions(dim)?,
-            Token::Source(ref s) => node.set_source(s, &self.tree)?,
-            Token::Sink(ref s) => node.set_sink(s, &self.tree)?,
+            Token::Source(ref s) => node.set_source(s)?,
+            Token::Sink(ref s) => node.set_sink(s)?,
             Token::ComesFromInline => {
                 let end = self.find_next_token(&Token::Newline)?;
                 let s = Script::inline_from_tokens(
