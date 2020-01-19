@@ -4,10 +4,9 @@
 use crate::oh::{DBServer, TickEvent};
 use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
-use failure::{bail, ensure, Fallible};
+use failure::{bail, Fallible};
 use std::{collections::HashMap, time::Duration as StdDuration};
-use tracing::trace;
-use yggdrasil::{SubTree, TreeSource, Value};
+use yggdrasil::{SubTree, TreeSource};
 
 /**
  * Example usage:
@@ -157,19 +156,6 @@ impl TreeSource for Clock {
         );
         self.clocks.insert(path.to_owned(), def);
         Ok(())
-    }
-
-    fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
-        ensure!(
-            self.clocks[path].last_value == value.as_integer()?,
-            "runtime error: clock event value does not match cached value"
-        );
-        Ok(())
-    }
-
-    fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
-        trace!("CLOCK: get_value @ {}", path);
-        Some(Value::from_integer(self.clocks[path].last_value))
     }
 }
 

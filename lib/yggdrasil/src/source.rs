@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::{tree::SubTree, value::Value};
+use crate::tree::SubTree;
 use downcast_rs::{impl_downcast, Downcast};
 use failure::{ensure, Fallible};
 use std::{
@@ -13,16 +13,6 @@ use std::{
 pub trait TreeSource: Downcast {
     /// Note the following path listed as a source using this handler.
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
-
-    /// Called on handle_event, before event processing. The source should be
-    /// ready for calls to get_value(path) after this.
-    fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()>;
-
-    /// Return the current value of the given source. Sources are generally
-    /// expected to be delivered asynchronously and the latest value will be
-    /// cached indefinitely, This is only called when the value is used as a path
-    /// component before a change event has occurred.
-    fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value>;
 
     /// Parsing is finished and we are ready to start the system.
     fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
@@ -76,24 +66,12 @@ impl SourceRef {
     pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
         self.0.borrow_mut().add_path(path, tree)
     }
-
-    pub(super) fn handle_event(
-        &mut self,
-        path: &str,
-        value: Value,
-        tree: &SubTree,
-    ) -> Fallible<()> {
-        self.0.borrow_mut().handle_event(path, value, tree)
-    }
-
-    pub(super) fn get_value(&self, path: &str, tree: &SubTree) -> Option<Value> {
-        self.0.borrow().get_value(path, tree)
-    }
 }
 
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
+    use crate::value::Value;
     use std::collections::HashMap;
 
     pub struct SimpleSource {
@@ -113,16 +91,6 @@ pub(crate) mod test {
         fn add_path(&mut self, path: &str, _tree: &SubTree) -> Fallible<()> {
             self.inputs.insert(path.into(), Value::new_str("foo"));
             Ok(())
-        }
-
-        fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {
-            let entry = self.inputs.get_mut(path).unwrap();
-            *entry = value;
-            Ok(())
-        }
-
-        fn get_value(&self, path: &str, _tree: &SubTree) -> Option<Value> {
-            Some(self.inputs[path].clone())
         }
     }
 

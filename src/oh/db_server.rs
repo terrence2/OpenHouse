@@ -66,7 +66,7 @@ impl Handler<HandleEvent> for DBServer {
                 if let Some(parts) = groups.get("hue") {
                     self.hue.values_updated(parts)?;
                 }
-            },
+            }
             Err(e) => error!("db server: failed to handle event: {}", e),
         }
         Ok(())

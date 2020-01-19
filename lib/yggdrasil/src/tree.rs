@@ -23,12 +23,6 @@ use std::{
 };
 use tracing::{trace, trace_span, warn};
 
-/// The combination of a Value plus a monotonic ordinal.
-pub struct Sample {
-    _value: Value,
-    _at: usize,
-}
-
 pub struct TreeBuilder {
     // Input and output definitions.
     source_handlers: HashMap<String, SourceRef>,
@@ -125,13 +119,16 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
-        // FIXME: make this mutable once we back off systems
-        //self.generation += 1;
+    pub fn handle_event(
+        &mut self,
+        path: &str,
+        mut value: Value,
+    ) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
+        self.generation += 1;
         value.set_generation(self.generation);
 
         let source = self.lookup(path)?;
-        source.handle_event(value, self)?; // cache the value
+        source.handle_event(value)?; // cache the value
         let sink_nodes = source.get_sink_nodes_observing()?;
 
         let mut groups = HashMap::new();
@@ -469,25 +466,15 @@ impl NodeRef {
         self.0.borrow().children.get(name).map(|v| v.to_owned())
     }
 
-    fn subtree_here<'a>(&'a self, tree: &'a Tree) -> Fallible<SubTree> {
-        tree.subtree_at(self)
-    }
-
     pub fn path_str(&self) -> String {
         self.0.borrow().path.to_string()
     }
 
-    pub(super) fn handle_event(&self, value: Value, tree: &Tree) -> Fallible<()> {
-        let path = &self.path_str();
-        match self.0.borrow_mut().input {
-            Some(NodeInput::Source(ref mut source, _)) => {
-                source.handle_event(path, value, &self.subtree_here(tree)?)
-            }
-            _ => bail!(
-                "runtime error: handle_event request on a non-source node @ {}",
-                self.0.borrow().path
-            ),
-        }
+    pub(super) fn handle_event(&self, value: Value) -> Fallible<()> {
+        ensure!(self.is_source(), "received event on non-source node");
+        let mut node = self.0.borrow_mut();
+        node.cache = Some(value);
+        Ok(())
     }
 
     pub fn location(&self) -> Option<Dimension2> {
@@ -588,21 +575,22 @@ impl NodeRef {
     }
 
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
+        // FIXME: we need to make this entire path mut, so that we can write back the
+        // FIXME: computed entries as we compute them. For now, we'll be re-computing
+        // FIXME: intermediate nodes. Note: The cache *is* populated for source nodes
+        // FIXME: by handle_event, which is mut.
+        if let Some(ref cached_value) = self.0.borrow().cache {
+            assert!(self.is_source());
+            return Ok(cached_value.to_owned());
+        }
+
         let path = self.path_str();
         trace!("computing @ {}", path);
         match self.0.borrow().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
-            Some(NodeInput::Source(ref source, _)) => {
-                // FIXME: we need to make this entire path mut
-                // if let Some((_, cached)) = self.cache {
-                //     return cached;
-                // }
-                let current = source.get_value(&path, &self.subtree_here(&tree)?);
-                match current {
-                    None => bail!("runtime error: no value @ {}", path),
-                    Some(v) => Ok(v),
-                }
+            Some(NodeInput::Source(_, _)) => {
+                bail!("computing value of a source node; should have been cached by handle_event");
             }
         }
     }
@@ -633,6 +621,13 @@ impl NodeRef {
         }
         None
     }
+
+    pub fn is_source(&self) -> bool {
+        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
+            return true;
+        }
+        false
+    }
 }
 
 enum NodeInput {
@@ -655,7 +650,7 @@ pub struct Node {
     // pulling inputs from external systems and other computed values. Or
     // nothing; it's fine for a node to just be structural.
     input: Option<NodeInput>,
-    _cache: Option<Sample>,
+    cache: Option<Value>,
 
     // Optional output data binding.
     sink: Option<String>,
@@ -671,7 +666,7 @@ impl Node {
             location: None,
             dimensions: None,
             input: None,
-            _cache: None,
+            cache: None,
             sink: None,
         }
     }
@@ -771,7 +766,7 @@ bar
     v<-2
 "#;
         let srcref: SourceRef = SimpleSource::new_ref()?;
-        let tree = TreeBuilder::default()
+        let mut tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
