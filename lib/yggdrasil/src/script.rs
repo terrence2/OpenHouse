@@ -135,7 +135,7 @@ impl Expr {
             self,
             find_all_possible_inputs,
             |_tok, a, b| {
-                ensure!(a == b, "type check failure: mismatched types in {:?}", self);
+                ensure!(a == ValueType::INPUT || b == ValueType::INPUT || a == b, "type check failure: mismatched types in {:?}", self);
                 Ok(a)
             },
             tree,

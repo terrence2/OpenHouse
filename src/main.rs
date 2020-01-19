@@ -36,9 +36,9 @@ fn main() -> Fallible<()> {
     let opt = Opt::from_args();
 
     let level = match opt.verbose {
-        0 => Level::Info,
-        1 => Level::Debug,
-        _ => Level::Trace,
+        0 => Level::INFO,
+        1 => Level::DEBUG,
+        _ => Level::TRACE,
     };
     let subscriber = FmtSubscriber::builder()
         .with_max_level(level)

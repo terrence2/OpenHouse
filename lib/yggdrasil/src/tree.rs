@@ -13,7 +13,7 @@ use crate::{
     value::{Value, ValueType},
 };
 use failure::{bail, ensure, Fallible};
-use log::{trace, warn};
+use tracing::{trace, warn};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -659,7 +659,7 @@ impl NodeRef {
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
         let path = self.path_str();
         trace!("computing @ {}", path);
-        match self.0.borrow_mut().input {
+        match self.0.borrow().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(ref source, _)) => {

@@ -9,7 +9,7 @@ use crate::{
 };
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
-use log::trace;
+use tracing::trace;
 use std::{convert::From, fmt};
 
 fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
@@ -34,6 +34,7 @@ bitflags! {
         const INTEGER = 0b0000_0100;
         const STRING  = 0b0000_1000;
         const INPUT   = 0b0001_0000;
+        const INDIRECT= 0b0010_0000;
     }
 }
 
@@ -334,6 +335,8 @@ impl Value {
                 .collect::<Vec<ConcretePath>>();
 
             // Do type checking as we collect paths, since we won't have another opportunity.
+            // Move to fully dynamic.
+            /*
             let mut value_types = Vec::new();
             for inp in &direct_inputs {
                 let noderef = tree.lookup_path(inp)?;
@@ -341,12 +344,13 @@ impl Value {
                 value_types.push(nodetype);
             }
             ensure_same_types(&value_types)?;
+            */
 
             // Collect both direct and indirect inputs at this value.
             out.append(&mut direct_inputs);
             out.append(&mut concrete_inputs);
 
-            return Ok(value_types[0]);
+            return Ok(ValueType::INDIRECT);
         }
         Ok(match &self.data {
             ValueData::Boolean(_) => ValueType::BOOLEAN,

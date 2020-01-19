@@ -285,6 +285,16 @@ mod test {
         value::{Value, ValueType},
     };
 
+    /* Note: tracing setup code if we need to debug
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("setting defualt subscriber failed");
+    */
+
     #[test]
     fn test_parse_minimal() -> Fallible<()> {
         let tree = TreeBuilder::default().build_from_str("a")?;
@@ -452,8 +462,7 @@ a <-"foo"
 b <-/a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -464,8 +473,7 @@ a <-"foo"
 b <-./a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -477,9 +485,8 @@ b <-./a
     c <-../b
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b/c")?.nodetype()?, ValueType::STRING);
+        let c = tree.lookup("/b/c")?.compute(&tree)?;
+        assert_eq!(c, Value::new_str("foo"));
         Ok(())
     }
 
@@ -491,9 +498,7 @@ b <-./b/c
     c <-../a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b/c")?.nodetype()?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -506,9 +511,7 @@ y
     v <- 2
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/y/v")?.nodetype()?, ValueType::INTEGER);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
         Ok(())
     }
 
@@ -524,11 +527,6 @@ yz
     v <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype()?, ValueType::STRING);
-        assert_eq!(tree.lookup("/y/v")?.nodetype()?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/yz/v")?.nodetype()?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/c")?.nodetype()?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::from_integer(3));
         Ok(())
     }
@@ -585,13 +583,6 @@ baz <- 3
 
     #[test]
     fn test_parse_str_in_path() -> Fallible<()> {
-        use tracing::Level;
-        use tracing_subscriber::FmtSubscriber;
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting defualt subscriber failed");
         let s = r#"
 foo <- "a" + /{/quux} + "c"
 z6 <- "b"
