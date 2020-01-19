@@ -5,8 +5,8 @@ use crate::oh::{DBServer, TickEvent};
 use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, ensure, Fallible};
-use log::trace;
 use std::{collections::HashMap, time::Duration as StdDuration};
+use tracing::trace;
 use yggdrasil::{SubTree, TreeSource, Value};
 
 /**

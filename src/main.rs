@@ -7,9 +7,10 @@ mod web;
 use actix::prelude::*;
 use failure::Fallible;
 use oh::{DBServer, LegacyMCU, TickWorker};
-use simplelog::{ConfigBuilder, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 use std::path::PathBuf;
 use structopt::StructOpt;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 use web::server::build_server;
 
 #[derive(StructOpt, Debug)]
@@ -33,20 +34,16 @@ struct Opt {
 
 fn main() -> Fallible<()> {
     let opt = Opt::from_args();
+
     let level = match opt.verbose {
-        0 => LevelFilter::Info,
-        1 => LevelFilter::Debug,
-        _ => LevelFilter::Trace,
+        0 => Level::Info,
+        1 => Level::Debug,
+        _ => Level::Trace,
     };
-    let log_config = ConfigBuilder::new()
-        .set_time_format_str("%F %T%.6fZ")
-        .build();
-    if TermLogger::init(level, log_config, TerminalMode::Stdout).is_err() {
-        let log_config = ConfigBuilder::new()
-            .set_time_format_str("%F %T%.6fZ")
-            .build();
-        WriteLogger::init(level, log_config, std::io::stdout())?
-    }
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
     let sys = System::new("open_house");
 

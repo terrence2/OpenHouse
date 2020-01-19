@@ -13,5 +13,7 @@ bitflags = "1.0"
 downcast-rs = "1.0"
 failure = "0.1.2"
 lazy_static = "*"
-log = "0.4"
-simplelog = "^ 0.7"
+tracing = "^ 0.1"
+
+[dev-dependencies]
+tracing-subscriber = "0.2.0-alpha.4"

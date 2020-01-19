@@ -4,8 +4,8 @@
 use crate::oh::{clock::Clock, hue::Hue, legacy_mcu::LegacyMCU};
 use actix::prelude::*;
 use failure::Fallible;
-use log::{error, trace};
 use std::path::Path;
+use tracing::{error, trace};
 use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
 
 pub struct DBServer {

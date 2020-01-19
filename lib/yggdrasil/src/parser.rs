@@ -8,8 +8,8 @@ use crate::{
     tree::{NodeRef, Tree},
 };
 use failure::{bail, ensure, format_err, Fallible};
-use log::trace;
 use std::collections::HashMap;
+use tracing::trace;
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
@@ -585,7 +585,13 @@ baz <- 3
 
     #[test]
     fn test_parse_str_in_path() -> Fallible<()> {
-        let _ = simplelog::SimpleLogger::init(simplelog::LevelFilter::Trace, simplelog::Config::default());
+        use tracing::Level;
+        use tracing_subscriber::FmtSubscriber;
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting defualt subscriber failed");
         let s = r#"
 foo <- "a" + /{/quux} + "c"
 z6 <- "b"

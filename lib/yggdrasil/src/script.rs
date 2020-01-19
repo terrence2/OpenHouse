@@ -11,8 +11,8 @@ use crate::{
 };
 use failure::{ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
-use log::trace;
 use std::collections::HashMap;
+use tracing::trace;
 
 #[derive(Clone, Debug)]
 pub(super) enum Expr {

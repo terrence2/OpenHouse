@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::{float::Float, physical::Dimension2};
 use failure::{bail, ensure, Fallible};
-use log::trace;
+use tracing::trace;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
