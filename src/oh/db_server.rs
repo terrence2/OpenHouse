@@ -17,15 +17,14 @@ pub struct DBServer {
 
 impl DBServer {
     pub fn new_from_file(filename: &Path) -> Fallible<Self> {
-        let hue = SinkRef::new(Hue::new()?);
         let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
         let clock = SourceRef::new(Clock::new()?);
         let tree = TreeBuilder::default()
             .add_source_handler("clock", &clock)?
             .add_source_handler("legacy-mcu", &legacy_mcu)?
-            .add_sink_handler("hue", &hue)?
             .build_from_file(filename)?;
 
+        let hue = SinkRef::new(Hue::new()?);
         let paths = tree.find_sinks("hue");
         for path in &paths {
             hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;

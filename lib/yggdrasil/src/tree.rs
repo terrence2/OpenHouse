@@ -8,7 +8,6 @@ use crate::{
     path::{ConcretePath, PathComponent, ScriptPath},
     physical::Dimension2,
     script::Script,
-    sink::SinkRef,
     source::SourceRef,
     value::Value,
 };
@@ -33,7 +32,6 @@ pub struct Sample {
 pub struct TreeBuilder {
     // Input and output definitions.
     source_handlers: HashMap<String, SourceRef>,
-    sink_handlers: HashMap<String, SinkRef>,
 
     // Extension functions defined by the embedding.
     nifs: HashMap<String, Box<dyn NativeFunc>>,
@@ -50,7 +48,6 @@ impl Default for TreeBuilder {
     fn default() -> TreeBuilder {
         TreeBuilder {
             source_handlers: HashMap::new(),
-            sink_handlers: HashMap::new(),
             nifs: HashMap::new(),
             add_builtin_nifs: true,
             import_interceptors: HashMap::new(),
@@ -61,11 +58,6 @@ impl Default for TreeBuilder {
 impl TreeBuilder {
     pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
         self.source_handlers.insert(name.to_owned(), source.clone());
-        Ok(self)
-    }
-
-    pub fn add_sink_handler(mut self, name: &str, sink: &SinkRef) -> Fallible<TreeBuilder> {
-        self.sink_handlers.insert(name.to_owned(), sink.clone());
         Ok(self)
     }
 
@@ -83,7 +75,6 @@ impl TreeBuilder {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
             source_handlers: self.source_handlers.clone(),
-            sink_handlers: self.sink_handlers.clone(),
         };
         let tree = TreeParser::from_str(tree, content, &self.nifs, &HashMap::new())?;
         self.import_interceptors.insert(name.to_owned(), tree);
@@ -100,7 +91,6 @@ impl TreeBuilder {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
             source_handlers: HashMap::new(),
-            sink_handlers: HashMap::new(),
         }
     }
 
@@ -118,7 +108,6 @@ impl TreeBuilder {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
             source_handlers: self.source_handlers,
-            sink_handlers: self.sink_handlers,
         };
 
         let tree = TreeParser::from_str(tree, s, &self.nifs, &self.import_interceptors)?
@@ -133,7 +122,6 @@ pub struct Tree {
     root: NodeRef,
     generation: usize,
     source_handlers: HashMap<String, SourceRef>,
-    sink_handlers: HashMap<String, SinkRef>,
 }
 
 impl Tree {
@@ -372,10 +360,6 @@ impl NodeRef {
             self.enforce_jail()?;
             source.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
-        if let Some((ref _kind, ref sink)) = self.0.borrow().sink {
-            self.enforce_jail()?;
-            sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
-        }
 
         Ok(())
     }
@@ -551,19 +535,13 @@ impl NodeRef {
         Ok(())
     }
 
-    pub fn set_sink(&self, tgt: &str, tree: &Tree) -> Fallible<()> {
+    pub fn set_sink(&self, tgt: &str) -> Fallible<()> {
         ensure!(
             self.0.borrow().sink.is_none(),
             "parse error: sink set twice @ {}",
             self.0.borrow().path
         );
-        ensure!(
-            tree.sink_handlers.contains_key(tgt),
-            "parse error: unknown sink kind '{}' referenced @ {}",
-            tgt,
-            self.0.borrow().path
-        );
-        self.0.borrow_mut().sink = Some((tgt.to_owned(), tree.sink_handlers[tgt].to_owned()));
+        self.0.borrow_mut().sink = Some(tgt.to_owned());
         Ok(())
     }
 
@@ -640,7 +618,7 @@ impl NodeRef {
     }
 
     pub fn sink_kind(&self) -> Fallible<String> {
-        if let Some((ref kind, _)) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.borrow().sink {
             return Ok(kind.to_owned());
         }
         bail!(
@@ -650,7 +628,7 @@ impl NodeRef {
     }
 
     pub fn maybe_sink_kind(&self) -> Option<String> {
-        if let Some((ref kind, _)) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.borrow().sink {
             return Some(kind.to_owned());
         }
         None
@@ -680,7 +658,7 @@ pub struct Node {
     _cache: Option<Sample>,
 
     // Optional output data binding.
-    sink: Option<(String, SinkRef)>,
+    sink: Option<String>,
 }
 
 impl Node {
