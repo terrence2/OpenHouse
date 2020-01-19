@@ -24,7 +24,7 @@ use tracing::{trace, trace_span, warn};
 
 pub struct TreeBuilder {
     // Extension functions defined by the embedding.
-    nifs: HashMap<String, Box<dyn NativeFunc>>,
+    nifs: HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
 
     // Add builtin functions to `nifs` before loading. (default: true)
     add_builtin_nifs: bool,
@@ -48,7 +48,7 @@ impl TreeBuilder {
     pub fn add_native_function(
         mut self,
         name: &str,
-        nif: Box<dyn NativeFunc>,
+        nif: Box<dyn NativeFunc + Send + Sync>,
     ) -> Fallible<TreeBuilder> {
         self.nifs.insert(name.to_owned(), nif);
         Ok(self)

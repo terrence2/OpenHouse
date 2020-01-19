@@ -6,9 +6,10 @@ mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
-use oh::{DBServer, TickWorker};
+use oh::{DBServer, TickWorker, TreeServer};
 use std::path::PathBuf;
 use structopt::StructOpt;
+use tokio::prelude::*;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 use web::server::build_server;
@@ -32,7 +33,8 @@ struct Opt {
     config: PathBuf,
 }
 
-fn main() -> Fallible<()> {
+#[tokio::main(core_threads = 4)]
+async fn main() -> Fallible<()> {
     let opt = Opt::from_args();
 
     let level = match opt.verbose {
@@ -43,6 +45,13 @@ fn main() -> Fallible<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
+    let db_server = TreeServer::launch(&opt.config).await?;
+
+    db_server.mailbox().finish().await;
+
+    db_server.join().await?;
+
+    /*
     let sys = System::new("open_house");
 
     let db = DBServer::new_from_file(&opt.config)?;
@@ -63,5 +72,7 @@ fn main() -> Fallible<()> {
     //tree_addr.send(AddHandler())
 
     sys.run()?;
+    */
+
     Ok(())
 }
