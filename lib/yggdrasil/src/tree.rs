@@ -10,10 +10,9 @@ use crate::{
     script::Script,
     sink::SinkRef,
     source::SourceRef,
-    value::{Value, ValueType},
+    value::Value,
 };
 use failure::{bail, ensure, Fallible};
-use log::{trace, warn};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -23,6 +22,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+use tracing::{trace, trace_span, warn};
 
 /// The combination of a Value plus a monotonic ordinal.
 pub struct Sample {
@@ -207,10 +207,6 @@ impl Tree {
     }
 }
 
-// impl Actor for Tree {
-//     type Context = Context<Self>;
-// }
-
 pub struct SubTree<'a> {
     _tree: &'a Tree,
     _root: NodeRef,
@@ -303,20 +299,27 @@ impl NodeRef {
         Ok(child)
     }
 
+    pub fn child_names(&self) -> Vec<String> {
+        self.0
+            .borrow()
+            .children
+            .keys()
+            .filter(|&f| f != "." && f != "..")
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
     pub fn name(&self) -> String {
         self.0.borrow().name.clone()
     }
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
-        trace!("+++NodeRef::link_and_validate_input({})", self.path_str());
-
-        // If nodetype is already set, we've already recursed through this node,
-        // so can skip recursion as well. If we have no input, there is no easy
-        // way to tell if we've already visited this node.
-        if self.has_a_nodetype() {
-            trace!("---NodeRef::link_and_validate_input({})", self.path_str());
+        let span = trace_span!("link", "{}", self.path_str());
+        let _ = span.enter();
+        if self.0.borrow().linked_and_validated {
             return Ok(());
         }
+        self.0.borrow_mut().linked_and_validated = true;
 
         // Note: this pattern is a little funky! Normally we'd match to test
         // these conditions, but if we did that the borrow would last over the
@@ -360,10 +363,6 @@ impl NodeRef {
             sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
 
-        trace!(
-            "---NodeRef::link_and_validate_input({})",
-            self.0.borrow().path
-        );
         Ok(())
     }
 
@@ -461,10 +460,6 @@ impl NodeRef {
         Ok(())
     }
 
-    fn has_input(&self) -> bool {
-        self.0.borrow().input.is_some()
-    }
-
     fn has_script(&self) -> bool {
         if let Some(NodeInput::Script(_)) = self.0.borrow().input {
             return true;
@@ -482,49 +477,6 @@ impl NodeRef {
 
     pub fn path_str(&self) -> String {
         self.0.borrow().path.to_string()
-    }
-
-    // This will be false if !has_input or we are in the middle of compilation.
-    // This should not be used after compilation, as the combination of
-    // has_input and nodetype should be sufficient.
-    fn has_a_nodetype(&self) -> bool {
-        if let Some(ref input) = self.0.borrow().input {
-            return input.has_a_nodetype();
-        }
-        false
-    }
-
-    // If node type has been set, return it, otherwise do link_and_validate in
-    // order to find it. This method is only safe to call during compilation. It
-    // is public for use by Script during compilation.
-    pub(super) fn get_or_find_node_type(&self, tree: &Tree) -> Fallible<ValueType> {
-        ensure!(
-            self.has_input(),
-            "typeflow error: read from the node @ {} has no inputs",
-            self.path_str()
-        );
-
-        // If we have already validated this node, return the type.
-        if self.has_a_nodetype() {
-            return self.nodetype(tree);
-        }
-
-        // We need to recurse in order to typecheck the current node.
-        self.link_and_validate_inputs(tree)?;
-        self.nodetype(tree)
-    }
-
-    pub fn nodetype(&self, tree: &Tree) -> Fallible<ValueType> {
-        match self.0.borrow().input {
-            None => bail!(
-                "runtime error: nodetype request on a non-input node @ {}",
-                self.0.borrow().path
-            ),
-            Some(NodeInput::Script(ref script)) => script.nodetype(),
-            Some(NodeInput::Source(ref source, _)) => {
-                source.nodetype(&self.path_str(), &self.subtree_here(tree)?)
-            }
-        }
     }
 
     pub(super) fn handle_event(&self, value: Value, tree: &Tree) -> Fallible<()> {
@@ -646,7 +598,7 @@ impl NodeRef {
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
         let path = self.path_str();
         trace!("computing @ {}", path);
-        match self.0.borrow_mut().input {
+        match self.0.borrow().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(ref source, _)) => {
@@ -659,20 +611,6 @@ impl NodeRef {
                     None => bail!("runtime error: no value @ {}", path),
                     Some(v) => Ok(v),
                 }
-            }
-        }
-    }
-
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        trace!("virtually computing @ {}", self.path_str());
-        match self.0.borrow().input {
-            None => bail!(
-                "typeflow error: reading input from non-input path @ {}",
-                self.path_str()
-            ),
-            Some(NodeInput::Script(ref script)) => script.virtually_compute_for_path(tree),
-            Some(NodeInput::Source(ref source, _)) => {
-                source.get_all_possible_values(&self.path_str(), &self.subtree_here(&tree)?)
             }
         }
     }
@@ -703,20 +641,12 @@ enum NodeInput {
     Script(Script),
 }
 
-impl NodeInput {
-    fn has_a_nodetype(&self) -> bool {
-        match self {
-            NodeInput::Source(_, _) => false,
-            NodeInput::Script(s) => s.has_a_nodetype(),
-        }
-    }
-}
-
 pub struct Node {
     // The tree structure.
     name: String,
     path: ConcretePath,
     children: HashMap<String, NodeRef>,
+    linked_and_validated: bool,
 
     // Simple sigils.
     location: Option<Dimension2>,
@@ -738,6 +668,7 @@ impl Node {
             name: path.basename().to_owned(),
             path,
             children: HashMap::new(),
+            linked_and_validated: false,
             location: None,
             dimensions: None,
             input: None,
@@ -791,7 +722,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
@@ -807,7 +738,7 @@ a ^src1
     a <- ../b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -822,7 +753,7 @@ a ^src1
     a <- /b
 b <- "foo"
 "#;
-        let src1 = SimpleSource::new_ref(vec![])?;
+        let src1 = SimpleSource::new_ref()?;
         let res = TreeBuilder::default()
             .add_source_handler("src1", &src1)?
             .build_from_str(s);
@@ -840,7 +771,7 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = SimpleSource::new_ref(vec!["foo".into(), "bar".into()])?;
+        let srcref: SourceRef = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
             .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;

@@ -5,9 +5,9 @@ use crate::oh::{DBServer, TickEvent};
 use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, ensure, Fallible};
-use log::trace;
 use std::{collections::HashMap, time::Duration as StdDuration};
-use yggdrasil::{SubTree, TreeSource, Value, ValueType};
+use tracing::trace;
+use yggdrasil::{SubTree, TreeSource, Value};
 
 /**
  * Example usage:
@@ -157,15 +157,6 @@ impl TreeSource for Clock {
         );
         self.clocks.insert(path.to_owned(), def);
         Ok(())
-    }
-
-    fn nodetype(&self, _path: &str, _tree: &SubTree) -> Fallible<ValueType> {
-        Ok(ValueType::INTEGER)
-    }
-
-    fn get_all_possible_values(&self, _path: &str, _tree: &SubTree) -> Fallible<Vec<Value>> {
-        // FIXME: this should be possible -- need to implement integer ranges
-        bail!("compilation error: a time value flowed into a path")
     }
 
     fn handle_event(&mut self, path: &str, value: Value, _tree: &SubTree) -> Fallible<()> {

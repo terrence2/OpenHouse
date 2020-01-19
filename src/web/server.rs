@@ -10,7 +10,7 @@ use actix_web::{
 use bytes::Bytes;
 use failure::{err_msg, Fallible};
 use futures::future::{err, ok, Ready};
-use log::trace;
+use tracing::trace;
 //use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::{collections::HashMap, net::IpAddr, str};
 use yggdrasil::Value;

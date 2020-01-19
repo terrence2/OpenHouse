@@ -7,34 +7,9 @@ use crate::{
     tokenizer::Token,
     tree::Tree,
 };
-use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
-use log::trace;
 use std::{convert::From, fmt};
-
-fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
-    ensure!(
-        !types.is_empty(),
-        "typecheck error: trying to reify empty type list"
-    );
-    let expect_type = types[0];
-    for ty in &types[1..] {
-        ensure!(
-            *ty == expect_type,
-            "typecheck error: mismatched types in ensure_same_types"
-        );
-    }
-    Ok(expect_type)
-}
-
-bitflags! {
-    pub struct ValueType : usize {
-        const BOOLEAN = 0b0001;
-        const FLOAT   = 0b0010;
-        const INTEGER = 0b0100;
-        const STRING  = 0b1000;
-    }
-}
+use tracing::trace;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValueData {
@@ -43,6 +18,15 @@ pub enum ValueData {
     Integer(i64),
     Path(ScriptPath),
     String(String),
+    InputFlag, // Our Any type
+}
+
+fn latch<T>(lhs: &Value, rhs: &Value, a: T, b: T) -> T {
+    if lhs.generation() >= rhs.generation() {
+        a
+    } else {
+        b
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -94,6 +78,13 @@ impl Value {
         }
     }
 
+    pub fn input_flag() -> Self {
+        Self {
+            data: ValueData::InputFlag,
+            generation: 0,
+        }
+    }
+
     pub fn generation(&self) -> usize {
         self.generation
     }
@@ -105,15 +96,6 @@ impl Value {
     pub fn with_generation(mut self, generation: usize) -> Self {
         self.generation = generation;
         self
-    }
-
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        trace!("Value::virtually_compute_for_path({})", self);
-        if let ValueData::Path(ref p) = self.data {
-            let noderef = tree.lookup_dynamic_path(p)?;
-            return noderef.virtually_compute_for_path(tree);
-        }
-        Ok(vec![self.to_owned()])
     }
 
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
@@ -148,7 +130,7 @@ impl Value {
         let next = match tok {
             Token::Or => a || b,
             Token::And => a && b,
-            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
+            Token::Latch => latch(lhs, rhs, a, b),
             Token::Equals => a == b,
             Token::NotEquals => a != b,
             _ => bail!(
@@ -168,7 +150,7 @@ impl Value {
             Token::Multiply => ValueData::Integer(a * b),
             Token::Divide => ValueData::Float(Float::new(a as f64)? / Float::new(b as f64)?),
             Token::Modulo => ValueData::Integer(a % b),
-            Token::Latch => ValueData::Integer(if lhs.generation() >= rhs.generation() { a } else { b }),
+            Token::Latch => ValueData::Integer(latch(lhs, rhs, a, b)),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -180,7 +162,10 @@ impl Value {
                 tok
             ),
         };
-        Ok(Value { data, generation: lhs.generation().max(rhs.generation()) })
+        Ok(Value {
+            data,
+            generation: lhs.generation().max(rhs.generation()),
+        })
     }
 
     pub(super) fn apply_float(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
@@ -191,7 +176,7 @@ impl Value {
             Token::Subtract => ValueData::Float(a - b),
             Token::Multiply => ValueData::Float(a * b),
             Token::Divide => ValueData::Float(a / b),
-            Token::Latch => ValueData::Float(if lhs.generation() >= rhs.generation() { a } else { b }),
+            Token::Latch => ValueData::Float(latch(lhs, rhs, a, b)),
             Token::Equals => ValueData::Boolean(a == b),
             Token::NotEquals => ValueData::Boolean(a != b),
             Token::GreaterThan => ValueData::Boolean(a > b),
@@ -213,8 +198,8 @@ impl Value {
         let a = lhs.as_string()?;
         let b = rhs.as_string()?;
         let s = match tok {
-            Token::Add => a.clone() + &b,
-            Token::Latch => if lhs.generation() >= rhs.generation() { a } else { b },
+            Token::Add => a + &b,
+            Token::Latch => latch(lhs, rhs, a, b),
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
@@ -228,6 +213,10 @@ impl Value {
             return true;
         }
         false
+    }
+
+    pub fn is_input_flag(&self) -> bool {
+        self.data == ValueData::InputFlag
     }
 
     pub fn as_boolean(&self) -> Fallible<bool> {
@@ -267,6 +256,7 @@ impl Value {
                 bail!("runtime error: a float value cannot be used as a path component")
             }
             ValueData::Path(_) => bail!("runtime error: did not expect a path as path component"),
+            ValueData::InputFlag => bail!("runtime error: input flag in as_path_component"),
         }
     }
 
@@ -275,42 +265,31 @@ impl Value {
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
+    ) -> Fallible<()> {
         trace!("Value::find_all_possible_inputs: {}", self);
         if let ValueData::Path(ref path) = self.data {
             // Our virtual path will depend on concrete inputs that may or may
-            // not have been visited yet. Find them, and make sure they have been
-            // visited so that we can virtually_compute on them when devirtualizing.
+            // not have been visited yet.
             let mut concrete_inputs = Vec::new();
             path.find_concrete_inputs(&mut concrete_inputs)?;
             for concrete in &concrete_inputs {
                 tree.lookup_path(concrete)?.link_and_validate_inputs(tree)?;
             }
 
-            let mut direct_inputs = path.devirtualize(tree)?;
-
-            // Do type checking as we collect paths, since we won't have another opportunity.
-            let mut value_types = Vec::new();
-            for inp in &direct_inputs {
-                let noderef = tree.lookup_path(inp)?;
-                let nodetype = noderef.get_or_find_node_type(tree)?;
-                value_types.push(nodetype);
-            }
-            ensure_same_types(&value_types)?;
+            // Devirtualization is eager; expansions may result in paths that do not actually
+            // exist in the tree. This may be fine, depending on what inputs real devices produce.
+            // It does mean that we have to filter out impossible paths at this layer.
+            let mut direct_inputs = path
+                .devirtualize(tree)?
+                .drain(..)
+                .filter(|path| tree.lookup_path(path).is_ok())
+                .collect::<Vec<ConcretePath>>();
 
             // Collect both direct and indirect inputs at this value.
             out.append(&mut direct_inputs);
             out.append(&mut concrete_inputs);
-
-            return Ok(value_types[0]);
         }
-        Ok(match &self.data {
-            ValueData::Boolean(_) => ValueType::BOOLEAN,
-            ValueData::Float(_) => ValueType::FLOAT,
-            ValueData::Integer(_) => ValueType::INTEGER,
-            ValueData::String(_) => ValueType::STRING,
-            ValueData::Path(_) => panic!("typeflow error: we already filtered out path"),
-        })
+        Ok(())
     }
 }
 
@@ -331,6 +310,7 @@ impl fmt::Display for Value {
             ValueData::Float(v) => write!(f, "{}f64", v),
             ValueData::String(ref s) => write!(f, "\"{}\"", s),
             ValueData::Path(ref p) => write!(f, "{}", p),
+            ValueData::InputFlag => write!(f, "InputFlag"),
         }
     }
 }

@@ -24,10 +24,10 @@ futures = "^ 0.3"
 itertools = "^ 0.8"
 json = "^ 0.12"
 lazy_static = "*"
-log = "^ 0.4"
 openssl = { version=">=0.10", features = ["v110"] }
 regex = "^ 1"
 reqwest = "0.9"
-simplelog = "^ 0.7"
 structopt = "^ 0.3"
+tracing = "^ 0.1"
+tracing-subscriber = "0.2.0-alpha.4"
 yggdrasil = { path = "./lib/yggdrasil" }

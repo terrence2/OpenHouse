@@ -8,8 +8,8 @@ use crate::{
     tree::{NodeRef, Tree},
 };
 use failure::{bail, ensure, format_err, Fallible};
-use log::trace;
 use std::collections::HashMap;
+use tracing::trace;
 
 pub struct TreeParser<'a> {
     tree: &'a Tree,
@@ -279,11 +279,17 @@ impl<'a> TreeParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        physical::Dimension2,
-        tree::TreeBuilder,
-        value::{Value, ValueType},
-    };
+    use crate::{physical::Dimension2, tree::TreeBuilder, value::Value};
+
+    /* Note: tracing setup code if we need to debug
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("setting defualt subscriber failed");
+    */
 
     #[test]
     fn test_parse_minimal() -> Fallible<()> {
@@ -362,7 +368,7 @@ c @3x3
             tree.lookup("/a")?.dimensions().unwrap(),
             Dimension2::from_str("1x1")?
         );
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
+        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::new_str("foo"));
         assert_eq!(
             tree.lookup("/a/b")?.location().unwrap(),
             Dimension2::from_str("2x2")?
@@ -371,7 +377,7 @@ c @3x3
             tree.lookup("/c")?.location().unwrap(),
             Dimension2::from_str("3x3")?
         );
-        assert_eq!(tree.lookup("/c")?.nodetype(&tree)?, ValueType::STRING);
+        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::new_str("bar"));
         Ok(())
     }
 
@@ -452,8 +458,7 @@ a <-"foo"
 b <-/a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -464,8 +469,7 @@ a <-"foo"
 b <-./a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
@@ -477,9 +481,8 @@ b <-./a
     c <-../b
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b/c")?.nodetype(&tree)?, ValueType::STRING);
+        let c = tree.lookup("/b/c")?.compute(&tree)?;
+        assert_eq!(c, Value::new_str("foo"));
         Ok(())
     }
 
@@ -491,14 +494,12 @@ b <-./b/c
     c <-../a
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b/c")?.nodetype(&tree)?, ValueType::STRING);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::new_str("foo"));
         Ok(())
     }
 
     #[test]
-    fn test_parse_indirect() -> Fallible<()> {
+    fn test_parse_indirect_simple() -> Fallible<()> {
         let s = r#"
 a <- "y"
 b <-/{./a}/v
@@ -506,9 +507,7 @@ y
     v <- 2
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/y/v")?.nodetype(&tree)?, ValueType::INTEGER);
+        assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
         Ok(())
     }
 
@@ -524,11 +523,6 @@ yz
     v <- 3
 "#;
         let tree = TreeBuilder::default().build_from_str(s)?;
-        assert_eq!(tree.lookup("/a")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/b")?.nodetype(&tree)?, ValueType::STRING);
-        assert_eq!(tree.lookup("/y/v")?.nodetype(&tree)?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/yz/v")?.nodetype(&tree)?, ValueType::INTEGER);
-        assert_eq!(tree.lookup("/c")?.nodetype(&tree)?, ValueType::INTEGER);
         assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::from_integer(3));
         Ok(())
     }

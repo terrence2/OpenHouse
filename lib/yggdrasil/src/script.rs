@@ -7,12 +7,12 @@ use crate::{
     path::{ConcretePath, ScriptPath},
     tokenizer::Token,
     tree::{NodeRef, Tree},
-    value::{Value, ValueType},
+    value::Value,
 };
 use failure::{ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
-use log::trace;
 use std::collections::HashMap;
+use tracing::trace;
 
 #[derive(Clone, Debug)]
 pub(super) enum Expr {
@@ -106,38 +106,16 @@ impl Expr {
         )
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        map_values!(
-            self,
-            virtually_compute_for_path,
-            |tok, lhs: Vec<Value>, rhs: Vec<Value>| {
-                trace!("vcomp: reduce {:?} {:?} {:?}", lhs, tok, rhs);
-                let mut out = Vec::new();
-                for a in &lhs {
-                    for b in &rhs {
-                        trace!("vcomp: reduce1 {:?} {:?} {:?}", a, tok, b);
-                        out.push(a.apply(&tok, b)?);
-                    }
-                }
-                Ok(out)
-            },
-            tree
-        )
-    }
-
     pub fn find_all_possible_inputs(
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
+    ) -> Fallible<()> {
         trace!("Expr::find_all_possible_inputs({:?})", self);
         map_values!(
             self,
             find_all_possible_inputs,
-            |_tok, a, b| {
-                ensure!(a == b, "type check failure: mismatched types in {:?}", self);
-                Ok(a)
-            },
+            |_tok, _a, _b| Ok(()),
             tree,
             out
         )
@@ -155,7 +133,6 @@ pub struct Script {
     suite: Expr,
     phase: CompilationPhase,
     input_map: HashMap<ConcretePath, NodeRef>,
-    nodetype: Option<ValueType>,
 }
 
 impl Script {
@@ -170,35 +147,27 @@ impl Script {
             suite: expr,
             phase: CompilationPhase::NeedInputMap,
             input_map: HashMap::new(),
-            nodetype: None,
         };
         Ok(script)
     }
 
     // Note that we have to have a separate build and install phase because otherwise we'd be borrowed
     // mutable when searching for inputs and double-borrow if any children are referenced.
-    pub fn build_input_map(
-        &self,
-        tree: &Tree,
-    ) -> Fallible<(HashMap<ConcretePath, NodeRef>, ValueType)> {
-        assert!(self.phase == CompilationPhase::NeedInputMap);
+    pub fn build_input_map(&self, tree: &Tree) -> Fallible<HashMap<ConcretePath, NodeRef>> {
+        assert_eq!(self.phase, CompilationPhase::NeedInputMap);
         let mut inputs = Vec::new();
-        let ty = self.suite.find_all_possible_inputs(tree, &mut inputs)?;
+        self.suite.find_all_possible_inputs(tree, &mut inputs)?;
         let mut input_map = HashMap::new();
         for input in inputs.drain(..) {
             let node = tree.lookup_path(&input)?;
             input_map.insert(input, node);
         }
-        Ok((input_map, ty))
+        Ok(input_map)
     }
 
-    pub fn install_input_map(
-        &mut self,
-        input_map: (HashMap<ConcretePath, NodeRef>, ValueType),
-    ) -> Fallible<()> {
-        assert!(self.phase == CompilationPhase::NeedInputMap);
-        self.input_map = input_map.0;
-        self.nodetype = Some(input_map.1);
+    pub fn install_input_map(&mut self, input_map: HashMap<ConcretePath, NodeRef>) -> Fallible<()> {
+        assert_eq!(self.phase, CompilationPhase::NeedInputMap);
+        self.input_map = input_map;
         self.phase = CompilationPhase::Ready;
         Ok(())
     }
@@ -208,18 +177,6 @@ impl Script {
             graph.add_edge(src_node, tgt_node);
         }
         Ok(())
-    }
-
-    pub fn nodetype(&self) -> Fallible<ValueType> {
-        ensure!(
-            self.nodetype.is_some(),
-            "typecheck error: querying node type before ready"
-        );
-        Ok(self.nodetype.unwrap())
-    }
-
-    pub(super) fn has_a_nodetype(&self) -> bool {
-        self.nodetype.is_some()
     }
 
     pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {
@@ -238,10 +195,6 @@ impl Script {
             self.suite
         );
         self.suite.compute(tree)
-    }
-
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        self.suite.virtually_compute_for_path(tree)
     }
 }
 

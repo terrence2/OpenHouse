@@ -9,9 +9,9 @@ use actix::{Actor, Addr, Context, Handler, Message, System};
 use failure::{err_msg, Fallible};
 use itertools::Itertools;
 use json::{object, parse, stringify, JsonValue};
-use log::{error, info, trace, warn};
 use reqwest::Client;
 use std::{collections::HashMap, str::FromStr, time::Duration};
+use tracing::{error, info, trace, warn};
 use yggdrasil::{ConcretePath, SubTree, TreeSink, Value};
 
 struct ValuesUpdated {

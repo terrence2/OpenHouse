@@ -5,9 +5,9 @@ use crate::{
     bif::NativeFunc,
     path::ConcretePath,
     tree::Tree,
-    value::{Value, ValueData, ValueType},
+    value::{Value, ValueData},
 };
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ToStr;
@@ -23,24 +23,17 @@ impl NativeFunc for ToStr {
                 let noderef = tree.lookup_dynamic_path(&p)?;
                 self.compute(noderef.compute(tree)?, tree)?.as_string()?
             }
+            ValueData::InputFlag => bail!("runtime error: InputFlag in ToStr"),
         }))
-    }
-
-    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>> {
-        let mut results = Vec::new();
-        for v in values {
-            results.push(self.compute(v, tree)?);
-        }
-        Ok(results)
     }
 
     fn find_all_possible_inputs(
         &self,
-        _value_type: ValueType,
+        _value_type: (),
         _tree: &Tree,
         _out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
-        Ok(ValueType::STRING)
+    ) -> Fallible<()> {
+        Ok(())
     }
 
     fn box_clone(&self) -> Box<dyn NativeFunc> {
