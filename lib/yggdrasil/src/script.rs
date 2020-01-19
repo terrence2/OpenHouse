@@ -136,7 +136,7 @@ impl Expr {
             find_all_possible_inputs,
             |_tok, a, b| {
                 ensure!(
-                    a == ValueType::INPUT || b == ValueType::INPUT || a == b,
+                    a == ValueType::INDIRECT || b == ValueType::INDIRECT || a == b,
                     "type check failure: mismatched types in {:?}",
                     self
                 );
