@@ -6,7 +6,7 @@ use actix::{Actor, Addr, AsyncContext, Context};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, Fallible};
 use std::{collections::HashMap, time::Duration as StdDuration};
-use yggdrasil::{SubTree, TreeSource};
+use yggdrasil::Tree;
 
 /**
  * Example usage:
@@ -125,10 +125,20 @@ pub struct Clock {
 }
 
 impl Clock {
-    pub fn new() -> Fallible<Box<Self>> {
-        Ok(Box::new(Self {
-            clocks: HashMap::new(),
-        }))
+    pub fn new(tree: &Tree) -> Fallible<Self> {
+        let mut clocks = HashMap::new();
+        for path in &tree.find_sources("clock") {
+            let node = tree.lookup(path)?;
+            let interval = node.child("interval")?.compute(tree)?.as_string()?;
+            let wrap = node.child("wrap")?.compute(tree)?.as_string()?;
+            let clock_def = ClockDef::new(
+                ClockInterval::from_str(&interval)?,
+                ClockWrap::from_str(&wrap)?,
+            );
+            clocks.insert(path.to_owned(), clock_def);
+        }
+
+        Ok(Self { clocks })
     }
 
     pub fn handle_tick(&mut self) -> Vec<(String, i64)> {
@@ -140,22 +150,6 @@ impl Clock {
             }
         }
         out
-    }
-}
-
-impl TreeSource for Clock {
-    fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()> {
-        let interval = tree
-            .lookup("/interval")?
-            .compute(tree.tree())?
-            .as_string()?;
-        let wrap = tree.lookup("/wrap")?.compute(tree.tree())?.as_string()?;
-        let def = ClockDef::new(
-            ClockInterval::from_str(&interval)?,
-            ClockWrap::from_str(&wrap)?,
-        );
-        self.clocks.insert(path.to_owned(), def);
-        Ok(())
     }
 }
 

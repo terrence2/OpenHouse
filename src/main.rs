@@ -6,7 +6,7 @@ mod web;
 
 use actix::prelude::*;
 use failure::Fallible;
-use oh::{DBServer, LegacyMCU, TickWorker};
+use oh::{DBServer, TickWorker};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tracing::Level;
@@ -46,10 +46,7 @@ fn main() -> Fallible<()> {
     let sys = System::new("open_house");
 
     let db = DBServer::new_from_file(&opt.config)?;
-    let button_path_map = db
-        .legacy_mcu
-        .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
-        .clone();
+    let button_path_map = db.legacy_mcu.path_map.clone();
     let db_addr = db.start();
 
     let ticker = TickWorker::new(&db_addr);

@@ -6,13 +6,13 @@ use crate::oh::{
     json_helpers::{ObjectHelper, ValueHelper},
 };
 use actix::{Actor, Addr, Context, Handler, Message, System};
-use failure::{err_msg, Fallible};
+use failure::{ensure, Fallible};
 use itertools::Itertools;
 use json::{object, parse, stringify, JsonValue};
 use reqwest::Client;
 use std::{collections::HashMap, str::FromStr, time::Duration};
-use tracing::{error, info, trace, warn};
-use yggdrasil::{ConcretePath, SubTree, TreeSink, Value};
+use tracing::{error, info, trace};
+use yggdrasil::{ConcretePath, Tree, Value};
 
 struct ValuesUpdated {
     values: Vec<(String, Value)>,
@@ -24,70 +24,37 @@ impl Message for ValuesUpdated {
 // The hue plugin to Yggdrasil. All processing is done off-main-thread by the
 // HueWorker actor.
 pub struct Hue {
-    address: Option<String>,
-    username: Option<String>,
-    path_map: HashMap<String, String>,
-    worker: Option<Addr<HueWorker>>,
+    worker: Addr<HueWorker>,
 }
 
 impl Hue {
-    pub fn new() -> Fallible<Box<Self>> {
-        Ok(Box::new(Hue {
-            address: None,
-            username: None,
-            path_map: HashMap::new(),
-            worker: None,
-        }))
-    }
-}
+    pub fn new(tree: &Tree) -> Fallible<Self> {
+        let bridge_paths = tree.find_sinks("hue-bridge");
+        ensure!(
+            bridge_paths.len() == 1,
+            "Exactly one Hue hub supported at this time."
+        );
+        let bridge_node = tree.lookup(&bridge_paths[0])?;
+        let hub = Hub::new(
+            &bridge_node.child("address")?.compute(tree)?.as_string()?,
+            &bridge_node.child("username")?.compute(tree)?.as_string()?,
+        )?;
 
-impl TreeSink for Hue {
-    fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()> {
-        let concrete = ConcretePath::from_str(path)?;
-        let basename = concrete.basename();
-
-        if basename == "hue-bridge" {
-            let address = tree.lookup("/address")?.compute(tree.tree())?.as_string()?;
-            let username = tree
-                .lookup("/username")?
-                .compute(tree.tree())?
-                .as_string()?;
-            self.address = Some(address);
-            self.username = Some(username);
-            return Ok(());
+        let mut path_map = HashMap::new();
+        for path in &tree.find_sinks("hue") {
+            let concrete = ConcretePath::from_str(path)?;
+            path_map.insert(path.to_owned(), concrete.basename().to_owned());
         }
 
-        // FIXME: allow the user to override the light name, rather than just
-        // assuming it's the last path component.
-        self.path_map.insert(path.to_owned(), basename.to_owned());
-        Ok(())
+        let worker = HueWorker::new(hub, path_map).start();
+
+        Ok(Hue { worker })
     }
 
-    fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
-        if self.address.is_none() || self.username.is_none() {
-            warn!("hue system: no hub defined; not starting");
-            return Ok(());
-        }
-        let address = self
-            .address
-            .clone()
-            .ok_or_else(|| err_msg("hue: no address on bridge"))?;
-        let username = self
-            .username
-            .clone()
-            .ok_or_else(|| err_msg("hue: no username on bridge"))?;
-        let hub = Hub::new(&address, &username)?;
-        let worker = HueWorker::new(hub, &self.path_map);
-        self.worker = Some(worker.start());
-        Ok(())
-    }
-
-    fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {
-        if let Some(ref worker) = self.worker {
-            worker.do_send(ValuesUpdated {
-                values: values.to_owned(),
-            });
-        }
+    pub fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {
+        self.worker.do_send(ValuesUpdated {
+            values: values.to_owned(),
+        });
         Ok(())
     }
 }
@@ -188,10 +155,10 @@ impl Actor for HueWorker {
 }
 
 impl HueWorker {
-    fn new(hub: Hub, path_map: &HashMap<String, String>) -> Self {
+    fn new(hub: Hub, path_map: HashMap<String, String>) -> Self {
         HueWorker {
             hub,
-            path_map: path_map.to_owned(),
+            path_map,
             light_map: HashMap::new(),
             group_map: HashMap::new(),
         }
@@ -331,10 +298,12 @@ impl Handler<ValuesUpdated> for HueWorker {
 #[cfg(test)]
 mod test {
     use super::*;
+    use yggdrasil::TreeBuilder;
 
     #[test]
     fn test_new_sink() -> Fallible<()> {
-        let _hue = Hue::new();
+        let tree = TreeBuilder::empty();
+        let _hue = Hue::new(&tree);
         Ok(())
     }
 

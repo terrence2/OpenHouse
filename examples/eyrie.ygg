@@ -192,6 +192,6 @@ rooms
 
 meta
     hue-bridge
-        $hue
+        $hue-bridge
         address <- "hue-bridge.eyrie"
         username <- "MasterControlProgram"

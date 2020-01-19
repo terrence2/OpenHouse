@@ -167,10 +167,6 @@ impl Tree {
         Ok(self)
     }
 
-    pub fn subtree_at(&self, root: &NodeRef) -> Fallible<SubTree> {
-        SubTree::new(self, root)
-    }
-
     pub fn find_sinks(&self, name: &str) -> Vec<String> {
         let mut matching = Vec::new();
         self.root().find_sinks(name, &mut matching);
@@ -181,29 +177,6 @@ impl Tree {
         let mut matching = Vec::new();
         self.root().find_sources(name, &mut matching);
         matching
-    }
-}
-
-pub struct SubTree<'a> {
-    _tree: &'a Tree,
-    _root: NodeRef,
-}
-
-impl<'a> SubTree<'a> {
-    fn new(tree: &'a Tree, root: &NodeRef) -> Fallible<Self> {
-        Ok(SubTree {
-            _tree: tree,
-            _root: root.to_owned(),
-        })
-    }
-
-    pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
-        let concrete = ConcretePath::from_str(path)?;
-        self._root.lookup_path(&concrete.components[0..])
-    }
-
-    pub fn tree(&self) -> &'a Tree {
-        self._tree
     }
 }
 
@@ -312,6 +285,14 @@ impl NodeRef {
             .filter(|&f| f != "." && f != "..")
             .cloned()
             .collect::<Vec<_>>()
+    }
+
+    pub fn child(&self, name: &str) -> Fallible<NodeRef> {
+        ensure!(
+            self.0.borrow().children.contains_key(name),
+            "did not find child"
+        );
+        Ok(self.0.borrow().children[name].clone())
     }
 
     pub fn name(&self) -> String {
@@ -480,10 +461,7 @@ impl NodeRef {
             "parse error: input was set twice @ {}",
             self.0.borrow().path
         );
-        self.0.borrow_mut().input = Some(NodeInput::Source(
-            from.to_owned(),
-            Vec::new(),
-        ));
+        self.0.borrow_mut().input = Some(NodeInput::Source(from.to_owned(), Vec::new()));
         Ok(())
     }
 
@@ -687,8 +665,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let tree = TreeBuilder::default()
-            .build_from_str(s)?;
+        let tree = TreeBuilder::default().build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
         assert_eq!(result, Value::new_str("d2"));
         Ok(())
@@ -704,8 +681,7 @@ foo
 bar
     v<-2
 "#;
-        let mut tree = TreeBuilder::default()
-            .build_from_str(s)?;
+        let mut tree = TreeBuilder::default().build_from_str(s)?;
         tree.handle_event("/a", Value::new_str("bar"))?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
 

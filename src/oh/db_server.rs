@@ -6,38 +6,22 @@ use actix::prelude::*;
 use failure::Fallible;
 use std::path::Path;
 use tracing::{error, trace};
-use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
+use yggdrasil::{Tree, TreeBuilder, Value};
 
 pub struct DBServer {
     tree: Tree,
-    pub clock: SourceRef,
-    pub legacy_mcu: SourceRef,
-    pub hue: SinkRef,
+    pub clock: Clock,
+    pub legacy_mcu: LegacyMCU,
+    pub hue: Hue,
 }
 
 impl DBServer {
     pub fn new_from_file(filename: &Path) -> Fallible<Self> {
-        let tree = TreeBuilder::default()
-            .build_from_file(filename)?;
+        let tree = TreeBuilder::default().build_from_file(filename)?;
 
-        let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
-        let mcu_paths = tree.find_sources("legacy-mcu");
-        for path in &mcu_paths {
-            legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-
-        let clock = SourceRef::new(Clock::new()?);
-        let clock_paths = tree.find_sources("clock");
-        for path in &clock_paths {
-            clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-
-        let hue = SinkRef::new(Hue::new()?);
-        let paths = tree.find_sinks("hue");
-        for path in &paths {
-            hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-        hue.on_ready(&tree.subtree_at(&tree.root())?)?;
+        let legacy_mcu = LegacyMCU::new(&tree)?;
+        let clock = Clock::new(&tree)?;
+        let hue = Hue::new(&tree)?;
 
         let db_server = Self {
             tree,
@@ -90,8 +74,7 @@ impl Handler<TickEvent> for DBServer {
     type Result = Fallible<()>;
 
     fn handle(&mut self, _msg: TickEvent, _ctx: &mut Context<Self>) -> Self::Result {
-        let updates = self.clock.mutate_as(&mut |c: &mut Clock| c.handle_tick())?;
-        //println!("woudl apply updated: {:?}", updates);
+        let updates = self.clock.handle_tick();
         for (path, value) in &updates {
             self.tree.handle_event(&path, Value::from_integer(*value))?;
         }
@@ -106,11 +89,7 @@ mod test {
     #[test]
     fn test_new() -> Fallible<()> {
         let _sys = System::new("open_house");
-        let db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
-        let _button_path_map = db
-            .legacy_mcu
-            .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
-            .clone();
+        let _db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
         Ok(())
     }
 }
