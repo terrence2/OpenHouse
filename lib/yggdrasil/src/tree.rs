@@ -10,10 +10,9 @@ use crate::{
     script::Script,
     sink::SinkRef,
     source::SourceRef,
-    value::{Value, ValueType},
+    value::Value,
 };
 use failure::{bail, ensure, Fallible};
-use tracing::{trace, warn};
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
@@ -23,6 +22,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+use tracing::{trace, warn};
 
 /// The combination of a Value plus a monotonic ordinal.
 pub struct Sample {
@@ -319,10 +319,6 @@ impl NodeRef {
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
         trace!("+++NodeRef::link_and_validate_input({})", self.path_str());
-
-        // If nodetype is already set, we've already recursed through this node,
-        // so can skip recursion as well. If we have no input, there is no easy
-        // way to tell if we've already visited this node.
         if self.0.borrow().linked_and_validated {
             trace!("---NodeRef::link_and_validate_input({})", self.path_str());
             return Ok(());
@@ -490,20 +486,6 @@ impl NodeRef {
 
     pub fn path_str(&self) -> String {
         self.0.borrow().path.to_string()
-    }
-
-    pub fn nodetype(&self) -> Fallible<ValueType> {
-        match self.0.borrow().input {
-            None => bail!(
-                "runtime error: nodetype request on a non-input node @ {}",
-                self.0.borrow().path
-            ),
-            Some(NodeInput::Script(ref script)) => {
-                trace!("NODE TYPE AT PATH: {}", self.path_str());
-                script.nodetype()
-            },
-            Some(NodeInput::Source(_, _)) => Ok(ValueType::INPUT),
-        }
     }
 
     pub(super) fn handle_event(&self, value: Value, tree: &Tree) -> Fallible<()> {

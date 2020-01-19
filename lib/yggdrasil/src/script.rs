@@ -135,7 +135,11 @@ impl Expr {
             self,
             find_all_possible_inputs,
             |_tok, a, b| {
-                ensure!(a == ValueType::INPUT || b == ValueType::INPUT || a == b, "type check failure: mismatched types in {:?}", self);
+                ensure!(
+                    a == ValueType::INPUT || b == ValueType::INPUT || a == b,
+                    "type check failure: mismatched types in {:?}",
+                    self
+                );
                 Ok(a)
             },
             tree,
@@ -155,7 +159,6 @@ pub struct Script {
     suite: Expr,
     phase: CompilationPhase,
     input_map: HashMap<ConcretePath, NodeRef>,
-    nodetype: Option<ValueType>,
 }
 
 impl Script {
@@ -170,7 +173,6 @@ impl Script {
             suite: expr,
             phase: CompilationPhase::NeedInputMap,
             input_map: HashMap::new(),
-            nodetype: None,
         };
         Ok(script)
     }
@@ -198,7 +200,6 @@ impl Script {
     ) -> Fallible<()> {
         assert!(self.phase == CompilationPhase::NeedInputMap);
         self.input_map = input_map.0;
-        self.nodetype = Some(input_map.1);
         self.phase = CompilationPhase::Ready;
         Ok(())
     }
@@ -208,14 +209,6 @@ impl Script {
             graph.add_edge(src_node, tgt_node);
         }
         Ok(())
-    }
-
-    pub fn nodetype(&self) -> Fallible<ValueType> {
-        ensure!(
-            self.nodetype.is_some(),
-            "typecheck error: querying node type before ready"
-        );
-        Ok(self.nodetype.unwrap())
     }
 
     pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {

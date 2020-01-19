@@ -40,9 +40,7 @@ fn main() -> Fallible<()> {
         1 => Level::DEBUG,
         _ => Level::TRACE,
     };
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(level)
-        .finish();
+    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
     let sys = System::new("open_house");

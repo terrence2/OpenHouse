@@ -9,8 +9,8 @@ use crate::{
 };
 use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
-use tracing::trace;
 use std::{convert::From, fmt};
+use tracing::trace;
 
 bitflags! {
     pub struct ValueType : usize {

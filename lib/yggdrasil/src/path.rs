@@ -3,8 +3,8 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::tree::Tree;
 use failure::{bail, ensure, Error, Fallible};
-use tracing::trace;
 use std::{fmt, str::FromStr};
+use tracing::trace;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PathComponent {

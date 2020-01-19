@@ -279,11 +279,7 @@ impl<'a> TreeParser<'a> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        physical::Dimension2,
-        tree::TreeBuilder,
-        value::{Value, ValueType},
-    };
+    use crate::{physical::Dimension2, tree::TreeBuilder, value::Value};
 
     /* Note: tracing setup code if we need to debug
     use tracing::Level;
@@ -372,7 +368,7 @@ c @3x3
             tree.lookup("/a")?.dimensions().unwrap(),
             Dimension2::from_str("1x1")?
         );
-        assert_eq!(tree.lookup("/a")?.nodetype()?, ValueType::STRING);
+        assert_eq!(tree.lookup("/a")?.compute(&tree)?, Value::new_str("foo"));
         assert_eq!(
             tree.lookup("/a/b")?.location().unwrap(),
             Dimension2::from_str("2x2")?
@@ -381,7 +377,7 @@ c @3x3
             tree.lookup("/c")?.location().unwrap(),
             Dimension2::from_str("3x3")?
         );
-        assert_eq!(tree.lookup("/c")?.nodetype()?, ValueType::STRING);
+        assert_eq!(tree.lookup("/c")?.compute(&tree)?, Value::new_str("bar"));
         Ok(())
     }
 
