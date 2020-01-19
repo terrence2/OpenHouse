@@ -8,7 +8,6 @@ use crate::{
     path::{ConcretePath, PathComponent, ScriptPath},
     physical::Dimension2,
     script::Script,
-    source::SourceRef,
     value::Value,
 };
 use failure::{bail, ensure, Fallible};
@@ -24,9 +23,6 @@ use std::{
 use tracing::{trace, trace_span, warn};
 
 pub struct TreeBuilder {
-    // Input and output definitions.
-    source_handlers: HashMap<String, SourceRef>,
-
     // Extension functions defined by the embedding.
     nifs: HashMap<String, Box<dyn NativeFunc>>,
 
@@ -41,7 +37,6 @@ pub struct TreeBuilder {
 impl Default for TreeBuilder {
     fn default() -> TreeBuilder {
         TreeBuilder {
-            source_handlers: HashMap::new(),
             nifs: HashMap::new(),
             add_builtin_nifs: true,
             import_interceptors: HashMap::new(),
@@ -50,11 +45,6 @@ impl Default for TreeBuilder {
 }
 
 impl TreeBuilder {
-    pub fn add_source_handler(mut self, name: &str, source: &SourceRef) -> Fallible<TreeBuilder> {
-        self.source_handlers.insert(name.to_owned(), source.clone());
-        Ok(self)
-    }
-
     pub fn add_native_function(
         mut self,
         name: &str,
@@ -68,7 +58,6 @@ impl TreeBuilder {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: self.source_handlers.clone(),
         };
         let tree = TreeParser::from_str(tree, content, &self.nifs, &HashMap::new())?;
         self.import_interceptors.insert(name.to_owned(), tree);
@@ -84,7 +73,6 @@ impl TreeBuilder {
         Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: HashMap::new(),
         }
     }
 
@@ -101,7 +89,6 @@ impl TreeBuilder {
         let tree = Tree {
             root: NodeRef::new(Node::new(ConcretePath::new_root())),
             generation: 0,
-            source_handlers: self.source_handlers,
         };
 
         let tree = TreeParser::from_str(tree, s, &self.nifs, &self.import_interceptors)?
@@ -115,7 +102,6 @@ impl TreeBuilder {
 pub struct Tree {
     root: NodeRef,
     generation: usize,
-    source_handlers: HashMap<String, SourceRef>,
 }
 
 impl Tree {
@@ -413,7 +399,7 @@ impl NodeRef {
         }
 
         let mut maybe_connected_sinks = None;
-        if let Some(NodeInput::Source(_, _, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
             let connected = graph.connected_nodes(self, sinks)?;
             if connected.is_empty() {
                 warn!(
@@ -425,7 +411,7 @@ impl NodeRef {
         };
 
         if let Some(mut connected_sinks) = maybe_connected_sinks {
-            if let Some(NodeInput::Source(_, _, ref mut sinks)) = self.0.borrow_mut().input {
+            if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.borrow_mut().input {
                 assert!(
                     sinks.is_empty(),
                     "dataflow error: found connected sinks at {}, but sinks already set",
@@ -488,21 +474,14 @@ impl NodeRef {
         Ok(())
     }
 
-    pub fn set_source(&self, from: &str, tree: &Tree) -> Fallible<()> {
+    pub fn set_source(&self, from: &str) -> Fallible<()> {
         ensure!(
             self.0.borrow().input.is_none(),
             "parse error: input was set twice @ {}",
             self.0.borrow().path
         );
-        ensure!(
-            tree.source_handlers.contains_key(from),
-            "parse error: unknown source kind '{}' referenced @ {}",
-            from,
-            self.0.borrow().path
-        );
         self.0.borrow_mut().input = Some(NodeInput::Source(
             from.to_owned(),
-            tree.source_handlers[from].to_owned(),
             Vec::new(),
         ));
         Ok(())
@@ -575,14 +554,14 @@ impl NodeRef {
         match self.0.borrow().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
-            Some(NodeInput::Source(_, _, _)) => {
+            Some(NodeInput::Source(_, _)) => {
                 bail!("computing value of a source node; should have been cached by handle_event");
             }
         }
     }
 
     pub fn get_sink_nodes_observing(&self) -> Fallible<Vec<NodeRef>> {
-        if let Some(NodeInput::Source(_, _, ref sinks)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, ref sinks)) = self.0.borrow().input {
             return Ok(sinks.to_owned());
         }
         bail!(
@@ -609,14 +588,14 @@ impl NodeRef {
     }
 
     pub fn is_source(&self) -> bool {
-        if let Some(NodeInput::Source(_, _, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
             return true;
         }
         false
     }
 
     pub fn maybe_source_kind(&self) -> Option<String> {
-        if let Some(NodeInput::Source(ref kind, _, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(ref kind, _)) = self.0.borrow().input {
             return Some(kind.to_owned());
         }
         None
@@ -624,7 +603,7 @@ impl NodeRef {
 }
 
 enum NodeInput {
-    Source(String, SourceRef, Vec<NodeRef>),
+    Source(String, Vec<NodeRef>),
     Script(Script),
 }
 
@@ -674,7 +653,6 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::test::SimpleSource;
 
     #[test]
     fn test_build_tree() -> Fallible<()> {
@@ -709,9 +687,7 @@ a ^src1
     c <- "c"
     c1 <- "d"
 "#;
-        let src1 = SimpleSource::new_ref()?;
         let tree = TreeBuilder::default()
-            .add_source_handler("src1", &src1)?
             .build_from_str(s)?;
         let result = tree.lookup("/a/a")?.compute(&tree)?;
         assert_eq!(result, Value::new_str("d2"));
@@ -728,9 +704,7 @@ foo
 bar
     v<-2
 "#;
-        let srcref: SourceRef = SimpleSource::new_ref()?;
         let mut tree = TreeBuilder::default()
-            .add_source_handler("src1", &srcref)?
             .build_from_str(s)?;
         tree.handle_event("/a", Value::new_str("bar"))?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));

@@ -17,18 +17,16 @@ pub struct DBServer {
 
 impl DBServer {
     pub fn new_from_file(filename: &Path) -> Fallible<Self> {
-        let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
-        let clock = SourceRef::new(Clock::new()?);
         let tree = TreeBuilder::default()
-            .add_source_handler("clock", &clock)?
-            .add_source_handler("legacy-mcu", &legacy_mcu)?
             .build_from_file(filename)?;
 
+        let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
         let mcu_paths = tree.find_sources("legacy-mcu");
         for path in &mcu_paths {
             legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
         }
 
+        let clock = SourceRef::new(Clock::new()?);
         let clock_paths = tree.find_sources("clock");
         for path in &clock_paths {
             clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
