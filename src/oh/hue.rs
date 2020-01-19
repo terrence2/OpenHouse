@@ -12,7 +12,7 @@ use json::{object, parse, stringify, JsonValue};
 use reqwest::Client;
 use std::{collections::HashMap, str::FromStr, time::Duration};
 use tracing::{error, info, trace};
-use yggdrasil::{Tree, ConcretePath, Value};
+use yggdrasil::{ConcretePath, Tree, Value};
 
 struct ValuesUpdated {
     values: Vec<(String, Value)>,
@@ -30,11 +30,14 @@ pub struct Hue {
 impl Hue {
     pub fn new(tree: &Tree) -> Fallible<Self> {
         let bridge_paths = tree.find_sinks("hue-bridge");
-        ensure!(bridge_paths.len() == 1, "Exactly one Hue hub supported at this time.");
+        ensure!(
+            bridge_paths.len() == 1,
+            "Exactly one Hue hub supported at this time."
+        );
         let bridge_node = tree.lookup(&bridge_paths[0])?;
         let hub = Hub::new(
             &bridge_node.child("address")?.compute(tree)?.as_string()?,
-            &bridge_node.child("username")?.compute(tree)?.as_string()?
+            &bridge_node.child("username")?.compute(tree)?.as_string()?,
         )?;
 
         let mut path_map = HashMap::new();
@@ -45,9 +48,7 @@ impl Hue {
 
         let worker = HueWorker::new(hub, path_map).start();
 
-        Ok(Hue {
-            worker,
-        })
+        Ok(Hue { worker })
     }
 
     pub fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {

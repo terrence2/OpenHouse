@@ -127,7 +127,7 @@ pub struct Clock {
 impl Clock {
     pub fn new(tree: &Tree) -> Fallible<Self> {
         let mut clocks = HashMap::new();
-        for path in &tree.find_sources("clock"){
+        for path in &tree.find_sources("clock") {
             let node = tree.lookup(path)?;
             let interval = node.child("interval")?.compute(tree)?.as_string()?;
             let wrap = node.child("wrap")?.compute(tree)?.as_string()?;
