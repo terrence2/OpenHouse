@@ -218,10 +218,6 @@ impl Script {
         Ok(self.nodetype.unwrap())
     }
 
-    pub(super) fn has_a_nodetype(&self) -> bool {
-        self.nodetype.is_some()
-    }
-
     pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {
         Ok(self
             .input_map

@@ -12,21 +12,6 @@ use failure::{bail, ensure, Fallible};
 use tracing::trace;
 use std::{convert::From, fmt};
 
-fn ensure_same_types(types: &[ValueType]) -> Fallible<ValueType> {
-    ensure!(
-        !types.is_empty(),
-        "typecheck error: trying to reify empty type list"
-    );
-    let expect_type = types[0];
-    for ty in &types[1..] {
-        ensure!(
-            *ty == expect_type,
-            "typecheck error: mismatched types in ensure_same_types"
-        );
-    }
-    Ok(expect_type)
-}
-
 bitflags! {
     pub struct ValueType : usize {
         const BOOLEAN = 0b0000_0001;
@@ -333,18 +318,6 @@ impl Value {
                 .drain(..)
                 .filter(|path| tree.lookup_path(path).is_ok())
                 .collect::<Vec<ConcretePath>>();
-
-            // Do type checking as we collect paths, since we won't have another opportunity.
-            // Move to fully dynamic.
-            /*
-            let mut value_types = Vec::new();
-            for inp in &direct_inputs {
-                let noderef = tree.lookup_path(inp)?;
-                let nodetype = noderef.get_or_find_node_type(tree)?;
-                value_types.push(nodetype);
-            }
-            ensure_same_types(&value_types)?;
-            */
 
             // Collect both direct and indirect inputs at this value.
             out.append(&mut direct_inputs);

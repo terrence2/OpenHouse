@@ -473,10 +473,6 @@ impl NodeRef {
         Ok(())
     }
 
-    fn has_input(&self) -> bool {
-        self.0.borrow().input.is_some()
-    }
-
     fn has_script(&self) -> bool {
         if let Some(NodeInput::Script(_)) = self.0.borrow().input {
             return true;
@@ -494,36 +490,6 @@ impl NodeRef {
 
     pub fn path_str(&self) -> String {
         self.0.borrow().path.to_string()
-    }
-
-    // This will be false if !has_input or we are in the middle of compilation.
-    // This should not be used after compilation, as the combination of
-    // has_input and nodetype should be sufficient.
-    fn has_a_nodetype(&self) -> bool {
-        if let Some(ref input) = self.0.borrow().input {
-            return input.has_a_nodetype();
-        }
-        false
-    }
-
-    // If node type has been set, return it, otherwise do link_and_validate in
-    // order to find it. This method is only safe to call during compilation. It
-    // is public for use by Script during compilation.
-    pub(super) fn get_or_find_node_type(&self, tree: &Tree) -> Fallible<ValueType> {
-        ensure!(
-            self.has_input(),
-            "typeflow error: read from the node @ {} has no inputs",
-            self.path_str()
-        );
-
-        // If we have already validated this node, return the type.
-        if self.has_a_nodetype() {
-            return self.nodetype();
-        }
-
-        // We need to recurse in order to typecheck the current node.
-        self.link_and_validate_inputs(tree)?;
-        self.nodetype()
     }
 
     pub fn nodetype(&self) -> Fallible<ValueType> {
@@ -712,15 +678,6 @@ impl NodeRef {
 enum NodeInput {
     Source(SourceRef, Vec<NodeRef>),
     Script(Script),
-}
-
-impl NodeInput {
-    fn has_a_nodetype(&self) -> bool {
-        match self {
-            NodeInput::Source(_, _) => false,
-            NodeInput::Script(s) => s.has_a_nodetype(),
-        }
-    }
 }
 
 pub struct Node {
