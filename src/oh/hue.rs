@@ -31,13 +31,13 @@ pub struct Hue {
 }
 
 impl Hue {
-    pub fn new() -> Fallible<Box<Self>> {
-        Ok(Box::new(Hue {
+    pub fn new() -> Fallible<Self> {
+        Ok(Hue {
             address: None,
             username: None,
             path_map: HashMap::new(),
             worker: None,
-        }))
+        })
     }
 }
 

@@ -125,10 +125,10 @@ pub struct Clock {
 }
 
 impl Clock {
-    pub fn new() -> Fallible<Box<Self>> {
-        Ok(Box::new(Self {
+    pub fn new() -> Fallible<Self> {
+        Ok(Self {
             clocks: HashMap::new(),
-        }))
+        })
     }
 
     pub fn handle_tick(&mut self) -> Vec<(String, i64)> {

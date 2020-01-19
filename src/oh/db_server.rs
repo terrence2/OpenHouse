@@ -10,9 +10,9 @@ use yggdrasil::{TreeSink, TreeSource, Tree, TreeBuilder, Value};
 
 pub struct DBServer {
     tree: Tree,
-    pub clock: Box<Clock>,
-    pub legacy_mcu: Box<LegacyMCU>,
-    pub hue: Box<Hue>,
+    pub clock: Clock,
+    pub legacy_mcu: LegacyMCU,
+    pub hue: Hue,
 }
 
 impl DBServer {

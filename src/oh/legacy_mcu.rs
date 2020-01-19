@@ -10,10 +10,10 @@ pub struct LegacyMCU {
 }
 
 impl LegacyMCU {
-    pub fn new() -> Fallible<Box<Self>> {
-        Ok(Box::new(Self {
+    pub fn new() -> Fallible<Self> {
+        Ok(Self {
             path_map: HashMap::new(),
-        }))
+        })
     }
 }
 
