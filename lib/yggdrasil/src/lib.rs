@@ -8,7 +8,6 @@ mod parser;
 mod path;
 mod physical;
 mod script;
-mod sink;
 mod source;
 mod tokenizer;
 mod tree;
@@ -16,7 +15,6 @@ mod value;
 
 pub use self::bif::NativeFunc;
 pub use self::path::ConcretePath;
-pub use self::sink::TreeSink;
 pub use self::source::TreeSource;
 pub use self::tree::{SubTree, Tree, TreeBuilder};
 pub use self::value::Value;

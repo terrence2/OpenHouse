@@ -314,6 +314,11 @@ impl NodeRef {
             .collect::<Vec<_>>()
     }
 
+    pub fn child(&self, name: &str) -> Fallible<NodeRef> {
+        ensure!(self.0.borrow().children.contains_key(name), "did not find child");
+        Ok(self.0.borrow().children[name].clone())
+    }
+
     pub fn name(&self) -> String {
         self.0.borrow().name.clone()
     }

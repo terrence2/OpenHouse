@@ -6,7 +6,7 @@ use actix::prelude::*;
 use failure::Fallible;
 use std::path::Path;
 use tracing::{error, trace};
-use yggdrasil::{Tree, TreeBuilder, TreeSink, TreeSource, Value};
+use yggdrasil::{Tree, TreeBuilder, TreeSource, Value};
 
 pub struct DBServer {
     tree: Tree,
@@ -31,12 +31,7 @@ impl DBServer {
             clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
         }
 
-        let mut hue = Hue::new()?;
-        let paths = tree.find_sinks("hue");
-        for path in &paths {
-            hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-        hue.on_ready(&tree.subtree_at(&tree.root())?)?;
+        let hue = Hue::new(&tree)?;
 
         let db_server = Self {
             tree,
