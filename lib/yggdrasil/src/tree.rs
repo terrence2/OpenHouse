@@ -125,9 +125,6 @@ impl TreeBuilder {
             .link_and_validate_inputs()?
             .map_inputs_to_outputs()?;
 
-        for sink in tree.sink_handlers.values() {
-            sink.on_ready(&tree.root.subtree_here(&tree)?)?;
-        }
         Ok(tree)
     }
 }
@@ -199,8 +196,14 @@ impl Tree {
         Ok(self)
     }
 
-    pub(super) fn subtree_at(&self, root: &NodeRef) -> Fallible<SubTree> {
+    pub fn subtree_at(&self, root: &NodeRef) -> Fallible<SubTree> {
         SubTree::new(self, root)
+    }
+
+    pub fn find_sinks(&self, name: &str) -> Vec<String> {
+        let mut matching = Vec::new();
+        self.root().find_sinks(name, &mut matching);
+        matching
     }
 }
 
@@ -279,6 +282,20 @@ impl NodeRef {
             child_name,
             self.path_str()
         ))
+    }
+
+    fn find_sinks(&self, sink_name: &str, matching: &mut Vec<String>) {
+        if let Some(name) = self.maybe_sink_kind() {
+            if name == sink_name {
+                matching.push(self.path_str());
+            }
+        }
+        for (name, child) in &self.0.borrow().children {
+            if name == "." || name == ".." {
+                continue;
+            }
+            child.find_sinks(sink_name, matching);
+        }
     }
 
     pub fn add_child(&self, name: &str) -> Fallible<NodeRef> {
@@ -630,6 +647,13 @@ impl NodeRef {
             "runtime: tried to get sink kind of the non-sink node at {}",
             self.path_str()
         )
+    }
+
+    pub fn maybe_sink_kind(&self) -> Option<String> {
+        if let Some((ref kind, _)) = self.0.borrow().sink {
+            return Some(kind.to_owned());
+        }
+        None
     }
 }
 

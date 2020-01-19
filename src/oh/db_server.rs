@@ -25,6 +25,13 @@ impl DBServer {
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .add_sink_handler("hue", &hue)?
             .build_from_file(filename)?;
+
+        let paths = tree.find_sinks("hue");
+        for path in &paths {
+            hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
+        }
+        hue.on_ready(&tree.subtree_at(&tree.root())?)?;
+
         let db_server = Self {
             tree,
             clock,
