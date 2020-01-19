@@ -13,11 +13,6 @@ use std::{
 pub trait TreeSource: Downcast {
     /// Note the following path listed as a source using this handler.
     fn add_path(&mut self, path: &str, tree: &SubTree) -> Fallible<()>;
-
-    /// Parsing is finished and we are ready to start the system.
-    fn on_ready(&mut self, _tree: &SubTree) -> Fallible<()> {
-        Ok(())
-    }
 }
 impl_downcast!(TreeSource);
 
