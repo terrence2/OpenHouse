@@ -24,6 +24,16 @@ impl DBServer {
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .build_from_file(filename)?;
 
+        let mcu_paths = tree.find_sources("legacy-mcu");
+        for path in &mcu_paths {
+            legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
+        }
+
+        let clock_paths = tree.find_sources("clock");
+        for path in &clock_paths {
+            clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
+        }
+
         let hue = SinkRef::new(Hue::new()?);
         let paths = tree.find_sinks("hue");
         for path in &paths {

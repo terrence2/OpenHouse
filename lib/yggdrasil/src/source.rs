@@ -63,7 +63,7 @@ impl SourceRef {
         Ok(inner)
     }
 
-    pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
+    pub fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
         self.0.borrow_mut().add_path(path, tree)
     }
 }

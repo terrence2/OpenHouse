@@ -179,14 +179,6 @@ impl Script {
         Ok(())
     }
 
-    pub(super) fn all_inputs(&self) -> Fallible<Vec<String>> {
-        Ok(self
-            .input_map
-            .keys()
-            .map(|concrete| concrete.to_string())
-            .collect::<Vec<_>>())
-    }
-
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
         ensure!(
             self.phase == CompilationPhase::Ready,
