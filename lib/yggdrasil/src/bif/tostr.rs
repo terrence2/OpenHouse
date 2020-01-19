@@ -27,14 +27,6 @@ impl NativeFunc for ToStr {
         }))
     }
 
-    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>> {
-        let mut results = Vec::new();
-        for v in values {
-            results.push(self.compute(v, tree)?);
-        }
-        Ok(results)
-    }
-
     fn find_all_possible_inputs(
         &self,
         _value_type: (),

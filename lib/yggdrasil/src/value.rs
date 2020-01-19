@@ -98,15 +98,6 @@ impl Value {
         self
     }
 
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        trace!("Value::virtually_compute_for_path({})", self);
-        if let ValueData::Path(ref p) = self.data {
-            let noderef = tree.lookup_dynamic_path(p)?;
-            return noderef.virtually_compute_for_path(tree);
-        }
-        Ok(vec![self.to_owned()])
-    }
-
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
         if let ValueData::Path(ref p) = self.data {
             let noderef = tree.lookup_dynamic_path(p)?;
@@ -278,8 +269,7 @@ impl Value {
         trace!("Value::find_all_possible_inputs: {}", self);
         if let ValueData::Path(ref path) = self.data {
             // Our virtual path will depend on concrete inputs that may or may
-            // not have been visited yet. Find them, and make sure they have been
-            // visited so that we can virtually_compute on them when devirtualizing.
+            // not have been visited yet.
             let mut concrete_inputs = Vec::new();
             path.find_concrete_inputs(&mut concrete_inputs)?;
             for concrete in &concrete_inputs {

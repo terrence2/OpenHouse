@@ -615,18 +615,6 @@ impl NodeRef {
         }
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        trace!("virtually computing @ {}", self.path_str());
-        match self.0.borrow().input {
-            None => bail!(
-                "typeflow error: reading input from non-input path @ {}",
-                self.path_str()
-            ),
-            Some(NodeInput::Script(ref script)) => script.virtually_compute_for_path(tree),
-            Some(NodeInput::Source(_, _)) => Ok(vec![Value::input_flag()]),
-        }
-    }
-
     pub fn get_sink_nodes_observing(&self) -> Fallible<Vec<NodeRef>> {
         if let Some(NodeInput::Source(_, ref sinks)) = self.0.borrow().input {
             return Ok(sinks.to_owned());

@@ -9,7 +9,6 @@ use std::fmt;
 
 pub trait NativeFunc {
     fn compute(&self, value: Value, tree: &Tree) -> Fallible<Value>;
-    fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>>;
     fn find_all_possible_inputs(
         &self,
         value_type: (),

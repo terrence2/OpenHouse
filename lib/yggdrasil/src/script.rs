@@ -106,25 +106,6 @@ impl Expr {
         )
     }
 
-    pub fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        map_values!(
-            self,
-            virtually_compute_for_path,
-            |tok, lhs: Vec<Value>, rhs: Vec<Value>| {
-                trace!("vcomp: reduce {:?} {:?} {:?}", lhs, tok, rhs);
-                let mut out = Vec::new();
-                for a in &lhs {
-                    for b in &rhs {
-                        trace!("vcomp: reduce1 {:?} {:?} {:?}", a, tok, b);
-                        out.push(a.apply(&tok, b)?);
-                    }
-                }
-                Ok(out)
-            },
-            tree
-        )
-    }
-
     pub fn find_all_possible_inputs(
         &self,
         tree: &Tree,
@@ -214,10 +195,6 @@ impl Script {
             self.suite
         );
         self.suite.compute(tree)
-    }
-
-    pub(super) fn virtually_compute_for_path(&self, tree: &Tree) -> Fallible<Vec<Value>> {
-        self.suite.virtually_compute_for_path(tree)
     }
 }
 
