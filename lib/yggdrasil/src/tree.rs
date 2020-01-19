@@ -12,13 +12,12 @@ use crate::{
 };
 use failure::{bail, ensure, Fallible};
 use std::{
-    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     default::Default,
     fs,
     path::Path,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 use tracing::{trace, trace_span, warn};
 
@@ -181,14 +180,15 @@ impl Tree {
 }
 
 #[derive(Clone)]
-pub struct NodeRef(Arc<RefCell<Node>>);
+pub struct NodeRef(Arc<RwLock<Node>>);
 
 impl NodeRef {
     pub fn new(node: Node) -> Self {
-        let self_ref = NodeRef(Arc::new(RefCell::new(node)));
+        let self_ref = NodeRef(Arc::new(RwLock::new(node)));
         self_ref
             .0
-            .borrow_mut()
+            .write()
+            .unwrap()
             .children
             .insert(".".to_owned(), self_ref.clone());
         self_ref
@@ -240,7 +240,7 @@ impl NodeRef {
                 matching.push(self.path_str());
             }
         }
-        for (name, child) in &self.0.borrow().children {
+        for (name, child) in &self.0.read().unwrap().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -254,7 +254,7 @@ impl NodeRef {
                 matching.push(self.path_str());
             }
         }
-        for (name, child) in &self.0.borrow().children {
+        for (name, child) in &self.0.read().unwrap().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -263,15 +263,17 @@ impl NodeRef {
     }
 
     pub fn add_child(&self, name: &str) -> Fallible<NodeRef> {
-        let child = self.0.borrow_mut().create_new_child(name)?;
+        let child = self.0.write().unwrap().create_new_child(name)?;
         child
             .0
-            .borrow_mut()
+            .write()
+            .unwrap()
             .children
             .insert(".".to_owned(), child.clone());
         child
             .0
-            .borrow_mut()
+            .write()
+            .unwrap()
             .children
             .insert("..".to_owned(), self.clone());
         Ok(child)
@@ -279,7 +281,8 @@ impl NodeRef {
 
     pub fn child_names(&self) -> Vec<String> {
         self.0
-            .borrow()
+            .read()
+            .unwrap()
             .children
             .keys()
             .filter(|&f| f != "." && f != "..")
@@ -289,37 +292,37 @@ impl NodeRef {
 
     pub fn child(&self, name: &str) -> Fallible<NodeRef> {
         ensure!(
-            self.0.borrow().children.contains_key(name),
+            self.0.read().unwrap().children.contains_key(name),
             "did not find child"
         );
-        Ok(self.0.borrow().children[name].clone())
+        Ok(self.0.read().unwrap().children[name].clone())
     }
 
     pub fn name(&self) -> String {
-        self.0.borrow().name.clone()
+        self.0.read().unwrap().name.clone()
     }
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
         let span = trace_span!("link", "{}", self.path_str());
         let _ = span.enter();
-        if self.0.borrow().linked_and_validated {
+        if self.0.read().unwrap().linked_and_validated {
             return Ok(());
         }
-        self.0.borrow_mut().linked_and_validated = true;
+        self.0.write().unwrap().linked_and_validated = true;
 
         // Note: this pattern is a little funky! Normally we'd match to test
         // these conditions, but if we did that the borrow would last over the
         // body, which would disallow us from re-borrowing mutably inside.
         if self.has_script() {
             // Collect input map while borrowed read-only, so that we can find children.
-            let data = if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
+            let data = if let Some(NodeInput::Script(ref script)) = self.0.read().unwrap().input {
                 script.build_input_map(tree)?
             } else {
                 unreachable!();
             };
 
             // Re-borrow read-write to install the input map we built above.
-            if let Some(NodeInput::Script(ref mut script)) = self.0.borrow_mut().input {
+            if let Some(NodeInput::Script(ref mut script)) = self.0.write().unwrap().input {
                 script.install_input_map(data)?;
             }
         }
@@ -327,7 +330,8 @@ impl NodeRef {
         // Recurse into our children. Use sorted order so results are stable.
         let mut children: Vec<String> = self
             .0
-            .borrow()
+            .read()
+            .unwrap()
             .children
             .keys()
             .filter(|s| *s != "." && *s != "..")
@@ -335,7 +339,7 @@ impl NodeRef {
             .collect::<_>();
         children.sort();
         for name in &children {
-            let child = &self.0.borrow().children[name];
+            let child = &self.0.read().unwrap().children[name];
             child.link_and_validate_inputs(tree)?;
         }
 
@@ -343,13 +347,13 @@ impl NodeRef {
     }
 
     fn find_all_sinks(&self, sinks: &mut Vec<NodeRef>) -> Fallible<()> {
-        for (name, child) in &self.0.borrow().children {
+        for (name, child) in &self.0.read().unwrap().children {
             if name == "." || name == ".." {
                 continue;
             }
             child.find_all_sinks(sinks)?;
         }
-        if self.0.borrow().sink.is_some() {
+        if self.0.read().unwrap().sink.is_some() {
             sinks.push(self.to_owned());
         }
         Ok(())
@@ -357,14 +361,14 @@ impl NodeRef {
 
     fn populate_flow_graph(&self, graph: &mut Graph) -> Fallible<()> {
         graph.add_node(self);
-        for (name, child) in &self.0.borrow().children {
+        for (name, child) in &self.0.read().unwrap().children {
             if name == "." || name == ".." {
                 continue;
             }
             child.populate_flow_graph(graph)?;
         }
 
-        if let Some(NodeInput::Script(ref script)) = self.0.borrow().input {
+        if let Some(NodeInput::Script(ref script)) = self.0.read().unwrap().input {
             script.populate_flow_graph(self, graph)?;
         }
 
@@ -372,7 +376,7 @@ impl NodeRef {
     }
 
     fn flow_input_to_output(&self, sinks: &[NodeRef], graph: &Graph) -> Fallible<()> {
-        for (name, child) in &self.0.borrow().children {
+        for (name, child) in &self.0.read().unwrap().children {
             if name == "." || name == ".." {
                 continue;
             }
@@ -380,7 +384,7 @@ impl NodeRef {
         }
 
         let mut maybe_connected_sinks = None;
-        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, _)) = self.0.read().unwrap().input {
             let connected = graph.connected_nodes(self, sinks)?;
             if connected.is_empty() {
                 warn!(
@@ -392,7 +396,7 @@ impl NodeRef {
         };
 
         if let Some(mut connected_sinks) = maybe_connected_sinks {
-            if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.borrow_mut().input {
+            if let Some(NodeInput::Source(_, ref mut sinks)) = self.0.write().unwrap().input {
                 assert!(
                     sinks.is_empty(),
                     "dataflow error: found connected sinks at {}, but sinks already set",
@@ -408,77 +412,83 @@ impl NodeRef {
     }
 
     fn has_script(&self) -> bool {
-        if let Some(NodeInput::Script(_)) = self.0.borrow().input {
+        if let Some(NodeInput::Script(_)) = self.0.read().unwrap().input {
             return true;
         }
         false
     }
 
     fn child_at(&self, name: &str) -> Option<NodeRef> {
-        self.0.borrow().children.get(name).map(|v| v.to_owned())
+        self.0
+            .read()
+            .unwrap()
+            .children
+            .get(name)
+            .map(|v| v.to_owned())
     }
 
     pub fn path_str(&self) -> String {
-        self.0.borrow().path.to_string()
+        self.0.read().unwrap().path.to_string()
     }
 
     pub(super) fn handle_event(&self, value: Value) -> Fallible<()> {
         ensure!(self.is_source(), "received event on non-source node");
-        let mut node = self.0.borrow_mut();
+        let mut node = self.0.write().unwrap();
         node.cache = Some(value);
         Ok(())
     }
 
     pub fn location(&self) -> Option<Dimension2> {
-        self.0.borrow().location
+        self.0.read().unwrap().location
     }
 
     pub fn set_location(&self, loc: Dimension2) -> Fallible<()> {
         ensure!(
-            self.0.borrow().location.is_none(),
+            self.0.read().unwrap().location.is_none(),
             "location has already been set"
         );
-        self.0.borrow_mut().location = Some(loc);
+        self.0.write().unwrap().location = Some(loc);
         Ok(())
     }
 
     pub fn dimensions(&self) -> Option<Dimension2> {
-        self.0.borrow().dimensions
+        self.0.read().unwrap().dimensions
     }
 
     pub fn set_dimensions(&self, dim: Dimension2) -> Fallible<()> {
         ensure!(
-            self.0.borrow().dimensions.is_none(),
+            self.0.read().unwrap().dimensions.is_none(),
             "dimensions have already been set"
         );
-        self.0.borrow_mut().dimensions = Some(dim);
+        self.0.write().unwrap().dimensions = Some(dim);
         Ok(())
     }
 
     pub fn set_source(&self, from: &str) -> Fallible<()> {
         ensure!(
-            self.0.borrow().input.is_none(),
+            self.0.read().unwrap().input.is_none(),
             "parse error: input was set twice @ {}",
-            self.0.borrow().path
+            self.0.read().unwrap().path
         );
-        self.0.borrow_mut().input = Some(NodeInput::Source(from.to_owned(), Vec::new()));
+        self.0.write().unwrap().input = Some(NodeInput::Source(from.to_owned(), Vec::new()));
         Ok(())
     }
 
     pub fn set_sink(&self, tgt: &str) -> Fallible<()> {
         ensure!(
-            self.0.borrow().sink.is_none(),
+            self.0.read().unwrap().sink.is_none(),
             "parse error: sink set twice @ {}",
-            self.0.borrow().path
+            self.0.read().unwrap().path
         );
-        self.0.borrow_mut().sink = Some(tgt.to_owned());
+        self.0.write().unwrap().sink = Some(tgt.to_owned());
         Ok(())
     }
 
     pub fn insert_subtree(&self, subtree: &NodeRef) -> Fallible<()> {
-        for (name, child) in &subtree.0.borrow().children {
+        for (name, child) in &subtree.0.read().unwrap().children {
             self.0
-                .borrow_mut()
+                .write()
+                .unwrap()
                 .children
                 .insert(name.to_owned(), child.to_owned());
         }
@@ -509,11 +519,11 @@ impl NodeRef {
 
     pub fn set_script(&self, script: Script) -> Fallible<()> {
         ensure!(
-            self.0.borrow().input.is_none(),
+            self.0.read().unwrap().input.is_none(),
             "parse error: input was set twice at {}",
-            self.0.borrow().path
+            self.0.read().unwrap().path
         );
-        self.0.borrow_mut().input = Some(NodeInput::Script(script));
+        self.0.write().unwrap().input = Some(NodeInput::Script(script));
         Ok(())
     }
 
@@ -522,14 +532,14 @@ impl NodeRef {
         // FIXME: computed entries as we compute them. For now, we'll be re-computing
         // FIXME: intermediate nodes. Note: The cache *is* populated for source nodes
         // FIXME: by handle_event, which is mut.
-        if let Some(ref cached_value) = self.0.borrow().cache {
+        if let Some(ref cached_value) = self.0.read().unwrap().cache {
             assert!(self.is_source());
             return Ok(cached_value.to_owned());
         }
 
         let path = self.path_str();
         trace!("computing @ {}", path);
-        match self.0.borrow().input {
+        match self.0.read().unwrap().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(_, _)) => {
@@ -539,7 +549,7 @@ impl NodeRef {
     }
 
     pub fn get_sink_nodes_observing(&self) -> Fallible<Vec<NodeRef>> {
-        if let Some(NodeInput::Source(_, ref sinks)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, ref sinks)) = self.0.read().unwrap().input {
             return Ok(sinks.to_owned());
         }
         bail!(
@@ -549,7 +559,7 @@ impl NodeRef {
     }
 
     pub fn sink_kind(&self) -> Fallible<String> {
-        if let Some(ref kind) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.read().unwrap().sink {
             return Ok(kind.to_owned());
         }
         bail!(
@@ -559,21 +569,21 @@ impl NodeRef {
     }
 
     pub fn maybe_sink_kind(&self) -> Option<String> {
-        if let Some(ref kind) = self.0.borrow().sink {
+        if let Some(ref kind) = self.0.read().unwrap().sink {
             return Some(kind.to_owned());
         }
         None
     }
 
     pub fn is_source(&self) -> bool {
-        if let Some(NodeInput::Source(_, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(_, _)) = self.0.read().unwrap().input {
             return true;
         }
         false
     }
 
     pub fn maybe_source_kind(&self) -> Option<String> {
-        if let Some(NodeInput::Source(ref kind, _)) = self.0.borrow().input {
+        if let Some(NodeInput::Source(ref kind, _)) = self.0.read().unwrap().input {
             return Some(kind.to_owned());
         }
         None
