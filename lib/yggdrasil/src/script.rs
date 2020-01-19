@@ -182,24 +182,24 @@ impl Script {
     pub fn build_input_map(
         &self,
         tree: &Tree,
-    ) -> Fallible<(HashMap<ConcretePath, NodeRef>, ValueType)> {
-        assert!(self.phase == CompilationPhase::NeedInputMap);
+    ) -> Fallible<HashMap<ConcretePath, NodeRef>> {
+        assert_eq!(self.phase, CompilationPhase::NeedInputMap);
         let mut inputs = Vec::new();
-        let ty = self.suite.find_all_possible_inputs(tree, &mut inputs)?;
+        self.suite.find_all_possible_inputs(tree, &mut inputs)?;
         let mut input_map = HashMap::new();
         for input in inputs.drain(..) {
             let node = tree.lookup_path(&input)?;
             input_map.insert(input, node);
         }
-        Ok((input_map, ty))
+        Ok(input_map)
     }
 
     pub fn install_input_map(
         &mut self,
-        input_map: (HashMap<ConcretePath, NodeRef>, ValueType),
+        input_map: HashMap<ConcretePath, NodeRef>,
     ) -> Fallible<()> {
-        assert!(self.phase == CompilationPhase::NeedInputMap);
-        self.input_map = input_map.0;
+        assert_eq!(self.phase, CompilationPhase::NeedInputMap);
+        self.input_map = input_map;
         self.phase = CompilationPhase::Ready;
         Ok(())
     }
