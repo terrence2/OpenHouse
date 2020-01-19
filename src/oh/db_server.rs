@@ -6,13 +6,13 @@ use actix::prelude::*;
 use failure::Fallible;
 use std::path::Path;
 use tracing::{error, trace};
-use yggdrasil::{SinkRef, SourceRef, Tree, TreeBuilder, Value};
+use yggdrasil::{TreeSink, TreeSource, Tree, TreeBuilder, Value};
 
 pub struct DBServer {
     tree: Tree,
-    pub clock: SourceRef,
-    pub legacy_mcu: SourceRef,
-    pub hue: SinkRef,
+    pub clock: Box<Clock>,
+    pub legacy_mcu: Box<LegacyMCU>,
+    pub hue: Box<Hue>,
 }
 
 impl DBServer {
@@ -20,19 +20,19 @@ impl DBServer {
         let tree = TreeBuilder::default()
             .build_from_file(filename)?;
 
-        let legacy_mcu = SourceRef::new(LegacyMCU::new()?);
+        let mut legacy_mcu = LegacyMCU::new()?;
         let mcu_paths = tree.find_sources("legacy-mcu");
         for path in &mcu_paths {
             legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
         }
 
-        let clock = SourceRef::new(Clock::new()?);
+        let mut clock = Clock::new()?;
         let clock_paths = tree.find_sources("clock");
         for path in &clock_paths {
             clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
         }
 
-        let hue = SinkRef::new(Hue::new()?);
+        let mut hue = Hue::new()?;
         let paths = tree.find_sinks("hue");
         for path in &paths {
             hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
@@ -90,8 +90,7 @@ impl Handler<TickEvent> for DBServer {
     type Result = Fallible<()>;
 
     fn handle(&mut self, _msg: TickEvent, _ctx: &mut Context<Self>) -> Self::Result {
-        let updates = self.clock.mutate_as(&mut |c: &mut Clock| c.handle_tick())?;
-        //println!("woudl apply updated: {:?}", updates);
+        let updates = self.clock.handle_tick();
         for (path, value) in &updates {
             self.tree.handle_event(&path, Value::from_integer(*value))?;
         }
@@ -109,7 +108,7 @@ mod test {
         let db = DBServer::new_from_file(Path::new("examples/eyrie.ygg"))?;
         let _button_path_map = db
             .legacy_mcu
-            .inspect_as(&|mcu: &LegacyMCU| &mcu.path_map)?
+            .path_map
             .clone();
         Ok(())
     }
