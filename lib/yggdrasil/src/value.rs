@@ -225,7 +225,7 @@ impl Value {
         let a = lhs.as_string()?;
         let b = rhs.as_string()?;
         let s = match tok {
-            Token::Add => a.clone() + &b,
+            Token::Add => a + &b,
             Token::Latch => {
                 if lhs.generation() >= rhs.generation() {
                     a
