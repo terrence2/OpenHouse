@@ -25,12 +25,7 @@ impl DBServer {
             legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
         }
 
-        let mut clock = Clock::new()?;
-        let clock_paths = tree.find_sources("clock");
-        for path in &clock_paths {
-            clock.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-
+        let clock = Clock::new(&tree)?;
         let hue = Hue::new(&tree)?;
 
         let db_server = Self {
