@@ -63,15 +63,15 @@ impl SinkRef {
         Ok(inner)
     }
 
-    pub(super) fn on_ready(&self, tree: &SubTree) -> Fallible<()> {
+    pub fn on_ready(&self, tree: &SubTree) -> Fallible<()> {
         self.sink.borrow_mut().on_ready(tree)
     }
 
-    pub(super) fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
+    pub fn add_path(&self, path: &str, tree: &SubTree) -> Fallible<()> {
         self.sink.borrow_mut().add_path(path, tree)
     }
 
-    pub(super) fn values_updated(&self, values: &[(String, Value)]) -> Fallible<()> {
+    pub fn values_updated(&self, values: &[(String, Value)]) -> Fallible<()> {
         self.sink.borrow_mut().values_updated(values)
     }
 }

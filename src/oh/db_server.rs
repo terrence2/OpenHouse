@@ -25,6 +25,13 @@ impl DBServer {
             .add_source_handler("legacy-mcu", &legacy_mcu)?
             .add_sink_handler("hue", &hue)?
             .build_from_file(filename)?;
+
+        let paths = tree.find_sinks("hue");
+        for path in &paths {
+            hue.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
+        }
+        hue.on_ready(&tree.subtree_at(&tree.root())?)?;
+
         let db_server = Self {
             tree,
             clock,
@@ -56,7 +63,11 @@ impl Handler<HandleEvent> for DBServer {
     fn handle(&mut self, msg: HandleEvent, _ctx: &mut Context<Self>) -> Self::Result {
         trace!("db server: recvd event {} <- {}", msg.path, msg.value);
         match self.tree.handle_event(&msg.path, msg.value) {
-            Ok(_) => (),
+            Ok(groups) => {
+                if let Some(parts) = groups.get("hue") {
+                    self.hue.values_updated(parts)?;
+                }
+            },
             Err(e) => error!("db server: failed to handle event: {}", e),
         }
         Ok(())
