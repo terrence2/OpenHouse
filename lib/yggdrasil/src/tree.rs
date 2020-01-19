@@ -167,10 +167,6 @@ impl Tree {
         Ok(self)
     }
 
-    pub fn subtree_at(&self, root: &NodeRef) -> Fallible<SubTree> {
-        SubTree::new(self, root)
-    }
-
     pub fn find_sinks(&self, name: &str) -> Vec<String> {
         let mut matching = Vec::new();
         self.root().find_sinks(name, &mut matching);
@@ -181,29 +177,6 @@ impl Tree {
         let mut matching = Vec::new();
         self.root().find_sources(name, &mut matching);
         matching
-    }
-}
-
-pub struct SubTree<'a> {
-    _tree: &'a Tree,
-    _root: NodeRef,
-}
-
-impl<'a> SubTree<'a> {
-    fn new(tree: &'a Tree, root: &NodeRef) -> Fallible<Self> {
-        Ok(SubTree {
-            _tree: tree,
-            _root: root.to_owned(),
-        })
-    }
-
-    pub fn lookup(&self, path: &str) -> Fallible<NodeRef> {
-        let concrete = ConcretePath::from_str(path)?;
-        self._root.lookup_path(&concrete.components[0..])
-    }
-
-    pub fn tree(&self) -> &'a Tree {
-        self._tree
     }
 }
 
