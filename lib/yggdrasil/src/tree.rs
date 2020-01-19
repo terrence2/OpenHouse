@@ -140,13 +140,13 @@ pub struct Tree {
 }
 
 impl Tree {
-    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<()> {
+    pub fn handle_event(&self, path: &str, mut value: Value) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
         // FIXME: make this mutable once we back off systems
         //self.generation += 1;
         value.set_generation(self.generation);
 
         let source = self.lookup(path)?;
-        source.handle_event(value, self)?;
+        source.handle_event(value, self)?; // cache the value
         let sink_nodes = source.get_sink_nodes_observing()?;
 
         let mut groups = HashMap::new();
@@ -163,10 +163,7 @@ impl Tree {
                 }
             }
         }
-        for (kind, values) in &groups {
-            self.sink_handlers[kind].values_updated(values)?;
-        }
-        Ok(())
+        Ok(groups)
     }
 
     pub fn root(&self) -> NodeRef {

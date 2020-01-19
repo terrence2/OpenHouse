@@ -42,8 +42,6 @@ impl BHS {
         };
 
         let saturation = if max == 0.0 { 0.0 } else { (max - min) / max };
-        println!("SAT: {}", saturation);
-
         let v = max;
 
         let bhs = Self {
@@ -120,7 +118,7 @@ impl Color {
         } else if let Some(captures) = REGEX_MIRED.captures(s) {
             return Ok(Color::Mired(Mired::new(captures[1].parse()?)?));
         }
-        bail!("color: not a color: '{}'", s);
+        bail!("color: not a color: '{}'", s)
     }
 }
 

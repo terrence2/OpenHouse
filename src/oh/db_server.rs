@@ -56,7 +56,11 @@ impl Handler<HandleEvent> for DBServer {
     fn handle(&mut self, msg: HandleEvent, _ctx: &mut Context<Self>) -> Self::Result {
         trace!("db server: recvd event {} <- {}", msg.path, msg.value);
         match self.tree.handle_event(&msg.path, msg.value) {
-            Ok(_) => (),
+            Ok(groups) => {
+                if let Some(parts) = groups.get("hue") {
+                    self.hue.values_updated(parts)?;
+                }
+            },
             Err(e) => error!("db server: failed to handle event: {}", e),
         }
         Ok(())

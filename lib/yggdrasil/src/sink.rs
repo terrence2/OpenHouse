@@ -71,7 +71,7 @@ impl SinkRef {
         self.sink.borrow_mut().add_path(path, tree)
     }
 
-    pub(super) fn values_updated(&self, values: &[(String, Value)]) -> Fallible<()> {
+    pub fn values_updated(&self, values: &[(String, Value)]) -> Fallible<()> {
         self.sink.borrow_mut().values_updated(values)
     }
 }
