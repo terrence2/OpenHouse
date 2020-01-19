@@ -22,7 +22,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use tracing::{trace, warn};
+use tracing::{trace, trace_span, warn};
 
 /// The combination of a Value plus a monotonic ordinal.
 pub struct Sample {
@@ -207,10 +207,6 @@ impl Tree {
     }
 }
 
-// impl Actor for Tree {
-//     type Context = Context<Self>;
-// }
-
 pub struct SubTree<'a> {
     _tree: &'a Tree,
     _root: NodeRef,
@@ -318,9 +314,9 @@ impl NodeRef {
     }
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
-        trace!("+++NodeRef::link_and_validate_input({})", self.path_str());
+        let span = trace_span!("link", "{}", self.path_str());
+        let _ = span.enter();
         if self.0.borrow().linked_and_validated {
-            trace!("---NodeRef::link_and_validate_input({})", self.path_str());
             return Ok(());
         }
         self.0.borrow_mut().linked_and_validated = true;
@@ -335,7 +331,6 @@ impl NodeRef {
             } else {
                 unreachable!();
             };
-            trace!("BUILT INPUT MAP AT: {:?}", self.path_str());
 
             // Re-borrow read-write to install the input map we built above.
             if let Some(NodeInput::Script(ref mut script)) = self.0.borrow_mut().input {
@@ -368,10 +363,6 @@ impl NodeRef {
             sink.add_path(&self.path_str(), &tree.subtree_at(self)?)?;
         }
 
-        trace!(
-            "---NodeRef::link_and_validate_input({})",
-            self.0.borrow().path
-        );
         Ok(())
     }
 

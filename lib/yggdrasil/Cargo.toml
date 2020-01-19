@@ -10,7 +10,7 @@ edition = "2018"
 [dependencies]
 approx = "^ 0.3"
 downcast-rs = "1.0"
-failure = "0.1.2"
+failure = "^ 0.1"
 lazy_static = "*"
 tracing = "^ 0.1"
 
