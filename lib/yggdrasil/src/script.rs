@@ -7,7 +7,7 @@ use crate::{
     path::{ConcretePath, ScriptPath},
     tokenizer::Token,
     tree::{NodeRef, Tree},
-    value::{Value, ValueType},
+    value::Value,
 };
 use failure::{ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
@@ -129,19 +129,12 @@ impl Expr {
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
+    ) -> Fallible<()> {
         trace!("Expr::find_all_possible_inputs({:?})", self);
         map_values!(
             self,
             find_all_possible_inputs,
-            |_tok, a, b| {
-                ensure!(
-                    a == ValueType::INDIRECT || b == ValueType::INDIRECT || a == b,
-                    "type check failure: mismatched types in {:?}",
-                    self
-                );
-                Ok(a)
-            },
+            |_tok, _a, _b| Ok(()),
             tree,
             out
         )
@@ -179,10 +172,7 @@ impl Script {
 
     // Note that we have to have a separate build and install phase because otherwise we'd be borrowed
     // mutable when searching for inputs and double-borrow if any children are referenced.
-    pub fn build_input_map(
-        &self,
-        tree: &Tree,
-    ) -> Fallible<HashMap<ConcretePath, NodeRef>> {
+    pub fn build_input_map(&self, tree: &Tree) -> Fallible<HashMap<ConcretePath, NodeRef>> {
         assert_eq!(self.phase, CompilationPhase::NeedInputMap);
         let mut inputs = Vec::new();
         self.suite.find_all_possible_inputs(tree, &mut inputs)?;
@@ -194,10 +184,7 @@ impl Script {
         Ok(input_map)
     }
 
-    pub fn install_input_map(
-        &mut self,
-        input_map: HashMap<ConcretePath, NodeRef>,
-    ) -> Fallible<()> {
+    pub fn install_input_map(&mut self, input_map: HashMap<ConcretePath, NodeRef>) -> Fallible<()> {
         assert_eq!(self.phase, CompilationPhase::NeedInputMap);
         self.input_map = input_map;
         self.phase = CompilationPhase::Ready;

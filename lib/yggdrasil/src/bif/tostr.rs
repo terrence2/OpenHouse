@@ -5,7 +5,7 @@ use crate::{
     bif::NativeFunc,
     path::ConcretePath,
     tree::Tree,
-    value::{Value, ValueData, ValueType},
+    value::{Value, ValueData},
 };
 use failure::{bail, Fallible};
 
@@ -37,11 +37,11 @@ impl NativeFunc for ToStr {
 
     fn find_all_possible_inputs(
         &self,
-        _value_type: ValueType,
+        _value_type: (),
         _tree: &Tree,
         _out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
-        Ok(ValueType::STRING)
+    ) -> Fallible<()> {
+        Ok(())
     }
 
     fn box_clone(&self) -> Box<dyn NativeFunc> {

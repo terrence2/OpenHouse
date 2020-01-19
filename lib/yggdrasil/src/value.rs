@@ -7,21 +7,9 @@ use crate::{
     tokenizer::Token,
     tree::Tree,
 };
-use bitflags::bitflags;
 use failure::{bail, ensure, Fallible};
 use std::{convert::From, fmt};
 use tracing::trace;
-
-bitflags! {
-    pub struct ValueType : usize {
-        const BOOLEAN = 0b0000_0001;
-        const FLOAT   = 0b0000_0010;
-        const INTEGER = 0b0000_0100;
-        const STRING  = 0b0000_1000;
-        const INPUT   = 0b0001_0000;
-        const INDIRECT= 0b0010_0000;
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValueData {
@@ -286,7 +274,7 @@ impl Value {
         &self,
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType> {
+    ) -> Fallible<()> {
         trace!("Value::find_all_possible_inputs: {}", self);
         if let ValueData::Path(ref path) = self.data {
             // Our virtual path will depend on concrete inputs that may or may
@@ -310,17 +298,8 @@ impl Value {
             // Collect both direct and indirect inputs at this value.
             out.append(&mut direct_inputs);
             out.append(&mut concrete_inputs);
-
-            return Ok(ValueType::INDIRECT);
         }
-        Ok(match &self.data {
-            ValueData::Boolean(_) => ValueType::BOOLEAN,
-            ValueData::Float(_) => ValueType::FLOAT,
-            ValueData::Integer(_) => ValueType::INTEGER,
-            ValueData::String(_) => ValueType::STRING,
-            ValueData::Path(_) => panic!("typeflow error: we already filtered out path"),
-            ValueData::InputFlag => panic!("typeflow error: found an input flag, now what?"),
-        })
+        Ok(())
     }
 }
 

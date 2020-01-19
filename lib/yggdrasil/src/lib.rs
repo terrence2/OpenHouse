@@ -19,5 +19,5 @@ pub use self::path::ConcretePath;
 pub use self::sink::{SinkRef, TreeSink};
 pub use self::source::{SourceRef, TreeSource};
 pub use self::tree::{SubTree, Tree, TreeBuilder};
-pub use self::value::{Value, ValueType};
+pub use self::value::Value;
 pub use failure::Error;

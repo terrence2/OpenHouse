@@ -3,11 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 pub(super) mod tostr;
 
-use crate::{
-    path::ConcretePath,
-    tree::Tree,
-    value::{Value, ValueType},
-};
+use crate::{path::ConcretePath, tree::Tree, value::Value};
 use failure::Fallible;
 use std::fmt;
 
@@ -16,10 +12,10 @@ pub trait NativeFunc {
     fn virtually_compute_for_path(&self, values: Vec<Value>, tree: &Tree) -> Fallible<Vec<Value>>;
     fn find_all_possible_inputs(
         &self,
-        value_type: ValueType,
+        value_type: (),
         tree: &Tree,
         out: &mut Vec<ConcretePath>,
-    ) -> Fallible<ValueType>;
+    ) -> Fallible<()>;
     fn box_clone(&self) -> Box<dyn NativeFunc>;
 }
 
