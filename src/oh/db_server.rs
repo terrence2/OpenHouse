@@ -6,7 +6,7 @@ use actix::prelude::*;
 use failure::Fallible;
 use std::path::Path;
 use tracing::{error, trace};
-use yggdrasil::{Tree, TreeBuilder, TreeSource, Value};
+use yggdrasil::{Tree, TreeBuilder, Value};
 
 pub struct DBServer {
     tree: Tree,
@@ -19,12 +19,7 @@ impl DBServer {
     pub fn new_from_file(filename: &Path) -> Fallible<Self> {
         let tree = TreeBuilder::default().build_from_file(filename)?;
 
-        let mut legacy_mcu = LegacyMCU::new()?;
-        let mcu_paths = tree.find_sources("legacy-mcu");
-        for path in &mcu_paths {
-            legacy_mcu.add_path(&path, &tree.subtree_at(&tree.lookup(&path)?)?)?;
-        }
-
+        let legacy_mcu = LegacyMCU::new(&tree)?;
         let clock = Clock::new(&tree)?;
         let hue = Hue::new(&tree)?;
 
