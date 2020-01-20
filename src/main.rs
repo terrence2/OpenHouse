@@ -2,17 +2,15 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 mod oh;
-mod web;
 
 use failure::Fallible;
 //use oh::{DBServer, TickWorker, TreeServer};
 use oh::{LegacyMcu, TreeMailbox, TreeServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
-use tokio::prelude::*;
-use tracing::Level;
+use tokio::{prelude::*, signal};
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-//use web::server::build_server;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "open_house")]
@@ -37,7 +35,10 @@ struct Opt {
 async fn main() -> Fallible<()> {
     let opt = Opt::from_args();
     let config = opt.config;
-    let host = opt.host.unwrap_or_else(|| "127.0.0.1".to_string()).parse::<IpAddr>()?;
+    let host = opt
+        .host
+        .unwrap_or_else(|| "127.0.0.1".to_string())
+        .parse::<IpAddr>()?;
     let port = opt.port.unwrap_or(8090);
 
     let level = match opt.verbose {
@@ -49,13 +50,13 @@ async fn main() -> Fallible<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
+    let legacy_mcu = LegacyMcu::launch(host, port, tree_server.mailbox()).await?;
 
-    let legacy_mcu = LegacyMcu::launch(
-        host, port,
-        tree_server.mailbox()).await?;
+    signal::ctrl_c().await?;
+    info!("ctrl-c received, shutting down cleanly");
 
-    //    tree_server.mailbox().finish().await?;
-    //    legacy_mcu.mailbox().finish().await?;
+    tree_server.mailbox().finish().await?;
+    legacy_mcu.mailbox().finish().await?;
 
     tree_server.join().await?;
     legacy_mcu.join().await?;

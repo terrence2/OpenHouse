@@ -2,7 +2,7 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use failure::Fallible;
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 use tokio::{
     sync::{mpsc, oneshot},
     task::{spawn, JoinHandle},
@@ -21,7 +21,7 @@ impl TreeServer {
         let filename = filename.to_path_buf();
         let (mailbox, mut mailbox_receiver) = mpsc::channel(16);
         let task = spawn(async move {
-            let tree = TreeBuilder::default().build_from_file(&filename)?;
+            let mut tree = TreeBuilder::default().build_from_file(&filename)?;
 
             loop {
                 if let Some(message) = mailbox_receiver.recv().await {
@@ -34,6 +34,9 @@ impl TreeServer {
                         }
                         TreeProtocol::Compute(path, tx) => tx
                             .send(tree.lookup_path(&path)?.compute(&tree)?)
+                            .expect("nothing bad"),
+                        TreeProtocol::HandleEvent(path, value, tx) => tx
+                            .send(tree.handle_event(&path, value)?)
                             .expect("nothing bad"),
                         TreeProtocol::Finish => break,
                     }
@@ -69,6 +72,11 @@ enum TreeProtocol {
     FindSources(String, oneshot::Sender<Vec<ConcretePath>>),
     FindSinks(String, oneshot::Sender<Vec<ConcretePath>>),
     Compute(ConcretePath, oneshot::Sender<Value>),
+    HandleEvent(
+        ConcretePath,
+        Value,
+        oneshot::Sender<HashMap<String, Vec<(ConcretePath, Value)>>>,
+    ),
     Finish,
 }
 
@@ -83,7 +91,9 @@ impl TreeMailbox {
 
     pub async fn find_sinks(&mut self, name: &str) -> Fallible<Vec<ConcretePath>> {
         let (tx, rx) = oneshot::channel();
-        self.mailbox.send(TreeProtocol::FindSinks(name.to_owned(), tx)).await?;
+        self.mailbox
+            .send(TreeProtocol::FindSinks(name.to_owned(), tx))
+            .await?;
         Ok(rx.await?)
     }
 
@@ -91,6 +101,18 @@ impl TreeMailbox {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(TreeProtocol::Compute(path.to_owned(), tx))
+            .await?;
+        Ok(rx.await?)
+    }
+
+    pub async fn handle_event(
+        &mut self,
+        path: &ConcretePath,
+        event: Value,
+    ) -> Fallible<HashMap<String, Vec<(ConcretePath, Value)>>> {
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(TreeProtocol::HandleEvent(path.to_owned(), event, tx))
             .await?;
         Ok(rx.await?)
     }

@@ -106,13 +106,13 @@ pub struct Tree {
 impl Tree {
     pub fn handle_event(
         &mut self,
-        path: &str,
+        path: &ConcretePath,
         mut value: Value,
-    ) -> Fallible<HashMap<String, Vec<(String, Value)>>> {
+    ) -> Fallible<HashMap<String, Vec<(ConcretePath, Value)>>> {
         self.generation += 1;
         value.set_generation(self.generation);
 
-        let source = self.lookup(path)?;
+        let source = self.lookup_path(path)?;
         source.handle_event(value)?; // cache the value
         let sink_nodes = source.get_sink_nodes_observing()?;
 
@@ -120,7 +120,7 @@ impl Tree {
         for node in &sink_nodes {
             let next_value = node.compute(self)?;
             let kind = node.sink_kind()?;
-            let value = (node.path_str(), next_value);
+            let value = (node.path(), next_value);
             match groups.entry(kind) {
                 Entry::Vacant(e) => {
                     e.insert(vec![value]);

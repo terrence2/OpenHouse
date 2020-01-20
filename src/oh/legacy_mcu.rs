@@ -1,47 +1,43 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
+use crate::oh::TreeMailbox;
 use bytes::BytesMut;
 use failure::Fallible;
-use std::{borrow::Borrow, net::{IpAddr, SocketAddr}, collections::HashMap, convert::Infallible, error::Error};
-use crate::oh::TreeMailbox;
-use hyper::{service::{make_service_fn, service_fn}, body::HttpBody, Body, Request, Response, Server, server::conn::AddrStream};
+use hyper::{
+    body::HttpBody,
+    server::conn::AddrStream,
+    service::{make_service_fn, service_fn},
+    Body, Request, Response, Server,
+};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    convert::Infallible,
+    error::Error,
+    net::{IpAddr, SocketAddr},
+};
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
 };
-use tracing::trace;
-
-/*
-pub struct LegacyMCU {
-    pub path_map: HashMap<IpAddr, ConcretePath>,
-}
-
-impl LegacyMCU {
-    pub fn new(tree: &Tree) -> Fallible<Self> {
-        let mut path_map = HashMap::new();
-        for path in &tree.find_sources("legacy-mcu") {
-            let ip = tree
-                .lookup(path)?
-                .child("ip")?
-                .compute(tree)?
-                .as_string()?
-                .parse::<IpAddr>()?;
-            path_map.insert(ip, path.to_owned());
-        }
-        Ok(Self { path_map })
-    }
-}
-*/
+use tracing::{info, trace, warn};
+use yggdrasil::Value;
 
 pub struct LegacyMcu {
     task: JoinHandle<Fallible<()>>,
     mailbox: LegacyMcuMailbox,
 }
 
-//async fn handle(_: Request<Body>) -> Result<Response<Body>, Infallible> {
-//    Ok(Response::new("Hello, World!".into()))
-//}
+async fn read_body(mut req: Request<Body>) -> String {
+    let mut data = BytesMut::new();
+    while !req.body().is_end_stream() {
+        if let Some(Ok(content)) = req.body_mut().data().await {
+            data.extend_from_slice(&content.slice(..));
+        }
+    }
+    String::from_utf8_lossy(data.as_ref()).to_string()
+}
 
 impl LegacyMcu {
     pub async fn launch(host: IpAddr, port: u16, mut tree: TreeMailbox) -> Fallible<Self> {
@@ -49,56 +45,47 @@ impl LegacyMcu {
         let task = spawn(async move {
             let mut path_map = HashMap::new();
             for source_path in &tree.find_sources("legacy-mcu").await? {
-                let ip_addr = tree.compute(&(source_path / "ip")).await?.as_string()?.parse::<IpAddr>()?;
+                let ip_addr = tree
+                    .compute(&(source_path / "ip"))
+                    .await?
+                    .as_string()?
+                    .parse::<IpAddr>()?;
                 trace!("Mapping {} => {}", ip_addr, source_path);
                 path_map.insert(ip_addr, source_path.to_owned());
             }
 
-            let addr = SocketAddr::from((host, port));
-//            let make_svc = make_service_fn(|_conn| async {
-//                Ok::<_, Infallible>(service_fn(handle))
-//            });
-//            let make_svc = make_service_fn(|conn: &AddrStream| async {
-//                println!("REMOTE: {:?}", conn.remote_addr());
-//                async move {
-//                    Ok::<_, Infallible>(service_fn(|req| async {
-//                        Ok::<_, Infallible>(Response::new(Body::from("Hello World")))
-//                    }))
-//                }
-//            });
-
             let make_svc = make_service_fn(move |socket: &AddrStream| {
+                let tree = tree.clone();
                 let remote_addr = socket.remote_addr();
-                println!("PATH MAP: {:?}", path_map);
-                println!("ADDR: {}", remote_addr.ip());
-                let path = path_map[&remote_addr.ip()].clone();
-                println!("APTH: {}", path);
+                let maybe_path = path_map.get(&remote_addr.ip()).cloned();
+                if maybe_path.is_none() {
+                    warn!("Missing path info on connection: {:?}", socket);
+                }
                 async move {
-                    Ok::<_, Infallible>(service_fn(move |mut req: Request<Body>| async move {
-                        println!("REQ: {:?}", req);
-                        let mut data = BytesMut::new();
-                        while !req.body().is_end_stream() {
-                            if let Some(Ok(content)) = req.body_mut().data().await {
-                                data.extend_from_slice(&content.slice(..));
+                    Ok::<_, Infallible>(service_fn(move |mut req: Request<Body>| {
+                        let mut tree = tree.clone();
+                        let maybe_path = maybe_path.clone();
+                        return async move {
+                            if let Some(ref path) = maybe_path {
+                                let command = read_body(req).await;
+                                if let Ok(updates) =
+                                    tree.handle_event(&path, Value::from_string(command)).await
+                                {
+                                    // FIXME: forward here
+                                    println!("UPDATES: {:?}", updates);
+                                }
+                            } else {
+                                warn!("Skipping LegacyMCU request: {:?}", req);
                             }
-                        }
-                        let command = String::from_utf8_lossy(data.as_ref());
-
-                        Ok::<_, Infallible>(
-                            Response::new(Body::from(format!("Hello, {}!", remote_addr)))
-                        )
+                            Ok::<_, Infallible>(Response::new(Body::empty()))
+                        };
                     }))
                 }
             });
+            let addr = SocketAddr::from((host, port));
+            info!("LegacyMCU listening on {}", addr);
             let server = Server::bind(&addr).serve(make_svc);
             let handle = spawn(server);
-
-
-            /*
-            if let Err(e) = server.await {
-                eprintln!("server error: {}", e);
-            }
-            */
 
             loop {
                 if let Some(message) = mailbox_receiver.recv().await {

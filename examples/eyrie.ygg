@@ -115,9 +115,9 @@ rooms
     office @0'x0' <>10'x13'
         closet @10'x5' <>2'x5'
 
-        #test-switch
-        #    ^legacy-mcu
-        #    ip <- "127.0.0.1"
+        test-switch
+            ^legacy-mcu
+            ip <- "127.0.0.1"
 
         office-lightswitch.eyrie
             ^legacy-mcu
