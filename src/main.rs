@@ -4,15 +4,15 @@
 mod oh;
 mod web;
 
-use actix::prelude::*;
 use failure::Fallible;
-use oh::{DBServer, TickWorker, TreeServer};
-use std::path::PathBuf;
+//use oh::{DBServer, TickWorker, TreeServer};
+use oh::{LegacyMcu, TreeMailbox, TreeServer};
+use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::prelude::*;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
-use web::server::build_server;
+//use web::server::build_server;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "open_house")]
@@ -36,6 +36,9 @@ struct Opt {
 #[tokio::main(core_threads = 4)]
 async fn main() -> Fallible<()> {
     let opt = Opt::from_args();
+    let config = opt.config;
+    let host = opt.host.unwrap_or_else(|| "127.0.0.1".to_string()).parse::<IpAddr>()?;
+    let port = opt.port.unwrap_or(8090);
 
     let level = match opt.verbose {
         0 => Level::INFO,
@@ -45,11 +48,17 @@ async fn main() -> Fallible<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
-    let db_server = TreeServer::launch(&opt.config).await?;
+    let tree_server = TreeServer::launch(&config).await?;
 
-    db_server.mailbox().finish().await;
+    let legacy_mcu = LegacyMcu::launch(
+        host, port,
+        tree_server.mailbox()).await?;
 
-    db_server.join().await?;
+    //    tree_server.mailbox().finish().await?;
+    //    legacy_mcu.mailbox().finish().await?;
+
+    tree_server.join().await?;
+    legacy_mcu.join().await?;
 
     /*
     let sys = System::new("open_house");

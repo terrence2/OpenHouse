@@ -166,13 +166,13 @@ impl Tree {
         Ok(self)
     }
 
-    pub fn find_sinks(&self, name: &str) -> Vec<String> {
+    pub fn find_sinks(&self, name: &str) -> Vec<ConcretePath> {
         let mut matching = Vec::new();
         self.root().find_sinks(name, &mut matching);
         matching
     }
 
-    pub fn find_sources(&self, name: &str) -> Vec<String> {
+    pub fn find_sources(&self, name: &str) -> Vec<ConcretePath> {
         let mut matching = Vec::new();
         self.root().find_sources(name, &mut matching);
         matching
@@ -234,10 +234,10 @@ impl NodeRef {
         ))
     }
 
-    fn find_sinks(&self, sink_name: &str, matching: &mut Vec<String>) {
+    fn find_sinks(&self, sink_name: &str, matching: &mut Vec<ConcretePath>) {
         if let Some(name) = self.maybe_sink_kind() {
             if name == sink_name {
-                matching.push(self.path_str());
+                matching.push(self.path());
             }
         }
         for (name, child) in &self.0.read().unwrap().children {
@@ -248,10 +248,10 @@ impl NodeRef {
         }
     }
 
-    fn find_sources(&self, source_name: &str, matching: &mut Vec<String>) {
+    fn find_sources(&self, source_name: &str, matching: &mut Vec<ConcretePath>) {
         if let Some(name) = self.maybe_source_kind() {
             if name == source_name {
-                matching.push(self.path_str());
+                matching.push(self.path());
             }
         }
         for (name, child) in &self.0.read().unwrap().children {
@@ -425,6 +425,10 @@ impl NodeRef {
             .children
             .get(name)
             .map(|v| v.to_owned())
+    }
+
+    pub fn path(&self) -> ConcretePath {
+        self.0.read().unwrap().path.clone()
     }
 
     pub fn path_str(&self) -> String {
