@@ -356,28 +356,3 @@ impl HueBridgeClient {
         Ok(parse(&body)?)
     }
 }
-
-/*
-#[cfg(test)]
-mod test {
-    use super::*;
-    use yggdrasil::TreeBuilder;
-
-    #[test]
-    fn test_new_sink() -> Fallible<()> {
-        let tree = TreeBuilder::empty();
-        let _hue = Hue::new(&tree);
-        Ok(())
-    }
-
-    #[test]
-    fn test_light_state() -> Fallible<()> {
-        assert_eq!(HueBridgeClient::light_state_for_value("none")?, object! {"on" => false});
-        assert_eq!(
-            HueBridgeClient::light_state_for_value("mired(40)")?,
-            object! {"on" => true, "ct" => 40, "transitiontime" => 10}
-        );
-        Ok(())
-    }
-}
-*/
