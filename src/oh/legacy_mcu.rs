@@ -79,8 +79,10 @@ impl LegacyMcu {
                                 if let Ok(updates) =
                                     tree.handle_event(&path, Value::from_string(command)).await
                                 {
+                                    trace!("updates available for {} systems", updates.len());
                                     if let Some(hue_updates) = updates.get("hue") {
-                                        hue_system.values_updated(&hue_updates);
+                                        trace!("sending {} updates to hue system", hue_updates.len());
+                                        hue_system.values_updated(&hue_updates).await.expect("to send a message to the hue system");
                                     }
                                 }
                             } else {

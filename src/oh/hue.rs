@@ -43,6 +43,7 @@ impl HueSystem {
                 if let Some(message) = mailbox_receiver.recv().await {
                     match message {
                         HueSystemProtocol::ValuesUpdated(values) => {
+                            trace!("hue system handling {} updates", values.len());
                             bridge.handle_values_updated(values).await?;
                         }
                         HueSystemProtocol::Finish => break,
@@ -218,6 +219,7 @@ impl HueBridge {
     async fn handle_values_updated(&mut self, values: Vec<(ConcretePath, Value)>) -> Fallible<()> {
         // Group lights by value.
         let groups = Self::group_by_value(&values)?;
+        trace!("handle {} groups of value updates", groups.len());
         for (value, group) in &groups {
             let mut lights = group
                 .iter()
