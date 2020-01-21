@@ -3,7 +3,6 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 mod clock;
 mod color;
-mod db_server;
 mod hue;
 mod json_helpers;
 mod legacy_mcu;

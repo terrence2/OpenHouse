@@ -21,9 +21,7 @@ futures = "^ 0.3"
 hyper = "^ 0.13"
 json = "^ 0.12"
 lazy_static = "*"
-openssl = { version=">=0.10", features = ["v110"] }
 regex = "^ 1"
-reqwest = "0.9"
 structopt = "^ 0.3"
 tokio = { version = "^ 0.2", features = ["full"] }
 tracing = "^ 0.1"
