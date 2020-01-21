@@ -5,7 +5,7 @@ mod oh;
 
 use failure::Fallible;
 //use oh::{DBServer, TickWorker, TreeServer};
-use oh::{LegacyMcu, TreeMailbox, TreeServer};
+use oh::{HueSystem, LegacyMcu, TreeMailbox, TreeServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::{prelude::*, signal};
@@ -50,16 +50,20 @@ async fn main() -> Fallible<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
-    let legacy_mcu = LegacyMcu::launch(host, port, tree_server.mailbox()).await?;
+    let hue_system = HueSystem::launch(tree_server.mailbox()).await?;
+    let legacy_mcu =
+        LegacyMcu::launch(host, port, hue_system.mailbox(), tree_server.mailbox()).await?;
 
     signal::ctrl_c().await?;
     info!("ctrl-c received, shutting down cleanly");
 
     tree_server.mailbox().finish().await?;
     legacy_mcu.mailbox().finish().await?;
+    hue_system.mailbox().finish().await?;
 
-    tree_server.join().await?;
     legacy_mcu.join().await?;
+    hue_system.join().await?;
+    tree_server.join().await?;
 
     /*
     let sys = System::new("open_house");

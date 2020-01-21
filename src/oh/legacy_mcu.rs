@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::oh::TreeMailbox;
+use crate::oh::{HueSystemMailbox, TreeMailbox};
 use bytes::BytesMut;
 use failure::Fallible;
 use hyper::{
@@ -24,11 +24,6 @@ use tokio::{
 use tracing::{info, trace, warn};
 use yggdrasil::Value;
 
-pub struct LegacyMcu {
-    task: JoinHandle<Fallible<()>>,
-    mailbox: LegacyMcuMailbox,
-}
-
 async fn read_body(mut req: Request<Body>) -> String {
     let mut data = BytesMut::new();
     while !req.body().is_end_stream() {
@@ -39,8 +34,18 @@ async fn read_body(mut req: Request<Body>) -> String {
     String::from_utf8_lossy(data.as_ref()).to_string()
 }
 
+pub struct LegacyMcu {
+    task: JoinHandle<Fallible<()>>,
+    mailbox: LegacyMcuMailbox,
+}
+
 impl LegacyMcu {
-    pub async fn launch(host: IpAddr, port: u16, mut tree: TreeMailbox) -> Fallible<Self> {
+    pub async fn launch(
+        host: IpAddr,
+        port: u16,
+        mut hue_system: HueSystemMailbox,
+        mut tree: TreeMailbox,
+    ) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
             let mut path_map = HashMap::new();
@@ -55,6 +60,7 @@ impl LegacyMcu {
             }
 
             let make_svc = make_service_fn(move |socket: &AddrStream| {
+                let hue_system = hue_system.clone();
                 let tree = tree.clone();
                 let remote_addr = socket.remote_addr();
                 let maybe_path = path_map.get(&remote_addr.ip()).cloned();
@@ -63,16 +69,19 @@ impl LegacyMcu {
                 }
                 async move {
                     Ok::<_, Infallible>(service_fn(move |mut req: Request<Body>| {
+                        let mut hue_system = hue_system.clone();
                         let mut tree = tree.clone();
                         let maybe_path = maybe_path.clone();
                         return async move {
                             if let Some(ref path) = maybe_path {
                                 let command = read_body(req).await;
+                                info!("handling event {} for {}", command, path);
                                 if let Ok(updates) =
                                     tree.handle_event(&path, Value::from_string(command)).await
                                 {
-                                    // FIXME: forward here
-                                    println!("UPDATES: {:?}", updates);
+                                    if let Some(hue_updates) = updates.get("hue") {
+                                        hue_system.values_updated(&hue_updates);
+                                    }
                                 }
                             } else {
                                 warn!("Skipping LegacyMCU request: {:?}", req);
