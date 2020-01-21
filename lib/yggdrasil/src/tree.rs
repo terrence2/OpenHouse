@@ -696,10 +696,10 @@ bar
     v<-2
 "#;
         let mut tree = TreeBuilder::default().build_from_str(s)?;
-        tree.handle_event("/a", Value::new_str("bar"))?;
+        tree.handle_event(&ConcretePath::from_str("/a")?, Value::new_str("bar"))?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(2));
 
-        tree.handle_event("/a", Value::new_str("foo"))?;
+        tree.handle_event(&ConcretePath::from_str("/a")?, Value::new_str("foo"))?;
         assert_eq!(tree.lookup("/b")?.compute(&tree)?, Value::from_integer(1));
         Ok(())
     }

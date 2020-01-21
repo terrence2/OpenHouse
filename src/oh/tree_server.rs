@@ -7,7 +7,6 @@ use tokio::{
     sync::{mpsc, oneshot},
     task::{spawn, JoinHandle},
 };
-use tracing::error;
 use yggdrasil::{ConcretePath, TreeBuilder, Value};
 
 #[derive(Debug)]

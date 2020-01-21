@@ -14,7 +14,7 @@ use hyper::{
     Body, Request, Response, Uri,
 };
 use json::{object, parse, stringify, JsonValue};
-use std::{collections::HashMap, str::FromStr, time::Duration};
+use std::collections::HashMap;
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
@@ -116,7 +116,7 @@ impl HueBridge {
             .compute(&(bridge_path / "username"))
             .await?
             .as_string()?;
-        let mut client = HueBridgeClient::new(&bridge_address, &bridge_username)?;
+        let client = HueBridgeClient::new(&bridge_address, &bridge_username)?;
         let resp = client.get("").await?;
         let body = parse(&resp)?;
 
@@ -210,7 +210,7 @@ impl HueBridge {
         for (path, value) in values {
             by_value
                 .entry(value.as_string()?)
-                .or_insert(vec![])
+                .or_insert_with(|| vec![])
                 .push(path.to_owned());
         }
         Ok(by_value)

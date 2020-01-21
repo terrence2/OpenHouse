@@ -11,10 +11,8 @@ use hyper::{
     Body, Request, Response, Server,
 };
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     convert::Infallible,
-    error::Error,
     net::{IpAddr, SocketAddr},
 };
 use tokio::{
@@ -43,7 +41,7 @@ impl LegacyMcu {
     pub async fn launch(
         host: IpAddr,
         port: u16,
-        mut hue_system: HueSystemMailbox,
+        hue_system: HueSystemMailbox,
         mut tree: TreeMailbox,
     ) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
@@ -68,11 +66,11 @@ impl LegacyMcu {
                     warn!("Missing path info on connection: {:?}", socket);
                 }
                 async move {
-                    Ok::<_, Infallible>(service_fn(move |mut req: Request<Body>| {
+                    Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
                         let mut hue_system = hue_system.clone();
                         let mut tree = tree.clone();
                         let maybe_path = maybe_path.clone();
-                        return async move {
+                        async move {
                             if let Some(ref path) = maybe_path {
                                 let command = read_body(req).await;
                                 info!("handling event {} for {}", command, path);
@@ -81,22 +79,27 @@ impl LegacyMcu {
                                 {
                                     trace!("updates available for {} systems", updates.len());
                                     if let Some(hue_updates) = updates.get("hue") {
-                                        trace!("sending {} updates to hue system", hue_updates.len());
-                                        hue_system.values_updated(&hue_updates).await.expect("to send a message to the hue system");
+                                        trace!(
+                                            "sending {} updates to hue system",
+                                            hue_updates.len()
+                                        );
+                                        hue_system
+                                            .values_updated(&hue_updates)
+                                            .await
+                                            .expect("to send a message to the hue system");
                                     }
                                 }
                             } else {
                                 warn!("Skipping LegacyMCU request: {:?}", req);
                             }
                             Ok::<_, Infallible>(Response::new(Body::empty()))
-                        };
+                        }
                     }))
                 }
             });
             let addr = SocketAddr::from((host, port));
             info!("LegacyMCU listening on {}", addr);
-            let server = Server::bind(&addr).serve(make_svc);
-            let handle = spawn(server);
+            spawn(Server::bind(&addr).serve(make_svc));
 
             loop {
                 if let Some(message) = mailbox_receiver.recv().await {

@@ -4,11 +4,10 @@
 mod oh;
 
 use failure::Fallible;
-//use oh::{DBServer, TickWorker, TreeServer};
-use oh::{HueSystem, LegacyMcu, TreeMailbox, TreeServer};
+use oh::{HueSystem, LegacyMcu, TreeServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
-use tokio::{prelude::*, signal};
+use tokio::signal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -47,7 +46,7 @@ async fn main() -> Fallible<()> {
         _ => Level::TRACE,
     };
     let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting defualt subscriber failed");
+    tracing::subscriber::set_global_default(subscriber)?; //.expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
     let hue_system = HueSystem::launch(tree_server.mailbox()).await?;
@@ -64,29 +63,6 @@ async fn main() -> Fallible<()> {
     legacy_mcu.join().await?;
     hue_system.join().await?;
     tree_server.join().await?;
-
-    /*
-    let sys = System::new("open_house");
-
-    let db = DBServer::new_from_file(&opt.config)?;
-    let button_path_map = db.legacy_mcu.path_map.clone();
-    let db_addr = db.start();
-
-    let ticker = TickWorker::new(&db_addr);
-    let _tick_addr = ticker.start();
-
-    let _server_server = build_server(
-        db_addr,
-        button_path_map,
-        "openhouse.eyrie",
-        &opt.host.unwrap_or_else(|| "localhost".to_string()),
-        opt.port.unwrap_or(8090),
-    )?;
-    //let _server_addr = server.start();
-    //tree_addr.send(AddHandler())
-
-    sys.run()?;
-    */
 
     Ok(())
 }
