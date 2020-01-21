@@ -36,7 +36,7 @@ impl NativeFunc for ToStr {
         Ok(())
     }
 
-    fn box_clone(&self) -> Box<dyn NativeFunc> {
+    fn box_clone(&self) -> Box<dyn NativeFunc + Send + Sync> {
         Box::new((*self).clone())
     }
 }

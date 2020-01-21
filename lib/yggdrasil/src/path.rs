@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::tree::Tree;
 use failure::{bail, ensure, Error, Fallible};
-use std::{fmt, str::FromStr};
+use std::{fmt, ops::Div, str::FromStr};
 use tracing::trace;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -293,6 +293,22 @@ impl ConcretePath {
 impl fmt::Display for ConcretePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "/{}", self.components.join("/"))
+    }
+}
+
+impl Div<&str> for ConcretePath {
+    type Output = Self;
+
+    fn div(self, rhs: &str) -> Self::Output {
+        self.new_child(rhs)
+    }
+}
+
+impl Div<&str> for &ConcretePath {
+    type Output = ConcretePath;
+
+    fn div(self, rhs: &str) -> Self::Output {
+        self.new_child(rhs)
     }
 }
 

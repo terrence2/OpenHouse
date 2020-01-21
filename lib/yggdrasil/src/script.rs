@@ -18,7 +18,7 @@ use tracing::trace;
 pub(super) enum Expr {
     Add(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
-    Call(Box<dyn NativeFunc>, Box<Expr>),
+    Call(Box<dyn NativeFunc + Send + Sync>, Box<Expr>),
     Divide(Box<Expr>, Box<Expr>),
     Equal(Box<Expr>, Box<Expr>),
     GreaterThan(Box<Expr>, Box<Expr>),
@@ -139,7 +139,7 @@ impl Script {
     pub fn inline_from_tokens(
         path: String,
         tokens: &[Token],
-        nifs: &HashMap<String, Box<dyn NativeFunc>>,
+        nifs: &HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
     ) -> Fallible<Self> {
         let mut parser = ExprParser::from_tokens(path, tokens, nifs);
         let expr = parser.eparser()?;
@@ -274,7 +274,7 @@ struct ExprParser<'a> {
     path: String,
     tokens: &'a [Token],
     offset: usize,
-    nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
+    nifs: &'a HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
 }
 
 // Uses textbook precedence climbing.
@@ -282,7 +282,7 @@ impl<'a> ExprParser<'a> {
     fn from_tokens(
         path: String,
         tokens: &'a [Token],
-        nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
+        nifs: &'a HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
     ) -> Self {
         Self {
             path,

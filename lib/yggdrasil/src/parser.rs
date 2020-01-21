@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tracing::trace;
 
 pub struct TreeParser<'a> {
-    nifs: &'a HashMap<String, Box<dyn NativeFunc>>,
+    nifs: &'a HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
     import_interceptors: &'a HashMap<String, Tree>,
     templates: HashMap<String, NodeRef>,
     tokens: Vec<Token>,
@@ -38,7 +38,7 @@ impl<'a> TreeParser<'a> {
     pub fn from_str(
         tree: Tree,
         s: &str,
-        nifs: &HashMap<String, Box<dyn NativeFunc>>,
+        nifs: &HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
         import_interceptors: &HashMap<String, Tree>,
     ) -> Fallible<Tree> {
         let sanitized = s.replace('\t', "    ");

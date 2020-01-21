@@ -4,134 +4,100 @@
 use crate::oh::{
     color::{Color, Mired, BHS},
     json_helpers::{ObjectHelper, ValueHelper},
+    TreeMailbox,
 };
-use actix::{Actor, Addr, Context, Handler, Message, System};
+use bytes::BytesMut;
 use failure::{ensure, Fallible};
-use itertools::Itertools;
+use hyper::{
+    body::HttpBody,
+    client::{Client, HttpConnector},
+    Body, Request, Response, Uri,
+};
 use json::{object, parse, stringify, JsonValue};
-use reqwest::Client;
-use std::{collections::HashMap, str::FromStr, time::Duration};
-use tracing::{error, info, trace};
-use yggdrasil::{ConcretePath, Tree, Value};
+use std::collections::HashMap;
+use tokio::{
+    sync::mpsc::{channel, Sender},
+    task::{spawn, JoinHandle},
+};
+use tracing::{info, trace};
+use yggdrasil::{ConcretePath, Value};
 
-struct ValuesUpdated {
-    values: Vec<(String, Value)>,
-}
-impl Message for ValuesUpdated {
-    type Result = Fallible<()>;
-}
-
-// The hue plugin to Yggdrasil. All processing is done off-main-thread by the
-// HueWorker actor.
-pub struct Hue {
-    worker: Addr<HueWorker>,
+pub struct HueSystem {
+    task: JoinHandle<Fallible<()>>,
+    mailbox: HueSystemMailbox,
 }
 
-impl Hue {
-    pub fn new(tree: &Tree) -> Fallible<Self> {
-        let bridge_paths = tree.find_sinks("hue-bridge");
+impl HueSystem {
+    pub async fn launch(mut tree: TreeMailbox) -> Fallible<Self> {
+        let mut bridge_paths = tree.find_sinks("hue-bridge").await?;
         ensure!(
             bridge_paths.len() == 1,
             "Exactly one Hue hub supported at this time."
         );
-        let bridge_node = tree.lookup(&bridge_paths[0])?;
-        let hub = Hub::new(
-            &bridge_node.child("address")?.compute(tree)?.as_string()?,
-            &bridge_node.child("username")?.compute(tree)?.as_string()?,
-        )?;
+        let bridge_path = &bridge_paths.remove(0);
+        let mut bridge = HueBridge::setup(bridge_path, tree).await?;
 
-        let mut path_map = HashMap::new();
-        for path in &tree.find_sinks("hue") {
-            let concrete = ConcretePath::from_str(path)?;
-            path_map.insert(path.to_owned(), concrete.basename().to_owned());
-        }
-
-        let worker = HueWorker::new(hub, path_map).start();
-
-        Ok(Hue { worker })
+        let (mailbox, mut mailbox_receiver) = channel(16);
+        let task = spawn(async move {
+            loop {
+                if let Some(message) = mailbox_receiver.recv().await {
+                    match message {
+                        HueSystemProtocol::ValuesUpdated(values) => {
+                            trace!("hue system handling {} updates", values.len());
+                            bridge.handle_values_updated(values).await?;
+                        }
+                        HueSystemProtocol::Finish => break,
+                    }
+                }
+            }
+            Ok(())
+        });
+        Ok(Self {
+            task,
+            mailbox: HueSystemMailbox { mailbox },
+        })
     }
 
-    pub fn values_updated(&mut self, values: &[(String, Value)]) -> Fallible<()> {
-        self.worker.do_send(ValuesUpdated {
-            values: values.to_owned(),
-        });
+    pub async fn join(self) -> Fallible<()> {
+        self.task.await??;
+        Ok(())
+    }
+
+    pub fn mailbox(&self) -> HueSystemMailbox {
+        self.mailbox.clone()
+    }
+}
+
+#[derive(Debug)]
+enum HueSystemProtocol {
+    ValuesUpdated(Vec<(ConcretePath, Value)>),
+    Finish,
+}
+
+#[derive(Clone, Debug)]
+pub struct HueSystemMailbox {
+    mailbox: Sender<HueSystemProtocol>,
+}
+
+impl HueSystemMailbox {
+    pub async fn finish(&mut self) -> Fallible<()> {
+        self.mailbox.send(HueSystemProtocol::Finish).await?;
+        Ok(())
+    }
+
+    pub async fn values_updated(&mut self, values: &[(ConcretePath, Value)]) -> Fallible<()> {
+        self.mailbox
+            .send(HueSystemProtocol::ValuesUpdated(values.to_vec()))
+            .await?;
         Ok(())
     }
 }
 
-struct Hub {
-    address: String,
-    username: String,
-    client: Client,
-}
-
-impl Hub {
-    fn new(address: &str, username: &str) -> Fallible<Self> {
-        Ok(Hub {
-            address: address.to_owned(),
-            username: username.to_owned(),
-            client: Client::builder()
-                .gzip(true)
-                .timeout(Duration::from_secs(30))
-                .build()?,
-        })
-    }
-
-    fn light_state_for_value(value: &str) -> Fallible<JsonValue> {
-        if value == "none" {
-            return Ok(object! {"on" => false});
-        }
-        let color = Color::parse(value)?;
-        let mut obj = match color {
-            Color::Mired(Mired { color_temp: ct }) => object! {"ct" => ct},
-            Color::RGB(rgb) => {
-                let bhs = BHS::from_rgb(&rgb)?;
-                object! {"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
-            }
-            Color::BHS(BHS {
-                brightness,
-                hue,
-                saturation,
-            }) => object! {"bri" => brightness, "hue" => hue, "sat" => saturation},
-        };
-        obj["on"] = true.into();
-        // FIXME: support transition time
-        obj["transitiontime"] = 10.into();
-        Ok(obj)
-    }
-
-    fn url(&self, path: &str) -> String {
-        return format!("http://{}/api/{}{}", self.address, self.username, path);
-    }
-
-    fn get(&self, path: &str) -> Fallible<String> {
-        let url = self.url(path);
-        trace!("GET {}", url);
-        let body = self.client.get(&url).send()?.text()?;
-        Ok(body)
-    }
-
-    fn post(&self, path: &str, data: String) -> Fallible<JsonValue> {
-        let url = self.url(path);
-        trace!("POST {} -> {}", url, data);
-        let body = self.client.post(&url).body(data).send()?.text()?;
-        Ok(parse(&body)?)
-    }
-
-    fn put(&self, path: &str, data: String) -> Fallible<JsonValue> {
-        let url = self.url(path);
-        trace!("PUT {} -> {}", url, data);
-        let body = self.client.put(&url).body(data).send()?.text()?;
-        Ok(parse(&body)?)
-    }
-}
-
-// The hue worker is the sole, serial thread allowed to talk to the hue hub.
-struct HueWorker {
-    hub: Hub,
+struct HueBridge {
+    client: HueBridgeClient,
 
     // Map from paths to light names.
-    path_map: HashMap<String, String>,
+    path_map: HashMap<ConcretePath, String>,
 
     // Map from light names to the light number needed to talk to the hub.
     light_map: HashMap<String, u32>,
@@ -140,41 +106,38 @@ struct HueWorker {
     group_map: HashMap<Vec<u32>, u32>,
 }
 
-impl Actor for HueWorker {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Context<Self>) {
-        match self.handle_started(ctx) {
-            Ok(_) => (),
-            Err(e) => {
-                error!("hue system: failed to start: {}", e);
-                System::current().stop();
-            }
-        };
-    }
-}
-
-impl HueWorker {
-    fn new(hub: Hub, path_map: HashMap<String, String>) -> Self {
-        HueWorker {
-            hub,
-            path_map,
-            light_map: HashMap::new(),
-            group_map: HashMap::new(),
-        }
-    }
-
-    fn handle_started(&mut self, _ctx: &mut Context<Self>) -> Fallible<()> {
-        let resp = self.hub.get("")?;
+impl HueBridge {
+    async fn setup(bridge_path: &ConcretePath, mut tree: TreeMailbox) -> Fallible<Self> {
+        let bridge_address = tree
+            .compute(&(bridge_path / "address"))
+            .await?
+            .as_string()?;
+        let bridge_username = tree
+            .compute(&(bridge_path / "username"))
+            .await?
+            .as_string()?;
+        let client = HueBridgeClient::new(&bridge_address, &bridge_username)?;
+        let resp = client.get("").await?;
         let body = parse(&resp)?;
 
-        self.show_configuration(&body)?;
-        self.collect_lights(&body)?;
-        self.collect_groups(&body)?;
-        Ok(())
+        Self::show_configuration(&body)?;
+        let light_map = Self::collect_lights(&body)?;
+        let group_map = Self::collect_groups(&body)?;
+
+        let mut path_map = HashMap::new();
+        for path in &tree.find_sinks("hue").await? {
+            path_map.insert(path.to_owned(), path.basename().to_owned());
+        }
+
+        Ok(Self {
+            client,
+            path_map,
+            light_map,
+            group_map,
+        })
     }
 
-    fn show_configuration(&self, body: &JsonValue) -> Fallible<()> {
+    fn show_configuration(body: &JsonValue) -> Fallible<()> {
         let config = body.to_object()?.fetch("config")?.to_object()?;
         let props = vec![
             "name",
@@ -201,8 +164,9 @@ impl HueWorker {
 
     // Build the light map so that we can bridge from light names to the numbers
     // that the hub works with internally.
-    fn collect_lights(&mut self, body: &JsonValue) -> Fallible<()> {
+    fn collect_lights(body: &JsonValue) -> Fallible<HashMap<String, u32>> {
         info!("hue light info ->");
+        let mut light_map = HashMap::new();
         let lights = body.to_object()?.fetch("lights")?.to_object()?;
         for (number, light) in lights.iter() {
             let name = light.to_object()?.fetch("name")?.to_str()?;
@@ -213,16 +177,17 @@ impl HueWorker {
                 light.to_object()?.fetch("modelid")?.to_str()?,
                 light.to_object()?.fetch("swversion")?.to_str()?
             );
-            self.light_map.insert(name.to_owned(), number.parse()?);
+            light_map.insert(name.to_owned(), number.parse()?);
         }
-        Ok(())
+        Ok(light_map)
     }
 
     // Groups are not limited in recent releases of the firmware, so just
     // collect all currently existing groups on startup instead of trying to
     // clean up.
-    fn collect_groups(&mut self, body: &JsonValue) -> Fallible<()> {
+    fn collect_groups(body: &JsonValue) -> Fallible<HashMap<Vec<u32>, u32>> {
         info!("hue group info ->");
+        let mut group_map = HashMap::new();
         let groups = body.to_object()?.fetch("groups")?.to_object()?;
         for (number, group) in groups.iter() {
             let mut lights = Vec::new();
@@ -233,17 +198,32 @@ impl HueWorker {
             lights.sort();
 
             info!("{:>3} => {:?}", number, lights);
-            self.group_map.insert(lights, number.parse()?);
+            group_map.insert(lights, number.parse()?);
         }
-        Ok(())
+        Ok(group_map)
     }
 
-    fn handle_values_updated(&mut self, msg: &ValuesUpdated) -> Fallible<()> {
+    fn group_by_value(
+        values: &[(ConcretePath, Value)],
+    ) -> Fallible<HashMap<String, Vec<ConcretePath>>> {
+        let mut by_value = HashMap::new();
+        for (path, value) in values {
+            by_value
+                .entry(value.as_string()?)
+                .or_insert_with(|| vec![])
+                .push(path.to_owned());
+        }
+        Ok(by_value)
+    }
+
+    async fn handle_values_updated(&mut self, values: Vec<(ConcretePath, Value)>) -> Fallible<()> {
         // Group lights by value.
-        let groups = msg.values.iter().group_by(|(_, v)| v);
+        let groups = Self::group_by_value(&values)?;
+        trace!("handle {} groups of value updates", groups.len());
         for (value, group) in &groups {
             let mut lights = group
-                .map(|(path, _)| {
+                .iter()
+                .map(|path| {
                     let light_name = &self.path_map[path];
                     self.light_map[light_name]
                 })
@@ -252,68 +232,127 @@ impl HueWorker {
             info!("hue worker: group {:?} -> {}", lights, value);
 
             if !self.group_map.contains_key(&lights) {
-                self.make_new_group(&lights)?;
+                self.make_new_group(&lights).await?;
             }
             let group_name = self.group_map[&lights];
 
-            self.update_group(group_name, value)?;
+            self.update_group(group_name, &value).await?;
         }
         Ok(())
     }
 
-    fn make_new_group(&mut self, lights: &[u32]) -> Fallible<()> {
+    async fn make_new_group(&mut self, lights: &[u32]) -> Fallible<()> {
         let mut arr = JsonValue::new_array();
         for light in lights {
             arr.push(light.to_string())?;
         }
         let obj = object! {"lights" => arr};
-        let resp = self.hub.post("/groups/", stringify(obj))?;
+        let resp = self.client.post("/groups/", stringify(obj)).await?;
         let name = resp[0]["success"]["id"].to_str()?.parse()?;
         self.group_map.insert(lights.to_vec(), name);
         Ok(())
     }
 
-    fn update_group(&self, group: u32, light_value: &Value) -> Fallible<()> {
+    async fn update_group(&self, group: u32, light_value: &str) -> Fallible<()> {
         let url = format!("/groups/{}/action", group);
-        let v = &light_value.as_string()?;
-        let obj = Hub::light_state_for_value(v)?;
+        let obj = HueBridgeClient::light_state_for_value(light_value)?;
         let put_data = stringify(obj);
-        let _resp = self.hub.put(&url, put_data)?;
+        let _resp = self.client.put(&url, put_data).await?;
         Ok(())
     }
 }
 
-impl Handler<ValuesUpdated> for HueWorker {
-    type Result = Fallible<()>;
+struct HueBridgeClient {
+    address: String,
+    username: String,
+    client: Client<HttpConnector>,
+}
 
-    fn handle(&mut self, msg: ValuesUpdated, _: &mut Context<Self>) -> Self::Result {
-        match self.handle_values_updated(&msg) {
-            Ok(_) => (),
-            Err(e) => error!("hue: value update failed: {}", e),
+impl HueBridgeClient {
+    fn new(address: &str, username: &str) -> Fallible<Self> {
+        Ok(Self {
+            address: address.to_owned(),
+            username: username.to_owned(),
+            client: Client::builder()
+                .keep_alive(true)
+                .http1_writev(false) // always flatten so we send fewer packets
+                .retry_canceled_requests(true)
+                .set_host(true)
+                //.gzip(true)
+                //.timeout(Duration::from_secs(30))
+                .build_http(),
+        })
+    }
+
+    fn light_state_for_value(value: &str) -> Fallible<JsonValue> {
+        if value == "none" {
+            return Ok(object! {"on" => false});
         }
-        Ok(())
+        let color = Color::parse(value)?;
+        let mut obj = match color {
+            Color::Mired(Mired { color_temp: ct }) => object! {"ct" => ct},
+            Color::RGB(rgb) => {
+                let bhs = BHS::from_rgb(&rgb)?;
+                object! {"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
+            }
+            Color::BHS(BHS {
+                brightness,
+                hue,
+                saturation,
+            }) => object! {"bri" => brightness, "hue" => hue, "sat" => saturation},
+        };
+        obj["on"] = true.into();
+        // FIXME: support transition time
+        obj["transitiontime"] = 10.into();
+        Ok(obj)
     }
-}
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use yggdrasil::TreeBuilder;
-
-    #[test]
-    fn test_new_sink() -> Fallible<()> {
-        let tree = TreeBuilder::empty();
-        let _hue = Hue::new(&tree);
-        Ok(())
+    fn url(&self, path: &str) -> Fallible<Uri> {
+        let path = format!("/api/{}{}", self.username, path);
+        Ok(Uri::builder()
+            .scheme("http")
+            .authority(self.address.as_str())
+            .path_and_query(path.as_str())
+            .build()?)
     }
 
-    #[test]
-    fn test_light_state() -> Fallible<()> {
-        assert_eq!(Hub::light_state_for_value("none")?, object! {"on" => false});
-        assert_eq!(
-            Hub::light_state_for_value("mired(40)")?,
-            object! {"on" => true, "ct" => 40, "transitiontime" => 10}
-        );
-        Ok(())
+    async fn read_body(mut resp: Response<Body>) -> Fallible<String> {
+        let mut data = BytesMut::new();
+        while !resp.body().is_end_stream() {
+            match resp.body_mut().data().await {
+                None => break,
+                Some(result) => data.extend_from_slice(&result?.slice(..)),
+            }
+        }
+        Ok(String::from_utf8_lossy(data.as_ref()).to_string())
+    }
+
+    async fn get(&self, path: &str) -> Fallible<String> {
+        let url = self.url(path)?;
+        trace!("GET {}", url);
+        let body = Self::read_body(self.client.get(url).await?).await?;
+        Ok(body)
+    }
+
+    async fn post(&self, path: &str, data: String) -> Fallible<JsonValue> {
+        let url = self.url(path)?;
+        trace!("POST {} -> {}", url, data);
+        let req = Request::builder()
+            .method("POST")
+            .uri(url)
+            .body(Body::from(data))?;
+        let body = Self::read_body(self.client.request(req).await?).await?;
+        Ok(parse(&body)?)
+    }
+
+    async fn put(&self, path: &str, data: String) -> Fallible<JsonValue> {
+        let url = self.url(path)?;
+        trace!("PUT {} -> {}", url, data);
+        let req = Request::builder()
+            .method("PUT")
+            .uri(url)
+            .body(Body::from(data))?;
+        let body = Self::read_body(self.client.request(req).await?).await?;
+        Ok(parse(&body)?)
     }
 }
