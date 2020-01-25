@@ -92,13 +92,9 @@ impl LegacyMcu {
             info!("LegacyMCU listening on {}", addr);
             spawn(Server::bind(&addr).serve(make_svc));
 
-            loop {
-                if let Some(message) = mailbox_receiver.recv().await {
-                    match message {
-                        LegacyMcuProtocol::Finish => mailbox_receiver.close(),
-                    }
-                } else {
-                    break;
+            while let Some(message) = mailbox_receiver.recv().await {
+                match message {
+                    LegacyMcuProtocol::Finish => mailbox_receiver.close(),
                 }
             }
 

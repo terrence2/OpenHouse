@@ -7,7 +7,7 @@ use tokio::{
     sync::{mpsc, mpsc::Receiver, oneshot},
     task::{spawn, JoinHandle},
 };
-use tracing::{error, trace};
+use tracing::error;
 use yggdrasil::{ConcretePath, TreeBuilder, Tree, Value};
 
 #[derive(Debug)]
@@ -23,15 +23,11 @@ impl TreeServer {
         let task = spawn(async move {
             let mut tree = TreeBuilder::default().build_from_file(&filename)?;
 
-            loop {
-                if let Some(message) = mailbox_receiver.recv().await {
-                    let result = Self::handle_message(message, &mut mailbox_receiver, &mut tree);
-                    if let Err(e) = result {
-                        error!("Error: {}", e);
-                        error!("{}", e.backtrace());
-                    }
-                } else {
-                    break;
+            while let Some(message) = mailbox_receiver.recv().await {
+                let result = Self::handle_message(message, &mut mailbox_receiver, &mut tree);
+                if let Err(e) = result {
+                    error!("Error: {}", e);
+                    error!("{}", e.backtrace());
                 }
             }
 

@@ -39,17 +39,13 @@ impl HueServer {
 
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
-            loop {
-                if let Some(message) = mailbox_receiver.recv().await {
-                    match message {
-                        HueServerProtocol::ValuesUpdated(values) => {
-                            trace!("hue system handling {} updates", values.len());
-                            bridge.handle_values_updated(values).await?;
-                        }
-                        HueServerProtocol::Finish => mailbox_receiver.close(),
+            while let Some(message) = mailbox_receiver.recv().await {
+                match message {
+                    HueServerProtocol::ValuesUpdated(values) => {
+                        trace!("hue system handling {} updates", values.len());
+                        bridge.handle_values_updated(values).await?;
                     }
-                } else {
-                    break;
+                    HueServerProtocol::Finish => mailbox_receiver.close(),
                 }
             }
             Ok(())

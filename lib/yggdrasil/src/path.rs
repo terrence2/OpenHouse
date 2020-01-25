@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::tree::Tree;
 use failure::{bail, ensure, Error, Fallible};
-use std::{string::ToString, fmt, ops::Div, str::FromStr};
+use std::{fmt, ops::Div, str::FromStr};
 use tracing::trace;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

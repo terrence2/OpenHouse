@@ -151,8 +151,7 @@ impl ClockServer {
         let task = spawn(async move {
             let mut mailbox_recv = Box::pin(mailbox_receiver.recv());
             loop {
-                let foo = select(delay_for(Duration::from_secs(1)), mailbox_recv).await;
-                match foo {
+                match select(delay_for(Duration::from_secs(1)), mailbox_recv).await {
                     Either::Right((maybe_message, _delay)) => {
                         if let Some(message) = maybe_message {
                             match message {

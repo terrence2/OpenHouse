@@ -2,14 +2,11 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::oh::HueMailbox;
-use chrono::{DateTime, Datelike, Local, Timelike};
-use failure::{bail, Fallible};
-use futures::future::{select, Either};
+use failure::Fallible;
 use std::{collections::HashMap};
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
-    time::{delay_for, Duration},
 };
 use tracing::trace;
 use yggdrasil::{ConcretePath, Value};
@@ -23,19 +20,15 @@ impl UpdateServer {
     pub async fn launch(mut hue: HueMailbox) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
-            loop {
-                if let Some(message) = mailbox_receiver.recv().await {
-                    match message {
-                        UpdateServerProtocol::ApplyUpdates(updates) => {
-                            trace!("updating sinks with {:?}", updates);
-                            if let Some(values) = updates.get("hue") {
-                                hue.values_updated(values).await?;
-                            }
+            while let Some(message) = mailbox_receiver.recv().await {
+                match message {
+                    UpdateServerProtocol::ApplyUpdates(updates) => {
+                        trace!("updating sinks with {:?}", updates);
+                        if let Some(values) = updates.get("hue") {
+                            hue.values_updated(values).await?;
                         }
-                        UpdateServerProtocol::Finish => mailbox_receiver.close(),
                     }
-                } else {
-                    break;
+                    UpdateServerProtocol::Finish => mailbox_receiver.close(),
                 }
             }
             Ok(())
