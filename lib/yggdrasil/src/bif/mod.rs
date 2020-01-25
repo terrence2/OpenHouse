@@ -26,6 +26,6 @@ impl Clone for Box<dyn NativeFunc + Send + Sync> {
 
 impl fmt::Debug for Box<dyn NativeFunc + Send + Sync> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TEST")
+        write!(f, "<Unknown NativeFunc>")
     }
 }

@@ -4,7 +4,7 @@
 mod oh;
 
 use failure::Fallible;
-use oh::{HueSystem, LegacyMcu, TreeServer};
+use oh::{ClockServer, HueServer, LegacyMcu, TreeServer, UpdateServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::signal;
@@ -49,19 +49,25 @@ async fn main() -> Fallible<()> {
     tracing::subscriber::set_global_default(subscriber)?; //.expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
-    let hue_system = HueSystem::launch(tree_server.mailbox()).await?;
+    let hue_server = HueServer::launch(tree_server.mailbox()).await?;
+    let update_server = UpdateServer::launch(hue_server.mailbox()).await?;
+    let clock_server = ClockServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let legacy_mcu =
-        LegacyMcu::launch(host, port, hue_system.mailbox(), tree_server.mailbox()).await?;
+        LegacyMcu::launch(host, port, update_server.mailbox(), tree_server.mailbox()).await?;
 
     signal::ctrl_c().await?;
     info!("ctrl-c received, shutting down cleanly");
 
     tree_server.mailbox().finish().await?;
+    clock_server.mailbox().finish().await?;
     legacy_mcu.mailbox().finish().await?;
-    hue_system.mailbox().finish().await?;
+    update_server.mailbox().finish().await?;
+    hue_server.mailbox().finish().await?;
 
+    clock_server.join().await?;
     legacy_mcu.join().await?;
-    hue_system.join().await?;
+    hue_server.join().await?;
+    update_server.join().await?;
     tree_server.join().await?;
 
     Ok(())

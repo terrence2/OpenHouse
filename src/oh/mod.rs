@@ -7,8 +7,10 @@ mod hue;
 mod json_helpers;
 mod legacy_mcu;
 mod tree_server;
+mod update;
 
-//pub use self::clock::{Clock, TickWorker};
-pub use self::hue::{HueSystem, HueSystemMailbox};
+pub use self::clock::{ClockMailbox, ClockServer};
+pub use self::hue::{HueMailbox, HueServer};
 pub use self::legacy_mcu::LegacyMcu;
 pub use self::tree_server::{TreeMailbox, TreeServer};
+pub use self::update::{UpdateMailbox, UpdateServer};

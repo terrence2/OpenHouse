@@ -209,8 +209,11 @@ impl NodeRef {
     }
 
     pub fn lookup_dynamic_path(&self, parts: &[PathComponent], tree: &Tree) -> Fallible<NodeRef> {
+        let span = trace_span!("lookup", "{}", self.path_str());
+        let _ = span.enter();
+
         trace!(
-            "Node::lookup_dynamic_path @ {}, looking up {:?}",
+            "lookup_dynamic @ {}, remainder: {:?}",
             self.path_str(),
             parts
         );
@@ -532,6 +535,9 @@ impl NodeRef {
     }
 
     pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
+        let span = trace_span!("compute", "{}", self.path_str());
+        let _ = span.enter();
+
         // FIXME: we need to make this entire path mut, so that we can write back the
         // FIXME: computed entries as we compute them. For now, we'll be re-computing
         // FIXME: intermediate nodes. Note: The cache *is* populated for source nodes
@@ -547,7 +553,7 @@ impl NodeRef {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(_, _)) => {
-                bail!("computing value of a source node; should have been cached by handle_event");
+                tree.lookup_path(&(self.path() / "default"))?.compute(tree)
             }
         }
     }

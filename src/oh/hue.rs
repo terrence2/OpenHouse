@@ -22,12 +22,12 @@ use tokio::{
 use tracing::{info, trace};
 use yggdrasil::{ConcretePath, Value};
 
-pub struct HueSystem {
+pub struct HueServer {
     task: JoinHandle<Fallible<()>>,
-    mailbox: HueSystemMailbox,
+    mailbox: HueMailbox,
 }
 
-impl HueSystem {
+impl HueServer {
     pub async fn launch(mut tree: TreeMailbox) -> Fallible<Self> {
         let mut bridge_paths = tree.find_sinks("hue-bridge").await?;
         ensure!(
@@ -39,22 +39,20 @@ impl HueSystem {
 
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
-            loop {
-                if let Some(message) = mailbox_receiver.recv().await {
-                    match message {
-                        HueSystemProtocol::ValuesUpdated(values) => {
-                            trace!("hue system handling {} updates", values.len());
-                            bridge.handle_values_updated(values).await?;
-                        }
-                        HueSystemProtocol::Finish => break,
+            while let Some(message) = mailbox_receiver.recv().await {
+                match message {
+                    HueServerProtocol::ValuesUpdated(values) => {
+                        trace!("hue system handling {} updates", values.len());
+                        bridge.handle_values_updated(values).await?;
                     }
+                    HueServerProtocol::Finish => mailbox_receiver.close(),
                 }
             }
             Ok(())
         });
         Ok(Self {
             task,
-            mailbox: HueSystemMailbox { mailbox },
+            mailbox: HueMailbox { mailbox },
         })
     }
 
@@ -63,31 +61,31 @@ impl HueSystem {
         Ok(())
     }
 
-    pub fn mailbox(&self) -> HueSystemMailbox {
+    pub fn mailbox(&self) -> HueMailbox {
         self.mailbox.clone()
     }
 }
 
 #[derive(Debug)]
-enum HueSystemProtocol {
+enum HueServerProtocol {
     ValuesUpdated(Vec<(ConcretePath, Value)>),
     Finish,
 }
 
 #[derive(Clone, Debug)]
-pub struct HueSystemMailbox {
-    mailbox: Sender<HueSystemProtocol>,
+pub struct HueMailbox {
+    mailbox: Sender<HueServerProtocol>,
 }
 
-impl HueSystemMailbox {
+impl HueMailbox {
     pub async fn finish(&mut self) -> Fallible<()> {
-        self.mailbox.send(HueSystemProtocol::Finish).await?;
+        self.mailbox.send(HueServerProtocol::Finish).await?;
         Ok(())
     }
 
     pub async fn values_updated(&mut self, values: &[(ConcretePath, Value)]) -> Fallible<()> {
         self.mailbox
-            .send(HueSystemProtocol::ValuesUpdated(values.to_vec()))
+            .send(HueServerProtocol::ValuesUpdated(values.to_vec()))
             .await?;
         Ok(())
     }
