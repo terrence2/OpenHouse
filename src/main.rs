@@ -4,7 +4,7 @@
 mod oh;
 
 use failure::Fallible;
-use oh::{ClockServer, HueServer, LegacyMcu, TreeServer};
+use oh::{UpdateServer, ClockServer, HueServer, LegacyMcu, TreeServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::signal;
@@ -50,9 +50,10 @@ async fn main() -> Fallible<()> {
 
     let tree_server = TreeServer::launch(&config).await?;
     let hue_server = HueServer::launch(tree_server.mailbox()).await?;
-    let clock_server = ClockServer::launch(tree_server.mailbox()).await?;
+    let update_server = UpdateServer::launch(hue_server.mailbox()).await?;
+    let clock_server = ClockServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let legacy_mcu =
-        LegacyMcu::launch(host, port, hue_server.mailbox(), tree_server.mailbox()).await?;
+        LegacyMcu::launch(host, port, update_server.mailbox(), tree_server.mailbox()).await?;
 
     signal::ctrl_c().await?;
     info!("ctrl-c received, shutting down cleanly");
@@ -60,11 +61,13 @@ async fn main() -> Fallible<()> {
     tree_server.mailbox().finish().await?;
     clock_server.mailbox().finish().await?;
     legacy_mcu.mailbox().finish().await?;
+    update_server.mailbox().finish().await?;
     hue_server.mailbox().finish().await?;
 
     clock_server.join().await?;
     legacy_mcu.join().await?;
     hue_server.join().await?;
+    update_server.join().await?;
     tree_server.join().await?;
 
     Ok(())

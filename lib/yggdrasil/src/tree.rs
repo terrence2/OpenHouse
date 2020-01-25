@@ -220,9 +220,7 @@ impl NodeRef {
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
             PathComponent::Lookup(p) => {
-                let rv = tree.lookup_dynamic_path(p)?.compute(tree);
-                println!("rv: {:?}", rv);
-                rv?.as_path_component()?
+                tree.lookup_dynamic_path(p)?.compute(tree)?.as_path_component()?
             }
         };
         if let Some(child) = self.child_at(&child_name) {

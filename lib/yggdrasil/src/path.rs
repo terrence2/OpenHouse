@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::tree::Tree;
 use failure::{bail, ensure, Error, Fallible};
-use std::{fmt, ops::Div, str::FromStr};
+use std::{string::ToString, fmt, ops::Div, str::FromStr};
 use tracing::trace;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -289,9 +289,6 @@ impl ConcretePath {
         &self.components[self.components.len() - 1]
     }
 
-    pub fn to_string(&self) -> String {
-        "/".to_owned() + &self.components.join("/")
-    }
 }
 
 impl fmt::Display for ConcretePath {

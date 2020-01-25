@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::oh::{HueMailbox, TreeMailbox};
+use crate::oh::{UpdateMailbox, TreeMailbox};
 use bytes::BytesMut;
 use failure::Fallible;
 use hyper::{
@@ -41,7 +41,7 @@ impl LegacyMcu {
     pub async fn launch(
         host: IpAddr,
         port: u16,
-        hue: HueMailbox,
+        update: UpdateMailbox,
         mut tree: TreeMailbox,
     ) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
@@ -58,7 +58,7 @@ impl LegacyMcu {
             }
 
             let make_svc = make_service_fn(move |socket: &AddrStream| {
-                let hue = hue.clone();
+                let update = update.clone();
                 let tree = tree.clone();
                 let remote_addr = socket.remote_addr();
                 let maybe_path = path_map.get(&remote_addr.ip()).cloned();
@@ -67,7 +67,7 @@ impl LegacyMcu {
                 }
                 async move {
                     Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
-                        let mut hue = hue.clone();
+                        let mut update = update.clone();
                         let mut tree = tree.clone();
                         let maybe_path = maybe_path.clone();
                         async move {
@@ -78,15 +78,7 @@ impl LegacyMcu {
                                     tree.handle_event(&path, Value::from_string(command)).await
                                 {
                                     trace!("updates available for {} systems", updates.len());
-                                    if let Some(hue_updates) = updates.get("hue") {
-                                        trace!(
-                                            "sending {} updates to hue system",
-                                            hue_updates.len()
-                                        );
-                                        hue.values_updated(&hue_updates)
-                                            .await
-                                            .expect("to send a message to the hue system");
-                                    }
+                                    update.apply_updates(updates).await.expect("to send updates");
                                 }
                             } else {
                                 warn!("Skipping LegacyMCU request: {:?}", req);

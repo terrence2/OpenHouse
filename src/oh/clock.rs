@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::oh::TreeMailbox;
+use crate::oh::{UpdateMailbox, TreeMailbox};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, Fallible};
 use futures::future::{select, Either};
@@ -135,7 +135,7 @@ pub struct ClockServer {
 }
 
 impl ClockServer {
-    pub async fn launch(mut tree: TreeMailbox) -> Fallible<Self> {
+    pub async fn launch(mut update: UpdateMailbox, mut tree: TreeMailbox) -> Fallible<Self> {
         let mut clock_map = HashMap::new();
         for path in &tree.find_sources("clock").await? {
             let interval = tree.compute(&(path / "interval")).await?.as_string()?;
@@ -175,7 +175,7 @@ impl ClockServer {
                                 trace!("{} timed out", path.to_string());
                                 let updates =
                                     tree.handle_event(path, Value::from_integer(v)).await?;
-                                println!("updates: {:?}", updates);
+                                update.apply_updates(updates).await?;
                             }
                         }
                     }

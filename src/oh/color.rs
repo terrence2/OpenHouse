@@ -50,7 +50,6 @@ impl BHS {
             saturation: (saturation * 255.0) as u8,
         };
 
-        println!("{:?} => {:?}", rgb, bhs);
         Ok(bhs)
     }
 }

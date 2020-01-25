@@ -204,7 +204,7 @@ impl LineTokenizer {
 
     fn tokenize_template(&mut self) -> Fallible<Token> {
         self.skip_space();
-        let name = self.tokenize_identifier()?;
+        let _name = self.tokenize_identifier()?;
         self.skip_space();
         ensure!(
             self.peek(0)? == '[',
@@ -212,16 +212,13 @@ impl LineTokenizer {
         );
         self.offset += 1;
         let start_offset = self.offset;
-        println!("In template: {}, {}", name, start_offset);
         while self.peek(0)? != ']' {
-            println!("skip: {}", self.peek(0)?);
             self.offset += 1;
         }
         let template_chars = &self.chars[start_offset..self.offset];
         let template_str = template_chars.iter().collect::<String>();
         self.offset += 1;
-        let template_tokens = TreeTokenizer::tokenize(&template_str)?;
-        println!("template name: {} => {:?}", name, template_tokens);
+        let _template_tokens = TreeTokenizer::tokenize(&template_str)?;
         Ok(Token::Template)
     }
 

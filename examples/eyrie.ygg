@@ -75,23 +75,23 @@
 
 palette
     hue
-        on        <- "bhs(255, 34495, 255)"
-        low       <- "bhs(64, 34495, 255)"
+        on        <- "bhs(254, 34495, 254)"
+        low       <- "bhs(64, 34495, 254)"
         moonlight <- "none"
         default   <- "rgb(128, 0, 0)"
-        #default   <- "bhs(255, " + str(/sys/time/minutes/hourly * 1092) + ", 255)"
+        #default   <- "bhs(254, " + str(/sys/time/minutes/hourly * 1092) + ", 254)"
         off       <- "none"
 
     hue-highlight
         on        <- "none"
         low       <- "none"
-        moonlight <- "bhs(255, 47000, 255)"
-        default   <- "rgb(128, " + str(/meta/minute-tic * 1092) + ", 0)"
+        moonlight <- "bhs(254, 47000, 254)"
+        default   <- "bhs(254, " + str(/meta/minute-tic * 1092) + ", 254)"
         off       <- "none"
 
     hue-stream
-        on        <- "bhs(255, 34495, 255)"
-        low       <- "bhs(64, 34495, 255)"
+        on        <- "bhs(254, 34495, 254)"
+        low       <- "bhs(64, 34495, 254)"
         moonlight <- "none"
         default   <- "rgb(128, 0, 0)"
         off       <- "none"
@@ -128,7 +128,7 @@ rooms
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
-        diningroom-shelves $hue @11'x0' <-/palette/hue-stream/{./color}
+        office-stream   $hue @11'x0' <-/palette/hue-highlight/{./color}
 
     hall @10'x10' <>7'x6'
         closet @6'x3' <>1'x3'
