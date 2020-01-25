@@ -4,12 +4,13 @@
 use crate::{
     bif::NativeFunc,
     graph::Graph,
+    parser::TreeParser,
     path::{ConcretePath, ScriptPath},
     tokenizer::Token,
     tree::{NodeRef, Tree},
     value::Value,
 };
-use failure::{ensure, err_msg, Fallible};
+use failure::{bail, ensure, err_msg, Fallible};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use tracing::trace;
@@ -128,9 +129,89 @@ enum CompilationPhase {
     Ready,
 }
 
+#[derive(Debug)]
+struct IfStatement {
+    cases: Vec<(Option<Expr>, Script)>,
+}
+
+impl IfStatement {
+    fn new(cases: Vec<(Option<Expr>, Script)>) -> Self {
+        Self { cases }
+    }
+
+    pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
+        for (expr, stmt) in &self.cases {
+            if let Some(e) = expr {
+                let cond = e.compute(tree)?;
+                ensure!(cond.is_boolean(), "if statement conditions must be boolean");
+                if cond == Value::from_boolean(true) {
+                    return Ok(stmt.suite.compute(tree)?);
+                }
+            } else {
+                return Ok(stmt.compute(tree)?);
+            }
+        }
+        bail!("reached end of if conditions without at statement")
+    }
+
+    pub fn find_all_possible_inputs(
+        &self,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Fallible<()> {
+        for (expr, stmt) in &self.cases {
+            if let Some(e) = expr {
+                e.find_all_possible_inputs(tree, out)?;
+            }
+            stmt.suite.find_all_possible_inputs(tree, out)?;
+        }
+        Ok(())
+    }
+
+    fn mark_ready(&mut self) {
+        for (_, stmt) in self.cases.iter_mut() {
+            stmt.mark_ready();
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Stmt {
+    ExprStmt(Expr),
+    IfStmt(IfStatement),
+}
+
+impl Stmt {
+    pub fn compute(&self, tree: &Tree) -> Fallible<Value> {
+        match self {
+            Self::ExprStmt(e) => e.compute(tree),
+            Self::IfStmt(s) => s.compute(tree),
+        }
+    }
+
+    pub fn find_all_possible_inputs(
+        &self,
+        tree: &Tree,
+        out: &mut Vec<ConcretePath>,
+    ) -> Fallible<()> {
+        match self {
+            Self::ExprStmt(e) => e.find_all_possible_inputs(tree, out),
+            Self::IfStmt(s) => s.find_all_possible_inputs(tree, out),
+        }
+    }
+
+    fn mark_ready(&mut self) {
+        match self {
+            Self::ExprStmt(_) => {},
+            Self::IfStmt(s) => s.mark_ready(),
+        }
+    }
+}
+
 /// The code embedded under a comes-from (<- or <-\) operator in the tree.
+#[derive(Debug)]
 pub struct Script {
-    suite: Expr,
+    suite: Stmt,
     phase: CompilationPhase,
     input_map: HashMap<ConcretePath, NodeRef>,
 }
@@ -144,7 +225,96 @@ impl Script {
         let mut parser = ExprParser::from_tokens(path, tokens, nifs);
         let expr = parser.eparser()?;
         let script = Script {
-            suite: expr,
+            suite: Stmt::ExprStmt(expr),
+            phase: CompilationPhase::NeedInputMap,
+            input_map: HashMap::new(),
+        };
+        Ok(script)
+    }
+
+    pub fn block_from_tokens(
+        path: String,
+        tokens: &[Token],
+        nifs: &HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
+    ) -> Fallible<Self> {
+        match tokens[0].maybe_name() {
+            Some("if") => Self::if_from_tokens(path, tokens, nifs),
+            _ => {
+                let mut parser = ExprParser::from_tokens(path, tokens, nifs);
+                let expr = parser.eparser()?;
+                let script = Script {
+                    suite: Stmt::ExprStmt(expr),
+                    phase: CompilationPhase::NeedInputMap,
+                    input_map: HashMap::new(),
+                };
+                Ok(script)
+            }
+        }
+    }
+
+    fn find_token(tokens: &[Token], end_token: &Token) -> Fallible<usize> {
+        for (i, token) in tokens.iter().enumerate() {
+            if token == end_token {
+                return Ok(i);
+            }
+        }
+        bail!("did not find requested token: {:?}", end_token)
+    }
+
+    fn find_start_of_block(tokens: &[Token]) -> Fallible<usize> {
+        Self::find_token(tokens, &Token::StartOfBlock)
+    }
+
+    fn if_from_tokens(
+        path: String,
+        tokens: &[Token],
+        nifs: &HashMap<String, Box<dyn NativeFunc + Send + Sync>>,
+    ) -> Fallible<Self> {
+        let mut cases: Vec<(Option<Expr>, Script)> = Vec::new();
+
+        // if and block
+        let cond_end = Self::find_start_of_block(tokens)?;
+        let condition_tokens = &tokens[1..cond_end];
+        let if_condition = ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
+        ensure!(tokens[cond_end + 0] == Token::StartOfBlock, "expect SOB");
+        ensure!(tokens[cond_end + 1] == Token::Newline, "expect newline");
+        ensure!(tokens[cond_end + 2] == Token::Indent, "expect indent");
+        let cond_end = cond_end + 3;
+        let block_end = cond_end + TreeParser::find_matching_dedent(&tokens[cond_end..]);
+        let block_tokens = &tokens[cond_end..block_end];
+        let block_script = Script::block_from_tokens(path.clone(), block_tokens, nifs)?;
+        cases.push((Some(if_condition), block_script));
+
+        // Elifs and blocks
+        let mut offset = block_end;
+        while offset < tokens.len() && tokens[offset].maybe_name() == Some("elif") {
+            let cond_end = offset + 1 + Self::find_start_of_block(&tokens[offset + 1..])?;
+            let condition_tokens = &tokens[offset + 1..cond_end];
+            let if_condition = ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
+            ensure!(tokens[cond_end + 0] == Token::StartOfBlock, "expect SOB");
+            ensure!(tokens[cond_end + 1] == Token::Newline, "expect newline");
+            ensure!(tokens[cond_end + 2] == Token::Indent, "expect indent");
+            let cond_end = cond_end + 3;
+            let block_end = cond_end + TreeParser::find_matching_dedent(&tokens[cond_end..]);
+            let block_tokens = &tokens[cond_end..block_end];
+            let block_script = Script::block_from_tokens(path.clone(), block_tokens, nifs)?;
+            cases.push((Some(if_condition), block_script));
+            offset = block_end;
+        }
+
+        ensure!(tokens[offset].maybe_name() == Some("else"), "if statements must have an else block");
+        offset += 1;
+        ensure!(tokens[offset + 0] == Token::StartOfBlock, "expect SOB");
+        ensure!(tokens[offset + 1] == Token::Newline, "expect newline");
+        ensure!(tokens[offset + 2] == Token::Indent, "expect indent");
+        offset += 3;
+        let block_end = offset + TreeParser::find_matching_dedent(&tokens[offset..]);
+        let block_tokens = &tokens[offset..block_end];
+        let block_script = Script::block_from_tokens(path.clone(), block_tokens, nifs)?;
+        cases.push((None, block_script));
+
+        let script = Script {
+            suite: Stmt::IfStmt(IfStatement::new(cases)),
             phase: CompilationPhase::NeedInputMap,
             input_map: HashMap::new(),
         };
@@ -168,8 +338,13 @@ impl Script {
     pub fn install_input_map(&mut self, input_map: HashMap<ConcretePath, NodeRef>) -> Fallible<()> {
         assert_eq!(self.phase, CompilationPhase::NeedInputMap);
         self.input_map = input_map;
-        self.phase = CompilationPhase::Ready;
+        self.suite.mark_ready();
+        self.mark_ready();
         Ok(())
+    }
+
+    fn mark_ready(&mut self) {
+        self.phase = CompilationPhase::Ready;
     }
 
     pub fn populate_flow_graph(&self, tgt_node: &NodeRef, graph: &mut Graph) -> Fallible<()> {

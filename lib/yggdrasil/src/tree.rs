@@ -179,7 +179,7 @@ impl Tree {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NodeRef(Arc<RwLock<Node>>);
 
 impl NodeRef {
@@ -306,6 +306,7 @@ impl NodeRef {
     }
 
     pub(super) fn link_and_validate_inputs(&self, tree: &Tree) -> Fallible<()> {
+        let path = self.path_str();
         let span = trace_span!("link", "{}", self.path_str());
         let _ = span.enter();
         if self.0.read().unwrap().linked_and_validated {
@@ -319,6 +320,7 @@ impl NodeRef {
         if self.has_script() {
             // Collect input map while borrowed read-only, so that we can find children.
             let data = if let Some(NodeInput::Script(ref script)) = self.0.read().unwrap().input {
+                trace!("build input map @ {}", path);
                 script.build_input_map(tree)?
             } else {
                 unreachable!();
@@ -326,6 +328,7 @@ impl NodeRef {
 
             // Re-borrow read-write to install the input map we built above.
             if let Some(NodeInput::Script(ref mut script)) = self.0.write().unwrap().input {
+                trace!("install input map @ {}", path);
                 script.install_input_map(data)?;
             }
         }
@@ -600,11 +603,13 @@ impl NodeRef {
     }
 }
 
+#[derive(Debug)]
 enum NodeInput {
     Source(String, Vec<NodeRef>),
     Script(Script),
 }
 
+#[derive(Debug)]
 pub struct Node {
     // The tree structure.
     name: String,

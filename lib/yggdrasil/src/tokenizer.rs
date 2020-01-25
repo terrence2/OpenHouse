@@ -11,7 +11,8 @@ pub enum Token {
     Newline,
     Indent,
     Dedent,
-    Template, // template name [...]
+    Template,     // template name [...]
+    StartOfBlock, // :
 
     // Sigil-delimited
     Location(Dimension2), // @
@@ -56,6 +57,13 @@ impl Token {
             Token::PathTerm(s) => Ok(s),
             _ => bail!("tokenize error: expected a path token"),
         }
+    }
+
+    pub(crate) fn maybe_name(&self) -> Option<&str> {
+        if let Token::NameTerm(s) = self {
+            return Some(s.as_str());
+        }
+        None
     }
 }
 
@@ -137,9 +145,8 @@ impl LineTokenizer {
             '<' => self.tokenize_comes_from_or_less_than_or_size(),
             '>' => self.tokenize_greater_than(),
             '|' | '&' => self.tokenize_operator_2(),
-            //'=' => tokens.push(self.tokenize_equals()?),
             '-' => self.tokenize_subtract_or_number(),
-            ':' => self.tokenize_latch(),
+            ':' => self.tokenize_start_of_block_or_latch(),
             '(' => {
                 self.offset += 1;
                 Ok(Token::LeftParen)
@@ -159,6 +166,11 @@ impl LineTokenizer {
             '%' => {
                 self.offset += 1;
                 Ok(Token::Modulo)
+            }
+            '=' => {
+                ensure!(self.peek(1)? == '=', "expected double == sign");
+                self.offset += 2;
+                Ok(Token::Equals)
             }
             _ => bail!(
                 "tokenize error: expected a sigil or name, found: {}",
@@ -232,11 +244,15 @@ impl LineTokenizer {
         self.tokenize_int_or_float()
     }
 
-    fn tokenize_latch(&mut self) -> Fallible<Token> {
-        ensure!(self.peek(0)? == ':', "Latch should be ::");
-        ensure!(self.peek(1)? == ':', "Latch should be ::");
-        self.offset += 2;
-        Ok(Token::Latch)
+    fn tokenize_start_of_block_or_latch(&mut self) -> Fallible<Token> {
+        if let Some(c) = self.maybe_peek(1) {
+            if c == ':' {
+                self.offset += 2;
+                return Ok(Token::Latch);
+            }
+        }
+        self.offset += 1;
+        Ok(Token::StartOfBlock)
     }
 
     fn tokenize_int_or_float(&mut self) -> Fallible<Token> {

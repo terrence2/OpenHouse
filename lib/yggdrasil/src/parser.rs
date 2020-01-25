@@ -167,23 +167,25 @@ impl<'a> TreeParser<'a> {
         bail!("Did not find a matching token for: {:?}", tok)
     }
 
-    fn find_next_matching_dedent(&self) -> Fallible<usize> {
+    fn find_next_matching_dedent(&self) -> usize {
+        self.position + Self::find_matching_dedent(&self.tokens[self.position..])
+    }
+
+    pub(super) fn find_matching_dedent(tokens: &[Token]) -> usize {
         let mut level = 0;
-        let mut i = self.position;
-        while i < self.tokens.len() {
-            match &self.tokens[i] {
+        for (i, token) in tokens.iter().enumerate() {
+            match token {
                 Token::Indent => level += 1,
                 Token::Dedent => {
                     if level == 0 {
-                        return Ok(i + 1);
+                        return i + 1;
                     }
                     level -= 1;
                 }
                 _ => {}
             }
-            i += 1;
         }
-        Ok(i)
+        tokens.len()
     }
 
     fn consume_sigil(&mut self, node: &NodeRef) -> Fallible<()> {
@@ -206,12 +208,10 @@ impl<'a> TreeParser<'a> {
             Token::ComesFromBlock => {
                 ensure!(self.pop()? == Token::Newline, "expected newline after <-\\");
                 ensure!(self.pop()? == Token::Indent, "expected indent after <-\\");
-                let end = self.find_next_matching_dedent()?;
-                let s = Script::inline_from_tokens(
-                    node.path_str(),
-                    &self.tokens[self.position..end],
-                    self.nifs,
-                )?;
+                let end = self.find_next_matching_dedent();
+                let block_tokens = &self.tokens[self.position..end];
+                trace!("comes-from-block tokens: {:?}", block_tokens);
+                let s = Script::block_from_tokens(node.path_str(), block_tokens, self.nifs)?;
                 self.position = end;
                 // Since this is parsed as a sigil, we expect to end with a newline, but since
                 // we were indented the Dedent happened after the closing Newline, so inject
@@ -678,17 +678,28 @@ z
         Ok(())
     }
 
-    //     #[test]
-    //     fn test_parse_if_statement() -> Fallible<()> {
-    //         let s = r#"
-    // foo <- true
-    // bar <- false
-    // quux <- if /foo
-
-    // "#;
-    //         let tree = TreeBuilder::default().build_from_str(s)?;
-    //         Ok(())
-    //     }
+    #[test]
+    fn test_parse_if_statement() -> Fallible<()> {
+        let s = r#"
+foo <- true
+bar <- false
+quux <-\
+    if /foo:
+        1
+    elif /bar:
+        2
+    elif /foo && /bar:
+        3
+    else:
+        4
+"#;
+        let tree = TreeBuilder::default().build_from_str(s)?;
+        assert_eq!(
+            tree.lookup("/quux")?.compute(&tree)?,
+            Value::from_integer(1)
+        );
+        Ok(())
+    }
 
     //default   <- "bhs(255, " + (/time/seconds/unix % 65535) + ", 255)"
 
