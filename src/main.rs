@@ -4,7 +4,7 @@
 mod oh;
 
 use failure::Fallible;
-use oh::{UpdateServer, ClockServer, HueServer, LegacyMcu, TreeServer};
+use oh::{ClockServer, HueServer, LegacyMcu, TreeServer, UpdateServer};
 use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::signal;

@@ -13,4 +13,4 @@ pub use self::clock::{ClockMailbox, ClockServer};
 pub use self::hue::{HueMailbox, HueServer};
 pub use self::legacy_mcu::LegacyMcu;
 pub use self::tree_server::{TreeMailbox, TreeServer};
-pub use self::update::{UpdateServer, UpdateMailbox};
+pub use self::update::{UpdateMailbox, UpdateServer};

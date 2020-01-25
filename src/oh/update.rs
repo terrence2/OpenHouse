@@ -3,7 +3,7 @@
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::oh::HueMailbox;
 use failure::Fallible;
-use std::{collections::HashMap};
+use std::collections::HashMap;
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
@@ -66,8 +66,13 @@ impl UpdateMailbox {
         Ok(())
     }
 
-    pub async fn apply_updates(&mut self, updates: HashMap<String, Vec<(ConcretePath, Value)>>) -> Fallible<()> {
-        self.mailbox.send(UpdateServerProtocol::ApplyUpdates(updates)).await?;
+    pub async fn apply_updates(
+        &mut self,
+        updates: HashMap<String, Vec<(ConcretePath, Value)>>,
+    ) -> Fallible<()> {
+        self.mailbox
+            .send(UpdateServerProtocol::ApplyUpdates(updates))
+            .await?;
         Ok(())
     }
 }

@@ -1,11 +1,11 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::oh::{UpdateMailbox, TreeMailbox};
+use crate::oh::{TreeMailbox, UpdateMailbox};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, Fallible};
 use futures::future::{select, Either};
-use std::{collections::HashMap};
+use std::collections::HashMap;
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},

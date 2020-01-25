@@ -8,7 +8,7 @@ use tokio::{
     task::{spawn, JoinHandle},
 };
 use tracing::error;
-use yggdrasil::{ConcretePath, TreeBuilder, Tree, Value};
+use yggdrasil::{ConcretePath, Tree, TreeBuilder, Value};
 
 #[derive(Debug)]
 pub struct TreeServer {
@@ -40,14 +40,18 @@ impl TreeServer {
         })
     }
 
-    fn handle_message<T>(message: TreeServerProtocol, mailbox_receiver: &mut Receiver<T>, tree: &mut Tree) -> Fallible<()> {
+    fn handle_message<T>(
+        message: TreeServerProtocol,
+        mailbox_receiver: &mut Receiver<T>,
+        tree: &mut Tree,
+    ) -> Fallible<()> {
         match message {
             TreeServerProtocol::FindSources(name, tx) => {
                 tx.send(tree.find_sources(&name)).ok();
             }
             TreeServerProtocol::FindSinks(name, tx) => {
                 tx.send(tree.find_sinks(&name)).ok();
-            },
+            }
             TreeServerProtocol::Compute(path, tx) => {
                 tx.send(tree.lookup_path(&path)?.compute(&tree)?).ok();
             }

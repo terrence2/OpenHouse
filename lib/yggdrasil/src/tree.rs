@@ -219,9 +219,10 @@ impl NodeRef {
         );
         let child_name = match &parts[0] {
             PathComponent::Name(n) => n.to_owned(),
-            PathComponent::Lookup(p) => {
-                tree.lookup_dynamic_path(p)?.compute(tree)?.as_path_component()?
-            }
+            PathComponent::Lookup(p) => tree
+                .lookup_dynamic_path(p)?
+                .compute(tree)?
+                .as_path_component()?,
         };
         if let Some(child) = self.child_at(&child_name) {
             if parts.len() == 1 {

@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use crate::oh::{UpdateMailbox, TreeMailbox};
+use crate::oh::{TreeMailbox, UpdateMailbox};
 use bytes::BytesMut;
 use failure::Fallible;
 use hyper::{
@@ -78,7 +78,10 @@ impl LegacyMcu {
                                     tree.handle_event(&path, Value::from_string(command)).await
                                 {
                                     trace!("updates available for {} systems", updates.len());
-                                    update.apply_updates(updates).await.expect("to send updates");
+                                    update
+                                        .apply_updates(updates)
+                                        .await
+                                        .expect("to send updates");
                                 }
                             } else {
                                 warn!("Skipping LegacyMCU request: {:?}", req);

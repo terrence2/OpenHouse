@@ -288,7 +288,6 @@ impl ConcretePath {
         }
         &self.components[self.components.len() - 1]
     }
-
 }
 
 impl fmt::Display for ConcretePath {
