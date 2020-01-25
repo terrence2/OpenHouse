@@ -1,13 +1,18 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-/*
-use crate::oh::{DBServer, TickEvent};
-use actix::{Actor, Addr, AsyncContext, Context};
+use crate::oh::TreeMailbox;
 use chrono::{DateTime, Datelike, Local, Timelike};
 use failure::{bail, Fallible};
-use std::{collections::HashMap, time::Duration as StdDuration};
-use yggdrasil::Tree;
+use futures::future::{select, Either};
+use std::{collections::HashMap};
+use tokio::{
+    sync::mpsc::{channel, Sender},
+    task::{spawn, JoinHandle},
+    time::{delay_for, Duration},
+};
+use tracing::trace;
+use yggdrasil::Value;
 
 /**
  * Example usage:
@@ -20,6 +25,7 @@ use yggdrasil::Tree;
  *                wrap <- "yearly"
  */
 
+#[derive(Clone, Debug)]
 enum ClockInterval {
     Second,
     Minute,
@@ -45,6 +51,7 @@ impl ClockInterval {
     }
 }
 
+#[derive(Clone, Debug)]
 enum ClockWrap {
     Never,
     Yearly,
@@ -92,6 +99,7 @@ impl ClockWrap {
     }
 }
 
+#[derive(Clone, Debug)]
 struct ClockDef {
     interval: ClockInterval,
     wrap: ClockWrap,
@@ -121,61 +129,89 @@ impl ClockDef {
     }
 }
 
-pub struct Clock {
-    clocks: HashMap<String, ClockDef>,
+pub struct ClockServer {
+    task: JoinHandle<Fallible<()>>,
+    mailbox: ClockMailbox,
 }
 
-impl Clock {
-    pub fn new(tree: &Tree) -> Fallible<Self> {
-        let mut clocks = HashMap::new();
-        for path in &tree.find_sources("clock") {
-            let node = tree.lookup(path)?;
-            let interval = node.child("interval")?.compute(tree)?.as_string()?;
-            let wrap = node.child("wrap")?.compute(tree)?.as_string()?;
+impl ClockServer {
+    pub async fn launch(mut tree: TreeMailbox) -> Fallible<Self> {
+        let mut clock_map = HashMap::new();
+        for path in &tree.find_sources("clock").await? {
+            let interval = tree.compute(&(path / "interval")).await?.as_string()?;
+            let wrap = tree.compute(&(path / "wrap")).await?.as_string()?;
             let clock_def = ClockDef::new(
                 ClockInterval::from_str(&interval)?,
                 ClockWrap::from_str(&wrap)?,
             );
-            clocks.insert(path.to_owned(), clock_def);
+            clock_map.insert(path.to_owned(), clock_def);
         }
 
-        Ok(Self { clocks })
-    }
-
-    pub fn handle_tick(&mut self) -> Vec<(String, i64)> {
-        let mut out = Vec::new();
-        let now = Local::now();
-        for (path, clock) in &mut self.clocks {
-            if let Some(value) = clock.tick(&now) {
-                out.push((path.to_owned(), value));
+        let (mailbox, mut mailbox_receiver) = channel(16);
+        let task = spawn(async move {
+            let mut mailbox_recv = Box::pin(mailbox_receiver.recv());
+            loop {
+                let foo = select(delay_for(Duration::from_secs(1)), mailbox_recv).await;
+                match foo {
+                    Either::Right((maybe_message, _delay)) => {
+                        if let Some(message) = maybe_message {
+                            match message {
+                                ClockServerProtocol::Finish => {
+                                    // Note: we borrowed the mailbox above by storing the recv across the loop,
+                                    // so we can't reborrow here to close it. Luckily this system can only take
+                                    // a single Finish message, so there's not much point closing cleanly.
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    Either::Left(((), mailbox_unrecv)) => {
+                        mailbox_recv = mailbox_unrecv;
+                        let now = Local::now();
+                        for (path, clock_def) in clock_map.iter_mut() {
+                            if let Some(v) = clock_def.tick(&now) {
+                                trace!("{} timed out", path.to_string());
+                                let updates =
+                                    tree.handle_event(path, Value::from_integer(v)).await?;
+                                println!("updates: {:?}", updates);
+                            }
+                        }
+                    }
+                }
             }
-        }
-        out
-    }
-}
-
-pub struct TickWorker {
-    db_addr: Addr<DBServer>,
-}
-
-impl Actor for TickWorker {
-    type Context = Context<Self>;
-    fn started(&mut self, ctx: &mut Context<Self>) {
-        ctx.run_interval(StdDuration::from_millis(500), move |act, _| {
-            act.handle_tick()
+            Ok(())
         });
+        Ok(Self {
+            task,
+            mailbox: ClockMailbox { mailbox },
+        })
+    }
+
+    pub async fn join(self) -> Fallible<()> {
+        self.task.await??;
+        Ok(())
+    }
+
+    pub fn mailbox(&self) -> ClockMailbox {
+        self.mailbox.clone()
     }
 }
 
-impl TickWorker {
-    pub(crate) fn new(db_addr: &Addr<DBServer>) -> Self {
-        TickWorker {
-            db_addr: db_addr.to_owned(),
-        }
-    }
+#[derive(Debug)]
+enum ClockServerProtocol {
+    Finish,
+}
 
-    fn handle_tick(&self) {
-        self.db_addr.do_send(TickEvent {});
+#[derive(Clone, Debug)]
+pub struct ClockMailbox {
+    mailbox: Sender<ClockServerProtocol>,
+}
+
+impl ClockMailbox {
+    pub async fn finish(&mut self) -> Fallible<()> {
+        self.mailbox.send(ClockServerProtocol::Finish).await?;
+        Ok(())
     }
 }
-*/

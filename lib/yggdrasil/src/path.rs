@@ -288,6 +288,10 @@ impl ConcretePath {
         }
         &self.components[self.components.len() - 1]
     }
+
+    pub fn to_string(&self) -> String {
+        "/".to_owned() + &self.components.join("/")
+    }
 }
 
 impl fmt::Display for ConcretePath {

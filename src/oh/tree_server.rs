@@ -4,10 +4,11 @@
 use failure::Fallible;
 use std::{collections::HashMap, path::Path};
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, mpsc::Receiver, oneshot},
     task::{spawn, JoinHandle},
 };
-use yggdrasil::{ConcretePath, TreeBuilder, Value};
+use tracing::{error, trace};
+use yggdrasil::{ConcretePath, TreeBuilder, Tree, Value};
 
 #[derive(Debug)]
 pub struct TreeServer {
@@ -24,21 +25,13 @@ impl TreeServer {
 
             loop {
                 if let Some(message) = mailbox_receiver.recv().await {
-                    match message {
-                        TreeProtocol::FindSources(name, tx) => {
-                            tx.send(tree.find_sources(&name)).expect("nothing bad")
-                        }
-                        TreeProtocol::FindSinks(name, tx) => {
-                            tx.send(tree.find_sinks(&name)).expect("nothing bad")
-                        }
-                        TreeProtocol::Compute(path, tx) => tx
-                            .send(tree.lookup_path(&path)?.compute(&tree)?)
-                            .expect("nothing bad"),
-                        TreeProtocol::HandleEvent(path, value, tx) => tx
-                            .send(tree.handle_event(&path, value)?)
-                            .expect("nothing bad"),
-                        TreeProtocol::Finish => break,
+                    let result = Self::handle_message(message, &mut mailbox_receiver, &mut tree);
+                    if let Err(e) = result {
+                        error!("Error: {}", e);
+                        error!("{}", e.backtrace());
                     }
+                } else {
+                    break;
                 }
             }
 
@@ -49,6 +42,27 @@ impl TreeServer {
             task,
             mailbox: TreeMailbox { mailbox },
         })
+    }
+
+    fn handle_message<T>(message: TreeServerProtocol, mailbox_receiver: &mut Receiver<T>, tree: &mut Tree) -> Fallible<()> {
+        match message {
+            TreeServerProtocol::FindSources(name, tx) => {
+                tx.send(tree.find_sources(&name)).ok();
+            }
+            TreeServerProtocol::FindSinks(name, tx) => {
+                tx.send(tree.find_sinks(&name)).ok();
+            },
+            TreeServerProtocol::Compute(path, tx) => {
+                tx.send(tree.lookup_path(&path)?.compute(&tree)?).ok();
+            }
+            TreeServerProtocol::HandleEvent(path, value, tx) => {
+                tx.send(tree.handle_event(&path, value)?).ok();
+            }
+            TreeServerProtocol::Finish => {
+                mailbox_receiver.close();
+            }
+        }
+        Ok(())
     }
 
     pub async fn join(self) -> Fallible<()> {
@@ -63,11 +77,11 @@ impl TreeServer {
 
 #[derive(Debug, Clone)]
 pub struct TreeMailbox {
-    mailbox: mpsc::Sender<TreeProtocol>,
+    mailbox: mpsc::Sender<TreeServerProtocol>,
 }
 
 #[derive(Debug)]
-enum TreeProtocol {
+enum TreeServerProtocol {
     FindSources(String, oneshot::Sender<Vec<ConcretePath>>),
     FindSinks(String, oneshot::Sender<Vec<ConcretePath>>),
     Compute(ConcretePath, oneshot::Sender<Value>),
@@ -83,7 +97,7 @@ impl TreeMailbox {
     pub async fn find_sources(&mut self, name: &str) -> Fallible<Vec<ConcretePath>> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(TreeProtocol::FindSources(name.to_owned(), tx))
+            .send(TreeServerProtocol::FindSources(name.to_owned(), tx))
             .await?;
         Ok(rx.await?)
     }
@@ -91,7 +105,7 @@ impl TreeMailbox {
     pub async fn find_sinks(&mut self, name: &str) -> Fallible<Vec<ConcretePath>> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(TreeProtocol::FindSinks(name.to_owned(), tx))
+            .send(TreeServerProtocol::FindSinks(name.to_owned(), tx))
             .await?;
         Ok(rx.await?)
     }
@@ -99,7 +113,7 @@ impl TreeMailbox {
     pub async fn compute(&mut self, path: &ConcretePath) -> Fallible<Value> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(TreeProtocol::Compute(path.to_owned(), tx))
+            .send(TreeServerProtocol::Compute(path.to_owned(), tx))
             .await?;
         Ok(rx.await?)
     }
@@ -111,13 +125,13 @@ impl TreeMailbox {
     ) -> Fallible<HashMap<String, Vec<(ConcretePath, Value)>>> {
         let (tx, rx) = oneshot::channel();
         self.mailbox
-            .send(TreeProtocol::HandleEvent(path.to_owned(), event, tx))
+            .send(TreeServerProtocol::HandleEvent(path.to_owned(), event, tx))
             .await?;
         Ok(rx.await?)
     }
 
     pub async fn finish(&mut self) -> Fallible<()> {
-        self.mailbox.send(TreeProtocol::Finish).await?;
+        self.mailbox.send(TreeServerProtocol::Finish).await?;
         Ok(())
     }
 }

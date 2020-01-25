@@ -86,7 +86,7 @@ palette
         on        <- "none"
         low       <- "none"
         moonlight <- "bhs(255, 47000, 255)"
-        default   <- "rgb(128, 0, 0)"
+        default   <- "rgb(128, " + str(/meta/minute-tic * 1092) + ", 0)"
         off       <- "none"
 
     hue-stream
@@ -121,7 +121,9 @@ rooms
 
         office-lightswitch.eyrie
             ^legacy-mcu
-            ip <-"10.0.5.40"
+            ip <- "10.0.5.40"
+            default <- "default"
+
         color <-./office-lightswitch.eyrie
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
@@ -195,3 +197,8 @@ meta
         $hue-bridge
         address <- "hue-bridge.eyrie"
         username <- "MasterControlProgram"
+
+    minute-tic
+        ^clock
+        interval <- "minute"
+        wrap <- "hourly"
