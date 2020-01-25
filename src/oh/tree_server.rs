@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the GNU General Public
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
-use failure::Fallible;
+use failure::{bail, Fallible};
 use std::{collections::HashMap, path::Path};
 use tokio::{
     sync::{mpsc, mpsc::Receiver, oneshot},
@@ -21,7 +21,14 @@ impl TreeServer {
         let filename = filename.to_path_buf();
         let (mailbox, mut mailbox_receiver) = mpsc::channel(16);
         let task = spawn(async move {
-            let mut tree = TreeBuilder::default().build_from_file(&filename)?;
+            let mut tree = match TreeBuilder::default().build_from_file(&filename) {
+                Ok(tree) => tree,
+                Err(e) => {
+                    error!("Failed to parse configuration:");
+                    error!("{:?}", e.backtrace());
+                    bail!("failed to parse configuration")
+                }
+            };
 
             while let Some(message) = mailbox_receiver.recv().await {
                 let result = Self::handle_message(message, &mut mailbox_receiver, &mut tree);

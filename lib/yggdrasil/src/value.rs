@@ -197,19 +197,30 @@ impl Value {
     pub(super) fn apply_string(tok: &Token, lhs: &Value, rhs: &Value) -> Fallible<Value> {
         let a = lhs.as_string()?;
         let b = rhs.as_string()?;
-        let s = match tok {
-            Token::Add => a + &b,
-            Token::Latch => latch(lhs, rhs, a, b),
+        let data = match tok {
+            Token::Add => ValueData::String(a + &b),
+            Token::Equals => ValueData::Boolean(a == b),
+            Token::Latch => ValueData::String(latch(lhs, rhs, a, b)),
             _ => bail!(
                 "runtime error: {:?} is not a valid operation on a string",
                 tok
             ),
         };
-        Ok(Value::from_string(s).with_generation(lhs.generation().max(rhs.generation())))
+        Ok(Value {
+            data,
+            generation: lhs.generation().max(rhs.generation()),
+        })
     }
 
     pub fn is_path(&self) -> bool {
         if let ValueData::Path(_) = self.data {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        if let ValueData::Boolean(_) = self.data {
             return true;
         }
         false
