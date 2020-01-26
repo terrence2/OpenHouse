@@ -130,22 +130,10 @@ rooms
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
-        office-stream   $hue @11'x0' <-/palette/hue/{./color}
+        office-stream   $hue @11'x0' <-/palette/hue-stream/{./test-switch}
 
     hall @10'x10' <>7'x6'
         closet @6'x3' <>1'x3'
-        #color:
-        #    formula: |
-        #        (cond
-        #            ((or (= bedroom "off") (= livingroom "off"))                                "off")
-        #            ((or (= bedroom "on") (= livingroom "on") (= kitchen "on") (= office "on")) "on")
-        #            (else                                                                       "low"))
-        #    where:
-        #        bedroom: /room/bedroom/color
-        #        livingroom: /room/livingroom/color
-        #        kitchen: /room/kitchen/color
-        #        office: /room/office/color
-
         color <-\
             if ../bedroom/color == "off" || ../livingroom/color == "off":
                 "off"
@@ -153,8 +141,6 @@ rooms
                 "on"
             else:
                 "low"
-
-        #color <- ../bedroom/color
         hall-ceiling0 $hue @4'x2' <-/palette/hue/{./color}
         hall-ceiling1 $hue @5'x3' <-/palette/hue/{./color}
 
@@ -170,12 +156,18 @@ rooms
             ip <- "10.0.5.41"
             default <- "default"
         color <- ./kitchen-lightswitch.eyrie
-        kitchen-sink      $hue @9'x1' <-/palette/hue/{./color}
+        kitchen-sink      $hue @9'x1' <-./sink-palette/{./color}
         kitchen-ceiling0  $hue @2'x6' <-/palette/hue/{./color}
         kitchen-ceiling1  $hue @3'x5' <-/palette/hue/{./color}
         kitchen-ceiling2  $hue @4'x4' <-/palette/hue/{./color}
         kitchen-ceiling3  $hue @5'x3' <-/palette/hue/{./color}
         kitchen-ceiling4  $hue @6'x2' <-/palette/hue/{./color}
+        sink-palette
+            on        <- /palette/hue/on
+            low       <- /palette/hue/low
+            moonlight <- /palette/hue/on
+            default   <- /palette/hue/default
+            off       <- /palette/hue/off
 
     livingroom @0'x13' <>13'x19'9"
         livingroom-lightswitch.eyrie @0'x0'
