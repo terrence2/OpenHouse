@@ -19,7 +19,7 @@ use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
 };
-use tracing::{info, trace, warn};
+use tracing::{info, trace, warn, error};
 use yggdrasil::Value;
 
 async fn read_body(mut req: Request<Body>) -> String {
@@ -78,10 +78,11 @@ impl LegacyMcu {
                                     tree.handle_event(&path, Value::from_string(command)).await
                                 {
                                     trace!("updates available for {} systems", updates.len());
-                                    update
-                                        .apply_updates(updates)
-                                        .await
-                                        .expect("to send updates");
+                                    trace!("Sending to: {:?}", update);
+                                    match update.apply_updates(updates).await {
+                                        Ok(_) => {},
+                                        Err(e) => error!("failed to send updates from legacy_mcu: {}\n{:?}", e, e.backtrace()),
+                                    }
                                 }
                             } else {
                                 warn!("Skipping LegacyMCU request: {:?}", req);
