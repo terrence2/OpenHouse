@@ -90,11 +90,24 @@ palette
         off       <- "none"
 
     hue-stream
-        on        <- "bhs(254, 34495, 254)"
-        low       <- "bhs(64, 34495, 254)"
-        moonlight <- "none"
-        default   <- "rgb(128, 0, 0)"
-        off       <- "none"
+        up
+            on        <- "bhs(254, 34495, 254)"
+            low       <- "bhs(64, 34495, 254)"
+            moonlight <- "bhs(128, 34495, 254)"
+            default   <- "bhs(254, 34495, 254)"
+            off       <- "none"
+        open
+            on        <- "none"
+            low       <- "none"
+            moonlight <- "none"
+            default   <- "none"
+            off       <- "none"
+        down
+            on        <- "bhs(254, 0, 0)"
+            low       <- "bhs(254, 0, 0)"
+            moonlight <- "bhs(254, 0, 0)"
+            default   <- "rgb(254, 0, 0)"
+            off       <- "bhs(254, 0, 0)"
 
 
 rooms
@@ -127,10 +140,11 @@ rooms
             default <- "default"
 
         color <-./office-lightswitch.eyrie
+        enable <-../livingroom/knifeswitch.eyrie
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
-        office-stream   $hue @11'x0' <-/palette/hue-stream/{./test-switch}
+        office-stream   $hue @11'x0' <-/palette/hue-stream/{./enable}/{./test-switch}
 
     hall @10'x10' <>7'x6'
         closet @6'x3' <>1'x3'
@@ -170,6 +184,8 @@ rooms
             off       <- /palette/hue/off
 
     livingroom @0'x13' <>13'x19'9"
+        knifeswitch.eyrie @3'x3' ^redstone
+            property <- "position"
         livingroom-lightswitch.eyrie @0'x0'
             ^legacy-mcu
             ip <- "10.0.5.42"

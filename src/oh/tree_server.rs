@@ -59,6 +59,9 @@ impl TreeServer {
             TreeServerProtocol::FindSinks(name, tx) => {
                 tx.send(tree.find_sinks(&name)).ok();
             }
+            TreeServerProtocol::PathExists(path, tx) => {
+                tx.send(tree.lookup_path(&path).is_ok()).ok();
+            }
             TreeServerProtocol::Compute(path, tx) => {
                 tx.send(tree.lookup_path(&path)?.compute(&tree)?).ok();
             }
@@ -91,6 +94,7 @@ pub struct TreeMailbox {
 enum TreeServerProtocol {
     FindSources(String, oneshot::Sender<Vec<ConcretePath>>),
     FindSinks(String, oneshot::Sender<Vec<ConcretePath>>),
+    PathExists(ConcretePath, oneshot::Sender<bool>),
     Compute(ConcretePath, oneshot::Sender<Value>),
     HandleEvent(
         ConcretePath,
@@ -113,6 +117,14 @@ impl TreeMailbox {
         let (tx, rx) = oneshot::channel();
         self.mailbox
             .send(TreeServerProtocol::FindSinks(name.to_owned(), tx))
+            .await?;
+        Ok(rx.await?)
+    }
+
+    pub async fn path_exists(&mut self, path: &ConcretePath) -> Fallible<bool> {
+        let (tx, rx) = oneshot::channel();
+        self.mailbox
+            .send(TreeServerProtocol::PathExists(path.to_owned(), tx))
             .await?;
         Ok(rx.await?)
     }
