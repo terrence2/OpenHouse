@@ -19,7 +19,7 @@ use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
 };
-use tracing::{info, trace};
+use tracing::{error, info, trace};
 use yggdrasil::{ConcretePath, Value};
 
 pub struct HueServer {
@@ -43,7 +43,16 @@ impl HueServer {
                 match message {
                     HueServerProtocol::ValuesUpdated(values) => {
                         trace!("hue system handling {} updates", values.len());
-                        bridge.handle_values_updated(values).await?;
+                        match bridge.handle_values_updated(values).await {
+                            Ok(_) => {}
+                            Err(e) => {
+                                error!(
+                                    "failed to handle values in bridge: {}\n{}",
+                                    e,
+                                    e.backtrace()
+                                );
+                            }
+                        }
                     }
                     HueServerProtocol::Finish => mailbox_receiver.close(),
                 }
@@ -255,7 +264,12 @@ impl HueBridge {
         let url = format!("/groups/{}/action", group);
         let obj = HueBridgeClient::light_state_for_value(light_value)?;
         let put_data = stringify(obj);
-        let _resp = self.client.put(&url, put_data).await?;
+        match self.client.put(&url, put_data).await {
+            Ok(status) => trace!("update_group succeeded with {:?}", status),
+            Err(e) => {
+                error!("failed to update_group: {}\n{}", e, e.backtrace());
+            }
+        }
         Ok(())
     }
 }
@@ -290,7 +304,7 @@ impl HueBridgeClient {
         let mut obj = match color {
             Color::Mired(Mired { color_temp: ct }) => object! {"ct" => ct},
             Color::RGB(rgb) => {
-                let bhs = BHS::from_rgb(&rgb)?;
+                let bhs = BHS::from_rgb(&rgb);
                 object! {"bri" => bhs.brightness, "hue" => bhs.hue, "sat" => bhs.saturation}
             }
             Color::BHS(BHS {

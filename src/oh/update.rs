@@ -8,7 +8,7 @@ use tokio::{
     sync::mpsc::{channel, Sender},
     task::{spawn, JoinHandle},
 };
-use tracing::trace;
+use tracing::{error, trace};
 use yggdrasil::{ConcretePath, Value};
 
 pub struct UpdateServer {
@@ -23,9 +23,15 @@ impl UpdateServer {
             while let Some(message) = mailbox_receiver.recv().await {
                 match message {
                     UpdateServerProtocol::ApplyUpdates(updates) => {
-                        trace!("updating sinks with {:?}", updates);
+                        trace!("updating sinks from {} subsystems", updates.len());
                         if let Some(values) = updates.get("hue") {
-                            hue.values_updated(values).await?;
+                            trace!("updating {} values in hue subsystem", values.len());
+                            match hue.values_updated(values).await {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    error!("failed to update hue values: {}\n{}", e, e.backtrace());
+                                }
+                            }
                         }
                     }
                     UpdateServerProtocol::Finish => mailbox_receiver.close(),
