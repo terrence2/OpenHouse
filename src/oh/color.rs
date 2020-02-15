@@ -22,7 +22,7 @@ impl BHS {
         })
     }
 
-    pub fn from_rgb(rgb: &RGB) -> Fallible<Self> {
+    pub fn from_rgb(rgb: &RGB) -> Self {
         let r = f64::from(rgb.red) / 256.0f64;
         let g = f64::from(rgb.green) / 256.0f64;
         let b = f64::from(rgb.blue) / 256.0f64;
@@ -50,7 +50,7 @@ impl BHS {
             saturation: (saturation * 255.0) as u8,
         };
 
-        Ok(bhs)
+        bhs
     }
 }
 

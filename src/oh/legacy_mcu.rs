@@ -98,7 +98,7 @@ impl LegacyMcu {
             });
             let addr = SocketAddr::from((host, port));
             info!("LegacyMCU listening on {}", addr);
-            spawn(Server::bind(&addr).serve(make_svc));
+            let _server_task = spawn(Server::bind(&addr).serve(make_svc));
 
             while let Some(message) = mailbox_receiver.recv().await {
                 match message {
