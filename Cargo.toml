@@ -24,6 +24,9 @@ lazy_static = "*"
 regex = "^ 1"
 structopt = "^ 0.3"
 tokio = { version = "^ 0.2", features = ["full"] }
+tokio-tungstenite = "^ 0.10"
 tracing = "^ 0.1"
 tracing-subscriber = "0.2.0-alpha.4"
+tungstenite = "^ 0.10"
+url = "^ 2"
 yggdrasil = { path = "./lib/yggdrasil" }

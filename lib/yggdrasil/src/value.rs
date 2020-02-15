@@ -64,13 +64,6 @@ impl Value {
         }
     }
 
-    pub fn new_str(s: &str) -> Self {
-        Self {
-            data: ValueData::String(s.to_owned()),
-            generation: 0,
-        }
-    }
-
     pub fn from_path(p: ScriptPath) -> Self {
         Self {
             data: ValueData::Path(p),
@@ -81,6 +74,13 @@ impl Value {
     pub fn input_flag() -> Self {
         Self {
             data: ValueData::InputFlag,
+            generation: 0,
+        }
+    }
+
+    pub fn new_str(s: &str) -> Self {
+        Self {
+            data: ValueData::String(s.to_owned()),
             generation: 0,
         }
     }

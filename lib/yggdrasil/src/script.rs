@@ -202,7 +202,7 @@ impl Stmt {
 
     fn mark_ready(&mut self) {
         match self {
-            Self::ExprStmt(_) => {},
+            Self::ExprStmt(_) => {}
             Self::IfStmt(s) => s.mark_ready(),
         }
     }
@@ -275,7 +275,8 @@ impl Script {
         // if and block
         let cond_end = Self::find_start_of_block(tokens)?;
         let condition_tokens = &tokens[1..cond_end];
-        let if_condition = ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
+        let if_condition =
+            ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
         ensure!(tokens[cond_end + 0] == Token::StartOfBlock, "expect SOB");
         ensure!(tokens[cond_end + 1] == Token::Newline, "expect newline");
         ensure!(tokens[cond_end + 2] == Token::Indent, "expect indent");
@@ -290,7 +291,8 @@ impl Script {
         while offset < tokens.len() && tokens[offset].maybe_name() == Some("elif") {
             let cond_end = offset + 1 + Self::find_start_of_block(&tokens[offset + 1..])?;
             let condition_tokens = &tokens[offset + 1..cond_end];
-            let if_condition = ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
+            let if_condition =
+                ExprParser::from_tokens(path.clone(), condition_tokens, nifs).eparser()?;
             ensure!(tokens[cond_end + 0] == Token::StartOfBlock, "expect SOB");
             ensure!(tokens[cond_end + 1] == Token::Newline, "expect newline");
             ensure!(tokens[cond_end + 2] == Token::Indent, "expect indent");
@@ -302,7 +304,10 @@ impl Script {
             offset = block_end;
         }
 
-        ensure!(tokens[offset].maybe_name() == Some("else"), "if statements must have an else block");
+        ensure!(
+            tokens[offset].maybe_name() == Some("else"),
+            "if statements must have an else block"
+        );
         offset += 1;
         ensure!(tokens[offset + 0] == Token::StartOfBlock, "expect SOB");
         ensure!(tokens[offset + 1] == Token::Newline, "expect newline");
