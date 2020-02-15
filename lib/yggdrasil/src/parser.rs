@@ -102,6 +102,7 @@ impl<'a> TreeParser<'a> {
             match self.peek()? {
                 Token::NameTerm(ref _s) => self.consume_tree(&child)?,
                 Token::BooleanTerm(ref _b) => self.consume_tree(&child)?,
+                Token::IntegerTerm(ref _i) => self.consume_tree(&child)?,
                 Token::Dedent => {
                     self.pop()?;
                     return Ok(());
@@ -138,9 +139,10 @@ impl<'a> TreeParser<'a> {
     fn consume_block_suite(&mut self, node: &NodeRef) -> Fallible<()> {
         while !self.out_of_input() {
             match self.peek()? {
-                // A name (or bool in this context) is a child and will be parsed elsewhere
+                // A name (or bool or int in this context) is a child and will be parsed elsewhere
                 Token::NameTerm(ref _s) => return Ok(()),
                 Token::BooleanTerm(_v) => return Ok(()),
+                Token::IntegerTerm(_i) => return Ok(()),
                 Token::Dedent => return Ok(()),
                 Token::Indent => bail!("parse error: expected a sigil before another indent"),
                 _ => {
@@ -249,6 +251,9 @@ impl<'a> TreeParser<'a> {
             Token::BooleanTerm(b) => {
                 let v = if b { "true" } else { "false" };
                 v.to_owned()
+            }
+            Token::IntegerTerm(i) => {
+                format!("{}", i)
             }
             _ => bail!("parse error: did not find a name in expected position"),
         })
