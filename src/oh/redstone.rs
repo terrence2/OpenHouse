@@ -2,24 +2,27 @@
 // License, version 3. If a copy of the GPL was not distributed with this file,
 // You can obtain one at https://www.gnu.org/licenses/gpl.txt.
 use crate::oh::{TreeMailbox, UpdateMailbox};
+use bytes::BytesMut;
 use failure::{bail, ensure, Fallible};
 use futures::{
     future::{select, Either},
     sink::SinkExt,
     StreamExt,
 };
+use hyper::{
+    body::HttpBody,
+    client::{Client, HttpConnector},
+    Body, Response, Uri,
+};
 use json::JsonValue;
-//use hyper::{
-//    body::HttpBody,
-//    Body, Request, Response
-//};
 use std::collections::HashMap;
 use tokio::{
-    sync::mpsc::{channel, Sender},
+    net::TcpStream,
+    sync::mpsc::{channel, Receiver, Sender},
     task::{spawn, JoinHandle},
     time::{delay_for, Duration},
 };
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::{connect_async, WebSocketStream};
 use tracing::{error, info, trace, warn};
 use tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Message};
 use url::Url;
@@ -35,6 +38,52 @@ struct RedstoneDevice {
 struct DeviceServer {
     task: JoinHandle<Fallible<()>>,
     mailbox: DeviceMailbox,
+}
+
+// There is no Socket message to get a property value, so use http during initialization.
+struct RedstoneHttpClient {
+    base_url: Url,
+    client: Client<HttpConnector>,
+}
+impl RedstoneHttpClient {
+    fn new(base_url: &Url) -> Fallible<Self> {
+        Ok(Self {
+            base_url: base_url.to_owned(),
+            client: Client::builder()
+                .keep_alive(false)
+                .http1_writev(false) // always flatten so we send fewer packets
+                .retry_canceled_requests(true)
+                .set_host(true)
+                .build_http(),
+        })
+    }
+
+    async fn read_body(mut resp: Response<Body>) -> Fallible<String> {
+        let mut data = BytesMut::new();
+        while !resp.body().is_end_stream() {
+            match resp.body_mut().data().await {
+                None => break,
+                Some(result) => data.extend_from_slice(&result?.slice(..)),
+            }
+        }
+        Ok(String::from_utf8_lossy(data.as_ref()).to_string())
+    }
+
+    fn url(&self, path: &str) -> Fallible<Uri> {
+        let path = format!("{}{}", self.base_url.path(), path);
+        Ok(Uri::builder()
+            .scheme("http")
+            .authority(self.base_url.host_str().unwrap())
+            .path_and_query(path.as_str())
+            .build()?)
+    }
+
+    async fn get(&self, path: &str) -> Fallible<String> {
+        let url = self.url(path)?;
+        trace!("GET {}", url);
+        let body = Self::read_body(self.client.get(self.url(path)?).await?).await?;
+        Ok(body)
+    }
 }
 
 fn value_from_json(json: &JsonValue) -> Fallible<Value> {
@@ -66,6 +115,12 @@ fn value_from_json(json: &JsonValue) -> Fallible<Value> {
     })
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+enum LoopStatus {
+    Okay,
+    Finished,
+}
+
 impl DeviceServer {
     async fn track_device(
         device: RedstoneDevice,
@@ -76,79 +131,34 @@ impl DeviceServer {
         let task = spawn(async move {
             info!("Managing device: {}", device.url);
 
+            // Note: make sure our client doesn't outlive it's welcome.
+            {
+                trace!("Querying device for initial state");
+                let client = RedstoneHttpClient::new(&device.url)?;
+                let body = client
+                    .get(&format!("/properties/{}", device.property))
+                    .await?;
+                let json = json::parse(&body)?;
+                let value = value_from_json(&json[&device.property])?;
+                trace!("setting initial state of {} to {}", device.path, value);
+                let updates = tree.handle_event(&device.path, value).await?;
+                update.apply_updates(updates).await?;
+            }
+
             // Outer loop is reconnection loop
             'connect: loop {
                 trace!("Connecting to {}", device.url);
                 match connect_async(device.url.clone()).await {
                     Ok((mut ws_stream, _response)) => {
-                        'open_message_loop: loop {
-                            match select(ws_stream.next(), Box::pin(mailbox_receiver.recv())).await
-                            {
-                                Either::Right((maybe_message, _stream_next)) => {
-                                    match maybe_message {
-                                        Some(DeviceProtocol::SetProperty(v)) => {
-                                            let send =
-                                                ws_stream.send(Message::text(format!("{}", v)));
-                                            send.await?;
-                                            info!(
-                                                "sent value `{}` to closed device: {}",
-                                                v, device.url
-                                            );
-                                        }
-                                        Some(DeviceProtocol::Finish) => break 'open_message_loop,
-                                        None => break 'open_message_loop,
-                                    };
-                                }
-                                Either::Left((maybe_stream, _mailbox_unrecv)) => {
-                                    if let Some(maybe_message) = maybe_stream {
-                                        match maybe_message {
-                                            Ok(Message::Ping(data)) => {
-                                                trace!("ping message: {:?}", data)
-                                            }
-                                            Ok(Message::Pong(data)) => {
-                                                trace!("pong message: {:?}", data)
-                                            }
-                                            Ok(Message::Binary(data)) => trace!(
-                                                "ignoring binary message from {}: {:?}",
-                                                device.url,
-                                                data
-                                            ),
-                                            Ok(Message::Text(json_text)) => {
-                                                trace!(
-                                                    "recv message from {}: {} bytes",
-                                                    device.url,
-                                                    json_text.len()
-                                                );
-                                                let body = json::parse(&json_text)?;
-                                                ensure!(body.has_key("messageType"));
-                                                ensure!(body.has_key("data"));
-                                                let data = &body["data"];
-                                                ensure!(data.has_key(&device.property));
-                                                let value = &data[&device.property];
-                                                println!("data: {:?}", data);
-                                                let updates = tree
-                                                    .handle_event(
-                                                        &device.path,
-                                                        value_from_json(value)?,
-                                                    )
-                                                    .await?;
-                                                update.apply_updates(updates).await?;
-                                            }
-                                            Ok(Message::Close(status)) => {
-                                                warn!(
-                                                    "connection closed from {}, status: {:?}",
-                                                    device.url, status
-                                                );
-                                                break 'open_message_loop;
-                                            }
-                                            Err(e) => {
-                                                error!("failed to receive message: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        trace!("Connect to {}", device.url);
+                        Self::handle_redstone_stream(
+                            &mut ws_stream,
+                            &mut mailbox_receiver,
+                            &device,
+                            &mut update,
+                            &mut tree,
+                        )
+                        .await?;
                         ws_stream
                             .close(Some(CloseFrame {
                                 code: CloseCode::Normal,
@@ -162,30 +172,9 @@ impl DeviceServer {
                     }
                 }
 
-                'closed_message_loop: loop {
-                    match select(
-                        delay_for(Duration::from_secs(15)),
-                        Box::pin(mailbox_receiver.recv()),
-                    )
-                    .await
-                    {
-                        Either::Right((maybe_message, _delay)) => {
-                            match maybe_message {
-                                Some(DeviceProtocol::SetProperty(v)) => {
-                                    error!(
-                                        "cannot send value `{}` to closed device: {}",
-                                        v, device.url
-                                    );
-                                }
-                                Some(DeviceProtocol::Finish) => break 'connect,
-                                None => break 'connect,
-                            };
-                        }
-                        Either::Left(((), _mailbox_unrecv)) => {
-                            // TODO: Dropping the unreceived recv does not drop messages ever?
-                            break 'closed_message_loop;
-                        }
-                    }
+                let status = Self::wait_for_retry_connect(&device, &mut mailbox_receiver).await;
+                if status == LoopStatus::Finished {
+                    break 'connect;
                 }
             }
             mailbox_receiver.close();
@@ -196,6 +185,115 @@ impl DeviceServer {
             task,
             mailbox: DeviceMailbox { mailbox },
         })
+    }
+
+    async fn handle_redstone_stream(
+        ws_stream: &mut WebSocketStream<TcpStream>,
+        mailbox_receiver: &mut Receiver<DeviceProtocol>,
+        device: &RedstoneDevice,
+        update: &mut UpdateMailbox,
+        tree: &mut TreeMailbox,
+    ) -> Fallible<()> {
+        loop {
+            match select(ws_stream.next(), Box::pin(mailbox_receiver.recv())).await {
+                Either::Right((maybe_message, _stream_next)) => {
+                    match maybe_message {
+                        Some(DeviceProtocol::SetProperty(v)) => {
+                            let send = ws_stream.send(Message::text(format!("{}", v)));
+                            send.await?;
+                            trace!("sent value `{}` to device: {}", v, device.url);
+                        }
+                        Some(DeviceProtocol::Finish) => return Ok(()),
+                        None => return Ok(()),
+                    };
+                }
+                Either::Left((maybe_stream, _mailbox_unrecv)) => {
+                    let status =
+                        Self::handle_redstone_message(maybe_stream, &device, update, tree).await?;
+                    if status == LoopStatus::Finished {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_redstone_message(
+        maybe_maybe_message: Option<Result<Message, tungstenite::Error>>,
+        device: &RedstoneDevice,
+        update: &mut UpdateMailbox,
+        tree: &mut TreeMailbox,
+    ) -> Fallible<LoopStatus> {
+        if maybe_maybe_message.is_none() {
+            return Ok(LoopStatus::Okay);
+        }
+        let maybe_message = maybe_maybe_message.unwrap();
+        if let Err(e) = maybe_message {
+            error!("failed to receive message: {}", e);
+            return Ok(LoopStatus::Okay);
+        }
+        let message = maybe_message.unwrap();
+        match message {
+            Message::Ping(data) => trace!("ping message: {:?}", data),
+            Message::Pong(data) => trace!("pong message: {:?}", data),
+            Message::Binary(data) => {
+                trace!("ignoring binary message from {}: {:?}", device.url, data)
+            }
+            Message::Text(json_text) => {
+                trace!(
+                    "recv message from {}: {} bytes",
+                    device.url,
+                    json_text.len()
+                );
+                let body = json::parse(&json_text)?;
+                ensure!(body.has_key("messageType"));
+                ensure!(body.has_key("data"));
+                let data = &body["data"];
+                ensure!(data.has_key(&device.property));
+                let value = &data[&device.property];
+                trace!("setting {} to {}", device.path, value);
+                let updates = tree
+                    .handle_event(&device.path, value_from_json(value)?)
+                    .await?;
+                update.apply_updates(updates).await?;
+            }
+            Message::Close(status) => {
+                warn!(
+                    "connection closed from {}, status: {:?}",
+                    device.url, status
+                );
+                return Ok(LoopStatus::Finished);
+            }
+        }
+        return Ok(LoopStatus::Okay);
+    }
+
+    async fn wait_for_retry_connect(
+        device: &RedstoneDevice,
+        mailbox_receiver: &mut Receiver<DeviceProtocol>,
+    ) -> LoopStatus {
+        loop {
+            match select(
+                delay_for(Duration::from_secs(15)),
+                Box::pin(mailbox_receiver.recv()),
+            )
+            .await
+            {
+                Either::Right((maybe_message, _delay)) => {
+                    match maybe_message {
+                        Some(DeviceProtocol::SetProperty(v)) => {
+                            error!("cannot send value `{}` to closed device: {}", v, device.url);
+                        }
+                        Some(DeviceProtocol::Finish) => return LoopStatus::Finished,
+                        None => return LoopStatus::Finished,
+                    };
+                }
+                Either::Left(((), _mailbox_unrecv)) => {
+                    // TODO: Dropping the unreceived recv does not drop messages ever?
+                    return LoopStatus::Okay;
+                }
+            }
+        }
     }
 
     async fn join(self) -> Fallible<()> {
@@ -261,6 +359,7 @@ impl RedstoneServer {
                 let property = tree.compute(&property_path).await?.as_string()?;
                 let address = format!("ws://{}:{}/thing", host, port);
                 let url = Url::parse(&address)?;
+
                 info!("Adding device {} => {}:{}", source_path, url, property);
                 devices.push(RedstoneDevice {
                     path: source_path.to_owned(),
