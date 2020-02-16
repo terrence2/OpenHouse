@@ -69,7 +69,7 @@ impl TreeServer {
                 match tree.handle_event(&path, value) {
                     Ok(result) => { tx.send(result).ok(); },
                     Err(e) => {
-                        error!("failed to handle_event {}", e);
+                        error!("failed to handle_event: {}", e);
                         tx.send(HashMap::new()).ok();
                     }
                 }

@@ -133,7 +133,7 @@ impl DeviceServer {
 
             // Note: make sure our client doesn't outlive it's welcome.
             {
-                trace!("Querying device for initial state");
+                trace!("Querying {} for initial state", device.url);
                 let client = RedstoneHttpClient::new(&device.url)?;
                 let body = client
                     .get(&format!("/properties/{}", device.property))
@@ -337,35 +337,43 @@ pub struct RedstoneServer {
 }
 
 impl RedstoneServer {
+    async fn build_device(base_path: &ConcretePath, mut tree: TreeMailbox) -> Fallible<RedstoneDevice> {
+        let host_path = base_path.parent() / "host";
+        let host = if tree.path_exists(&host_path).await? {
+            tree.compute(&host_path).await?.as_string()?
+        } else {
+            base_path.parent().basename().to_owned()
+        };
+        let port_path = base_path.parent() / "port";
+        let port = if tree.path_exists(&port_path).await? {
+            tree.compute(&port_path).await?.as_integer()?
+        } else {
+            80
+        };
+        let property_path = base_path / "property";
+        let property = if tree.path_exists(&property_path).await? {
+            tree.compute(&property_path).await?.as_string()?
+        } else {
+            base_path.basename().to_owned()
+        };
+        let address = format!("ws://{}:{}/thing", host, port);
+        let url = Url::parse(&address)?;
+
+        info!("Creating redstone device {} => {}:{}", base_path, url, property);
+        Ok(RedstoneDevice {
+            path: base_path.to_owned(),
+            url,
+            property,
+        })
+    }
+
     pub async fn launch(update: UpdateMailbox, mut tree: TreeMailbox) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
             info!("redstone webthings gateway starting up");
             let mut devices = Vec::new();
             for source_path in &tree.find_sources("redstone").await? {
-                let host_path = source_path / "host";
-                let host = if tree.path_exists(&host_path).await? {
-                    tree.compute(&host_path).await?.as_string()?
-                } else {
-                    source_path.basename().to_owned()
-                };
-                let port_path = source_path / "port";
-                let port = if tree.path_exists(&port_path).await? {
-                    tree.compute(&port_path).await?.as_integer()?
-                } else {
-                    80
-                };
-                let property_path = source_path / "property";
-                let property = tree.compute(&property_path).await?.as_string()?;
-                let address = format!("ws://{}:{}/thing", host, port);
-                let url = Url::parse(&address)?;
-
-                info!("Adding device {} => {}:{}", source_path, url, property);
-                devices.push(RedstoneDevice {
-                    path: source_path.to_owned(),
-                    url,
-                    property,
-                });
+                devices.push(Self::build_device(source_path, tree.clone()).await?);
             }
 
             let mut device_servers = HashMap::new();

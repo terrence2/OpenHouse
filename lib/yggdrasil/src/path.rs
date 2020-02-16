@@ -288,6 +288,13 @@ impl ConcretePath {
         }
         &self.components[self.components.len() - 1]
     }
+
+    pub fn parent(&self) -> ConcretePath {
+        if self.components.len() <= 1 {
+            return ConcretePath::new_root();
+        }
+        ConcretePath::from_components(self.components[0 .. self.components.len() - 1].to_owned())
+    }
 }
 
 impl fmt::Display for ConcretePath {
