@@ -66,7 +66,13 @@ impl TreeServer {
                 tx.send(tree.lookup_path(&path)?.compute(&tree)?).ok();
             }
             TreeServerProtocol::HandleEvent(path, value, tx) => {
-                tx.send(tree.handle_event(&path, value)?).ok();
+                match tree.handle_event(&path, value) {
+                    Ok(result) => { tx.send(result).ok(); },
+                    Err(e) => {
+                        error!("failed to handle_event {}", e);
+                        tx.send(HashMap::new()).ok();
+                    }
+                }
             }
             TreeServerProtocol::Finish => {
                 mailbox_receiver.close();

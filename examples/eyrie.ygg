@@ -150,11 +150,11 @@ rooms
             ip <- "127.0.0.1"
             default <- "default"
 
-        #office-lightswitch.eyrie
-        #    ^redstone
-        #    property <- "most_recent_button_press"
+        office-lightswitch.eyrie
+            ^redstone
+            property <- "most_recent_button_press"
 
-        color <- ../bedroom/bedroom-lightswitch.eyrie
+        color <- /semantics/glowswitch/{./office-lightswitch.eyrie}
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}

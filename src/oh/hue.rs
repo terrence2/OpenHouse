@@ -266,12 +266,6 @@ impl HueBridge {
         Ok(())
     }
 
-    async fn remove_group(&mut self, group: u32) -> Fallible<()> {
-        let url = format!("/groups/{}", group);
-        self.client.delete(&url).await?;
-        Ok(())
-    }
-
     async fn update_group(&self, group: u32, light_value: &str) -> Fallible<()> {
         let url = format!("/groups/{}/action", group);
         let obj = HueBridgeClient::light_state_for_value(light_value)?;
