@@ -130,10 +130,10 @@ rooms
         closet @-2'x0' <>2'x5'
         bedroom-lightswitch.eyrie
             ^legacy-mcu
-            ip <-"10.0.5.43"
+            ip <-"10.0.5.40"
             default <- "default"
 
-        color <- ../office/office-lightswitch.eyrie
+        color <- ./bedroom-lightswitch.eyrie
         bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{/emer}/{./color}
         bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{/ctrl}/{./color}
         bedroom-dresser    $hue @10'x2' <-/palette/hue/{/emer}/{./color}
@@ -150,12 +150,12 @@ rooms
             ip <- "127.0.0.1"
             default <- "default"
 
-        office-lightswitch.eyrie
-            ^legacy-mcu
-            ip <- "10.0.5.40"
-            default <- "default"
+        # office-lightswitch.eyrie
+        #     ^legacy-mcu
+        #     ip <- "10.0.5.40"
+        #     default <- "default"
 
-        color <-./office-lightswitch.eyrie
+        color <- ../bedroom/bedroom-lightswitch.eyrie
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
