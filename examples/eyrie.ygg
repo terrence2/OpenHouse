@@ -131,7 +131,7 @@ rooms
         bedroom-lightswitch.eyrie
             ^legacy-mcu
             ip <-"10.0.5.40"
-            default <- "default"
+            default <- "off"
 
         color <- ./bedroom-lightswitch.eyrie
         bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{/emer}/{./color}
@@ -150,10 +150,9 @@ rooms
             ip <- "127.0.0.1"
             default <- "default"
 
-        # office-lightswitch.eyrie
-        #     ^legacy-mcu
-        #     ip <- "10.0.5.40"
-        #     default <- "default"
+        #office-lightswitch.eyrie
+        #    ^redstone
+        #    property <- "most_recent_button_press"
 
         color <- ../bedroom/bedroom-lightswitch.eyrie
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
@@ -183,7 +182,7 @@ rooms
         kitchen-lightswitch.eyrie
             ^legacy-mcu
             ip <- "10.0.5.41"
-            default <- "default"
+            default <- "off"
         color <- ./kitchen-lightswitch.eyrie
         kitchen-sink      $hue @9'x1' <-./sink-palette/{./color}
         kitchen-ceiling0  $hue @2'x6' <-/palette/hue/{/ctrl}/{./color}
@@ -204,7 +203,7 @@ rooms
         livingroom-lightswitch.eyrie @0'x0'
             ^legacy-mcu
             ip <- "10.0.5.42"
-            default <- "default"
+            default <- "off"
         color <- ./livingroom-lightswitch.eyrie
         livingroom-couch    $hue @1'x6'   <-/palette/hue/{/emer}/{./color}
         livingroom-torch    $hue @1'x10'  <-/palette/hue/{/ctrl}/{./color}
