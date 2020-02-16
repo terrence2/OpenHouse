@@ -122,8 +122,8 @@ semantics
         1 <- "default"
         2 <- "low"
         3 <- "off"
-ctrl <- /semantics/knifeswitch-control/{/rooms/livingroom/knifeswitch.eyrie}
-emer <- /semantics/knifeswitch-emergency/{/rooms/livingroom/knifeswitch.eyrie}
+ctrl <- /semantics/knifeswitch-control/{/rooms/livingroom/knifeswitch.eyrie/position}
+emer <- /semantics/knifeswitch-emergency/{/rooms/livingroom/knifeswitch.eyrie/position}
 
 rooms
     bedroom @12'x0' <>12'x10'
@@ -150,11 +150,11 @@ rooms
             ip <- "127.0.0.1"
             default <- "default"
 
-        #office-lightswitch.eyrie
-        #    ^redstone
-        #    property <- "most_recent_button_press"
+        office-lightswitch.eyrie
+            most_recent_button_press ^redstone
+            color $redstone <-/palette/hue/{/emer}/{../color}
 
-        color <- ../bedroom/bedroom-lightswitch.eyrie
+        color <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
@@ -198,8 +198,8 @@ rooms
             off       <- /palette/hue/{/ctrl}/off
 
     livingroom @0'x13' <>13'x19'9"
-        knifeswitch.eyrie @3'x3' ^redstone
-            property <- "position"
+        knifeswitch.eyrie @3'x3'
+            position ^redstone
         livingroom-lightswitch.eyrie @0'x0'
             ^legacy-mcu
             ip <- "10.0.5.42"

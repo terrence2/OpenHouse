@@ -19,7 +19,7 @@ use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tracing::{trace, trace_span, warn};
+use tracing::{error, trace, trace_span, warn};
 
 pub struct TreeBuilder {
     // Extension functions defined by the embedding.
@@ -202,7 +202,7 @@ impl NodeRef {
             return child.lookup_path(&parts[1..]);
         }
         bail!(
-            "runtime error: lookup on path that does not exist; at {} -> {:?}",
+            "runtime error: lookup on path that does not exist; at {}; rem: {:?}",
             self.path_str(),
             parts
         )
@@ -556,7 +556,13 @@ impl NodeRef {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
             Some(NodeInput::Source(_, _)) => {
-                tree.lookup_path(&(self.path() / "default"))?.compute(tree)
+                match tree.lookup_path(&(self.path() / "default")) {
+                    Ok(default_node) => default_node.compute(tree),
+                    Err(_) => {
+                        error!("source '{}' not ready and no default set", self.path_str());
+                        bail!("source '{}' not ready and no default set", self.path_str())
+                    }
+                }
             }
         }
     }

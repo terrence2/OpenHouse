@@ -55,11 +55,11 @@ async fn main() -> Fallible<()> {
     let tree_server = TreeServer::launch(&config).await?;
     let hue_server = HueServer::launch(!opt.clear_cache, tree_server.mailbox()).await?;
     let update_server = UpdateServer::launch(hue_server.mailbox()).await?;
+    let redstone_server =
+        RedstoneServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let clock_server = ClockServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let legacy_mcu =
         LegacyMcu::launch(host, port, update_server.mailbox(), tree_server.mailbox()).await?;
-    let redstone_server =
-        RedstoneServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
 
     signal::ctrl_c().await?;
     info!("ctrl-c received, shutting down cleanly");
