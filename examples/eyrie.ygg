@@ -75,11 +75,30 @@
 
 palette
     hue
+        global-on
+            on        <- "bhs(254, 34495, 254)"
+            low       <- "bhs(64, 34495, 254)"
+            moonlight <- "bhs(128, 34495, 254)"
+            default   <- "bhs(128, 34495, 254)"
+            off       <- "none"
+        global-off
+            on        <- "none"
+            low       <- "none"
+            moonlight <- "none"
+            default   <- "none"
+            off       <- "none"
+        emergency
+            on        <- "bhs(254, 0, 254)"
+            low       <- "bhs(254, 0, 254)"
+            moonlight <- "bhs(254, 0, 254)"
+            default   <- "rgb(254, 0, 254)"
+            off       <- "bhs(254, 0, 254)"
+
+    hue-stream
         on        <- "bhs(254, 34495, 254)"
         low       <- "bhs(64, 34495, 254)"
-        moonlight <- "none"
-        default   <- "rgb(128, 0, 0)"
-        #default   <- "bhs(254, " + str(/sys/time/minutes/hourly * 1092) + ", 254)"
+        moonlight <- "bhs(128, 34495, 254)"
+        default   <- "bhs(254, 34495, 254)"
         off       <- "none"
 
     hue-highlight
@@ -89,26 +108,22 @@ palette
         default   <- "bhs(254, " + str(/meta/minute-tic * 1092) + ", 254)"
         off       <- "none"
 
-    hue-stream
-        up
-            on        <- "bhs(254, 34495, 254)"
-            low       <- "bhs(64, 34495, 254)"
-            moonlight <- "bhs(128, 34495, 254)"
-            default   <- "bhs(254, 34495, 254)"
-            off       <- "none"
-        open
-            on        <- "none"
-            low       <- "none"
-            moonlight <- "none"
-            default   <- "none"
-            off       <- "none"
-        down
-            on        <- "bhs(254, 0, 0)"
-            low       <- "bhs(254, 0, 0)"
-            moonlight <- "bhs(254, 0, 0)"
-            default   <- "rgb(254, 0, 0)"
-            off       <- "bhs(254, 0, 0)"
-
+semantics
+    knifeswitch-emergency
+        up <- "global-on"
+        open <- "global-off"
+        down <- "emergency"
+    knifeswitch-control
+        up <- "global-on"
+        open <- "global-off"
+        down <- "global-off"
+    glowswitch
+        0 <- "on"
+        1 <- "default"
+        2 <- "low"
+        3 <- "off"
+ctrl <- /semantics/knifeswitch-control/{/rooms/livingroom/knifeswitch.eyrie}
+emer <- /semantics/knifeswitch-emergency/{/rooms/livingroom/knifeswitch.eyrie}
 
 rooms
     bedroom @12'x0' <>12'x10'
@@ -117,14 +132,15 @@ rooms
             ^legacy-mcu
             ip <-"10.0.5.43"
             default <- "default"
+
         color <- ../office/office-lightswitch.eyrie
-        bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{./color}
-        bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{./color}
-        bedroom-dresser    $hue @10'x2' <-/palette/hue/{./color}
-        bedroom-tree0      $hue @1'x2'  <-/palette/hue/{./color}
-        bedroom-tree1      $hue @1'x1'  <-/palette/hue/{./color}
-        bedroom-tree2      $hue @2'x1'  <-/palette/hue/{./color}
-        bedroom-ceiling    $hue @6'x6'  <-/palette/hue/{./color}
+        bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{/emer}/{./color}
+        bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{/ctrl}/{./color}
+        bedroom-dresser    $hue @10'x2' <-/palette/hue/{/emer}/{./color}
+        bedroom-tree0      $hue @1'x2'  <-/palette/hue/{/ctrl}/{./color}
+        bedroom-tree1      $hue @1'x1'  <-/palette/hue/{/ctrl}/{./color}
+        bedroom-tree2      $hue @2'x1'  <-/palette/hue/{/emer}/{./color}
+        bedroom-ceiling    $hue @6'x6'  <-/palette/hue/{/ctrl}/{./color}
 
     office @0'x0' <>10'x13'
         closet @10'x5' <>2'x5'
@@ -140,11 +156,10 @@ rooms
             default <- "default"
 
         color <-./office-lightswitch.eyrie
-        enable <-../livingroom/knifeswitch.eyrie
-        office-ceiling1 $hue @5'x6'  <-/palette/hue/{./color}
-        office-ceiling2 $hue @4'x7'  <-/palette/hue/{./color}
+        office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
+        office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
-        office-stream   $hue @11'x0' <-/palette/hue-stream/{./enable}/{./test-switch}
+        office-stream   $hue @11'x0' <-/palette/hue-stream/{./test-switch}
 
     hall @10'x10' <>7'x6'
         closet @6'x3' <>1'x3'
@@ -155,14 +170,14 @@ rooms
                 "on"
             else:
                 "low"
-        hall-ceiling0 $hue @4'x2' <-/palette/hue/{./color}
-        hall-ceiling1 $hue @5'x3' <-/palette/hue/{./color}
+        hall-ceiling0 $hue @4'x2' <-/palette/hue/{/emer}/{./color}
+        hall-ceiling1 $hue @5'x3' <-/palette/hue/{/emer}/{./color}
 
     bathroom @17'x10' <>7'x6'
 
     utility @20'6"x24' <>4'6"x8'6"
         color <- ../kitchen/kitchen-lightswitch.eyrie
-        utility-ceiling $hue @2'x4' <-/palette/hue/{./color}
+        utility-ceiling $hue @2'x4' <-/palette/hue/{/emer}/{./color}
 
     kitchen @13'x16' <>11'x8'
         kitchen-lightswitch.eyrie
@@ -171,17 +186,17 @@ rooms
             default <- "default"
         color <- ./kitchen-lightswitch.eyrie
         kitchen-sink      $hue @9'x1' <-./sink-palette/{./color}
-        kitchen-ceiling0  $hue @2'x6' <-/palette/hue/{./color}
-        kitchen-ceiling1  $hue @3'x5' <-/palette/hue/{./color}
-        kitchen-ceiling2  $hue @4'x4' <-/palette/hue/{./color}
-        kitchen-ceiling3  $hue @5'x3' <-/palette/hue/{./color}
-        kitchen-ceiling4  $hue @6'x2' <-/palette/hue/{./color}
+        kitchen-ceiling0  $hue @2'x6' <-/palette/hue/{/ctrl}/{./color}
+        kitchen-ceiling1  $hue @3'x5' <-/palette/hue/{/emer}/{./color}
+        kitchen-ceiling2  $hue @4'x4' <-/palette/hue/{/ctrl}/{./color}
+        kitchen-ceiling3  $hue @5'x3' <-/palette/hue/{/emer}/{./color}
+        kitchen-ceiling4  $hue @6'x2' <-/palette/hue/{/ctrl}/{./color}
         sink-palette
-            on        <- /palette/hue/on
-            low       <- /palette/hue/low
-            moonlight <- /palette/hue/on
-            default   <- /palette/hue/default
-            off       <- /palette/hue/off
+            on        <- /palette/hue/{/ctrl}/on
+            low       <- /palette/hue/{/ctrl}/low
+            moonlight <- /palette/hue/{/ctrl}/on
+            default   <- /palette/hue/{/ctrl}/default
+            off       <- /palette/hue/{/ctrl}/off
 
     livingroom @0'x13' <>13'x19'9"
         knifeswitch.eyrie @3'x3' ^redstone
@@ -191,14 +206,14 @@ rooms
             ip <- "10.0.5.42"
             default <- "default"
         color <- ./livingroom-lightswitch.eyrie
-        livingroom-couch    $hue @1'x6'   <-/palette/hue/{./color}
-        livingroom-torch    $hue @1'x10'  <-/palette/hue/{./color}
-        livingroom-tower0   $hue @10'x3'  <-/palette/hue/{./color}
-        livingroom-tower1   $hue @10'x2'  <-/palette/hue/{./color}
-        livingroom-tower2   $hue @10'x1'  <-/palette/hue/{./color}
-        livingroom-curtain1 $hue @10'x15' <-/palette/hue/{./color}
-        livingroom-curtain2 $hue @11'x16' <-/palette/hue/{./color}
-        livingroom-curtain3 $hue @12'x17' <-/palette/hue/{./color}
+        livingroom-couch    $hue @1'x6'   <-/palette/hue/{/emer}/{./color}
+        livingroom-torch    $hue @1'x10'  <-/palette/hue/{/ctrl}/{./color}
+        livingroom-tower0   $hue @10'x3'  <-/palette/hue/{/emer}/{./color}
+        livingroom-tower1   $hue @10'x2'  <-/palette/hue/{/ctrl}/{./color}
+        livingroom-tower2   $hue @10'x1'  <-/palette/hue/{/ctrl}/{./color}
+        livingroom-curtain1 $hue @10'x15' <-/palette/hue/{/emer}/{./color}
+        livingroom-curtain2 $hue @11'x16' <-/palette/hue/{/ctrl}/{./color}
+        livingroom-curtain3 $hue @12'x17' <-/palette/hue/{/ctrl}/{./color}
 
     diningroom @13'x24' <>7'6"x8'6"
         color <- ../livingroom/livingroom-lightswitch.eyrie

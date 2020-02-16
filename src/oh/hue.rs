@@ -28,14 +28,14 @@ pub struct HueServer {
 }
 
 impl HueServer {
-    pub async fn launch(mut tree: TreeMailbox) -> Fallible<Self> {
+    pub async fn launch(use_cached_groups: bool, mut tree: TreeMailbox) -> Fallible<Self> {
         let mut bridge_paths = tree.find_sinks("hue-bridge").await?;
         ensure!(
             bridge_paths.len() == 1,
             "Exactly one Hue hub supported at this time."
         );
         let bridge_path = &bridge_paths.remove(0);
-        let mut bridge = HueBridge::setup(bridge_path, tree).await?;
+        let mut bridge = HueBridge::setup(use_cached_groups, bridge_path, tree).await?;
 
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
@@ -114,7 +114,7 @@ struct HueBridge {
 }
 
 impl HueBridge {
-    async fn setup(bridge_path: &ConcretePath, mut tree: TreeMailbox) -> Fallible<Self> {
+    async fn setup(use_cached_groups: bool, bridge_path: &ConcretePath, mut tree: TreeMailbox) -> Fallible<Self> {
         let bridge_address = tree
             .compute(&(bridge_path / "address"))
             .await?
@@ -129,7 +129,13 @@ impl HueBridge {
 
         Self::show_configuration(&body)?;
         let light_map = Self::collect_lights(&body)?;
-        let group_map = Self::collect_groups(&body)?;
+        let mut group_map = Self::collect_groups(&body)?;
+
+        if !use_cached_groups {
+            for (_, group) in group_map.drain() {
+                client.delete(&format!("/groups/{}", group)).await?;
+            }
+        }
 
         let mut path_map = HashMap::new();
         for path in &tree.find_sinks("hue").await? {
@@ -260,6 +266,12 @@ impl HueBridge {
         Ok(())
     }
 
+    async fn remove_group(&mut self, group: u32) -> Fallible<()> {
+        let url = format!("/groups/{}", group);
+        self.client.delete(&url).await?;
+        Ok(())
+    }
+
     async fn update_group(&self, group: u32, light_value: &str) -> Fallible<()> {
         let url = format!("/groups/{}/action", group);
         let obj = HueBridgeClient::light_state_for_value(light_value)?;
@@ -366,5 +378,16 @@ impl HueBridgeClient {
             .body(Body::from(data))?;
         let body = Self::read_body(self.client.request(req).await?).await?;
         Ok(parse(&body)?)
+    }
+
+    async fn delete(&self, path: &str) -> Fallible<()> {
+        let url = self.url(path)?;
+        trace!("DELETE {}", url);
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(url)
+            .body(Body::from(""))?;
+        let _ = Self::read_body(self.client.request(req).await?).await?;
+        Ok(())
     }
 }

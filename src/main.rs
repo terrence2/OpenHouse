@@ -29,6 +29,9 @@ struct Opt {
 
     #[structopt(short = "c", long = "config", parse(from_os_str))]
     config: PathBuf,
+
+    #[structopt(short = "C", long = "no-cache", help = "Do not make use of existing groups")]
+    clear_cache: bool,
 }
 
 #[tokio::main(core_threads = 4)]
@@ -50,7 +53,7 @@ async fn main() -> Fallible<()> {
     tracing::subscriber::set_global_default(subscriber)?; //.expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
-    let hue_server = HueServer::launch(tree_server.mailbox()).await?;
+    let hue_server = HueServer::launch(!opt.clear_cache, tree_server.mailbox()).await?;
     let update_server = UpdateServer::launch(hue_server.mailbox()).await?;
     let clock_server = ClockServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let legacy_mcu =
