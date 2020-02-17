@@ -114,7 +114,11 @@ struct HueBridge {
 }
 
 impl HueBridge {
-    async fn setup(use_cached_groups: bool, bridge_path: &ConcretePath, mut tree: TreeMailbox) -> Fallible<Self> {
+    async fn setup(
+        use_cached_groups: bool,
+        bridge_path: &ConcretePath,
+        mut tree: TreeMailbox,
+    ) -> Fallible<Self> {
         let bridge_address = tree
             .compute(&(bridge_path / "address"))
             .await?

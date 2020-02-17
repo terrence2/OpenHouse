@@ -293,7 +293,7 @@ impl ConcretePath {
         if self.components.len() <= 1 {
             return ConcretePath::new_root();
         }
-        ConcretePath::from_components(self.components[0 .. self.components.len() - 1].to_owned())
+        ConcretePath::from_components(self.components[0..self.components.len() - 1].to_owned())
     }
 }
 
