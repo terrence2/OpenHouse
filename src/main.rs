@@ -10,7 +10,7 @@ use std::{net::IpAddr, path::PathBuf};
 use structopt::StructOpt;
 use tokio::signal;
 use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "open_house")]
@@ -30,7 +30,11 @@ struct Opt {
     #[structopt(short = "c", long = "config", parse(from_os_str))]
     config: PathBuf,
 
-    #[structopt(short = "C", long = "no-cache", help = "Do not make use of existing groups")]
+    #[structopt(
+        short = "C",
+        long = "no-cache",
+        help = "Do not make use of existing groups"
+    )]
     clear_cache: bool,
 }
 
@@ -49,14 +53,25 @@ async fn main() -> Fallible<()> {
         1 => Level::DEBUG,
         _ => Level::TRACE,
     };
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .with_env_filter(EnvFilter::from_default_env())
+        .finish();
     tracing::subscriber::set_global_default(subscriber)?; //.expect("setting defualt subscriber failed");
 
     let tree_server = TreeServer::launch(&config).await?;
+    let update_server = UpdateServer::launch().await?;
     let hue_server = HueServer::launch(!opt.clear_cache, tree_server.mailbox()).await?;
-    let update_server = UpdateServer::launch(hue_server.mailbox()).await?;
     let redstone_server =
         RedstoneServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
+    update_server
+        .mailbox()
+        .set_redstone(redstone_server.mailbox())
+        .await?;
+    update_server
+        .mailbox()
+        .set_hue(hue_server.mailbox())
+        .await?;
     let clock_server = ClockServer::launch(update_server.mailbox(), tree_server.mailbox()).await?;
     let legacy_mcu =
         LegacyMcu::launch(host, port, update_server.mailbox(), tree_server.mailbox()).await?;

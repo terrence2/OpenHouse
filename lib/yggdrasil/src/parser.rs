@@ -252,9 +252,7 @@ impl<'a> TreeParser<'a> {
                 let v = if b { "true" } else { "false" };
                 v.to_owned()
             }
-            Token::IntegerTerm(i) => {
-                format!("{}", i)
-            }
+            Token::IntegerTerm(i) => format!("{}", i),
             _ => bail!("parse error: did not find a name in expected position"),
         })
     }

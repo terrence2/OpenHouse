@@ -555,15 +555,13 @@ impl NodeRef {
         match self.0.read().unwrap().input {
             None => bail!("runtime error: computing a non-input path @ {}", path),
             Some(NodeInput::Script(ref script)) => script.compute(tree),
-            Some(NodeInput::Source(_, _)) => {
-                match tree.lookup_path(&(self.path() / "default")) {
-                    Ok(default_node) => default_node.compute(tree),
-                    Err(_) => {
-                        error!("source '{}' not ready and no default set", self.path_str());
-                        bail!("source '{}' not ready and no default set", self.path_str())
-                    }
+            Some(NodeInput::Source(_, _)) => match tree.lookup_path(&(self.path() / "default")) {
+                Ok(default_node) => default_node.compute(tree),
+                Err(_) => {
+                    error!("source '{}' not ready and no default set", self.path_str());
+                    bail!("source '{}' not ready and no default set", self.path_str())
                 }
-            }
+            },
         }
     }
 

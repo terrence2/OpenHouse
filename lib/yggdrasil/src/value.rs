@@ -226,6 +226,27 @@ impl Value {
         false
     }
 
+    pub fn is_integer(&self) -> bool {
+        if let ValueData::Integer(_) = self.data {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_float(&self) -> bool {
+        if let ValueData::Float(_) = self.data {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_string(&self) -> bool {
+        if let ValueData::String(_) = self.data {
+            return true;
+        }
+        false
+    }
+
     pub fn is_input_flag(&self) -> bool {
         self.data == ValueData::InputFlag
     }
