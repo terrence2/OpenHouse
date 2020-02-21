@@ -61,7 +61,7 @@ impl RedstoneDevice {
 }
 
 struct DeviceServer {
-    task: JoinHandle<Fallible<()>>,
+    task: JoinHandle<()>,
     mailbox: DeviceMailbox,
 }
 
@@ -107,12 +107,13 @@ impl RedstoneHttpClient {
     async fn get(&self, path: &str) -> Fallible<String> {
         let url = self.url(path)?;
         trace!("GET {}", url);
-        match select(delay_for(Duration::from_secs(2)), self.client.get(url)).await {
-            Either::Left(_) => {
-                error!("timeout GET {}", path);
-                bail!("timeout GET {}", path)
+        match select(delay_for(Duration::from_secs(15)), self.client.get(url)).await {
+            Either::Left(_) => bail!("timeout GET {}", path),
+            Either::Right((maybe_resp, _)) => {
+                let resp = maybe_resp?;
+                let result = Self::read_body(resp).await;
+                Ok(result?)
             }
-            Either::Right((resp, _)) => Ok(Self::read_body(resp?).await?),
         }
     }
 }
@@ -171,89 +172,100 @@ enum LoopStatus {
 
 impl DeviceServer {
     async fn track_device(
-        mut device: RedstoneDevice,
-        mut update: UpdateMailbox,
-        mut tree: TreeMailbox,
+        device: RedstoneDevice,
+        update: UpdateMailbox,
+        tree: TreeMailbox,
     ) -> Fallible<Self> {
         let (mailbox, mut mailbox_receiver) = channel(16);
         let task = spawn(async move {
-            info!("device: managing {}", device.url);
-
-            // Note: make sure our client doesn't outlive it's welcome.
-            {
-                for property in &device.source_properties {
-                    trace!(
-                        "device: querying {} for initial state on {}",
-                        device.url,
-                        property
-                    );
-                    let client = RedstoneHttpClient::new(&device.url)?;
-                    match client.get(&format!("/properties/{}", property)).await {
-                        Ok(body) => {
-                            let json = json::parse(&body)?;
-                            let value = value_from_json(&json[property])?;
-                            trace!(
-                                "device: setting initial state of {} to {}",
-                                device.path,
-                                value
-                            );
-                            let updates = tree
-                                .handle_event(&(device.path.clone() / property), value)
-                                .await?;
-                            update.apply_updates(updates).await?;
-                        }
-                        Err(e) => {
-                            error!("failed to get initial state: {}", e);
-                        }
-                    }
-                }
-            }
-
-            // Outer loop is reconnection loop
-            'connect: loop {
-                info!("device: connecting to {}", device.url);
-                match connect_async(device.url.clone()).await {
-                    Ok((mut ws_stream, _response)) => {
-                        info!("device: opening websocket to {}", device.url);
-                        let status = Self::handle_redstone_stream(
-                            &mut ws_stream,
-                            &mut mailbox_receiver,
-                            &mut device,
-                            &mut update,
-                            &mut tree,
-                        )
-                        .await?;
-                        info!("device: redstone stream finished: {:?}", status);
-                        if status != LoopStatus::UncleanFinished {
-                            ws_stream
-                                .close(Some(CloseFrame {
-                                    code: CloseCode::Normal,
-                                    reason: "gateway shutdown".into(),
-                                }))
-                                .await?;
-                            info!("device: shutting down {}", device.url);
-                            break 'connect;
-                        }
-                        warn!("device: returning to connection loop for {}", device.url);
+            loop {
+                match Self::track_device_main(
+                    &mut mailbox_receiver,
+                    device.clone(),
+                    update.clone(),
+                    tree.clone(),
+                )
+                .await
+                {
+                    Ok(_) => {
+                        info!("DeviceServer({}) exited cleanly", device.url);
+                        mailbox_receiver.close();
+                        return;
                     }
                     Err(e) => {
-                        warn!("device: failed to connect to {}: {}", device.url, e);
+                        error!("DeviceServer({}) crashed: {}", device.url, e,);
+                        let status =
+                            Self::wait_for_retry_connect(&device, &mut mailbox_receiver).await;
+                        if status == LoopStatus::Finished {
+                            return;
+                        }
                     }
                 }
-
-                let status = Self::wait_for_retry_connect(&device, &mut mailbox_receiver).await;
-                if status == LoopStatus::Finished {
-                    break 'connect;
-                }
             }
-            mailbox_receiver.close();
-
-            Ok(())
         });
         Ok(DeviceServer {
             task,
             mailbox: DeviceMailbox { mailbox },
         })
+    }
+
+    async fn track_device_main(
+        mailbox_receiver: &mut Receiver<DeviceProtocol>,
+        mut device: RedstoneDevice,
+        mut update: UpdateMailbox,
+        mut tree: TreeMailbox,
+    ) -> Fallible<()> {
+        info!("device: managing {}", device.url);
+
+        // Note: make sure our client closes its connection when we're done.
+        {
+            for property in &device.source_properties {
+                trace!(
+                    "device: querying {} for initial state on {}",
+                    device.url,
+                    property
+                );
+                let client = RedstoneHttpClient::new(&device.url)?;
+                let body = client.get(&format!("/properties/{}", property)).await?;
+                let json = json::parse(&body)?;
+                let value = value_from_json(&json[property])?;
+                trace!(
+                    "device: setting initial state of {} to {}",
+                    device.path,
+                    value
+                );
+                let updates = tree
+                    .handle_event(&(device.path.clone() / property), value)
+                    .await?;
+                update.apply_updates(updates).await?;
+            }
+        }
+
+        // Outer loop is reconnection loop
+        info!("device: connecting to {}", device.url);
+        let (mut ws_stream, _response) = connect_async(device.url.clone()).await?;
+        info!("device: opening websocket to {}", device.url);
+        let status = Self::handle_redstone_stream(
+            &mut ws_stream,
+            mailbox_receiver,
+            &mut device,
+            &mut update,
+            &mut tree,
+        )
+        .await?;
+        info!("device: redstone stream finished: {:?}", status);
+        if status != LoopStatus::UncleanFinished {
+            ws_stream
+                .close(Some(CloseFrame {
+                    code: CloseCode::Normal,
+                    reason: "gateway shutdown".into(),
+                }))
+                .await?;
+            info!("device: shutting down {}", device.url);
+            return Ok(());
+        }
+
+        Ok(())
     }
 
     async fn handle_redstone_stream(
@@ -277,23 +289,13 @@ impl DeviceServer {
                             );
                             message["data"].insert(&prop, value_to_json(&val)?)?;
                             let send = ws_stream.send(Message::text(message.to_string()));
-                            match send.await {
-                                Ok(_) => trace!("sent value `{}` to device: {}", val, device.url),
-                                Err(e) => {
-                                    error!(
-                                        "device: failed to send to device {}: {}",
-                                        device.url, e
-                                    );
-                                    return Ok(LoopStatus::UncleanFinished);
-                                }
-                            }
+                            send.await?;
                         }
                         Some(DeviceProtocol::PingTimeout) => {
                             trace!("device: pinging {}", device.url);
-                            if device.last_seen.elapsed() > Duration::from_secs(30) {
-                                error!("device: detected time-out, closing and restarting");
+                            if device.last_seen.elapsed() > Duration::from_secs(45) {
                                 ws_stream.close(None).await?;
-                                return Ok(LoopStatus::UncleanFinished);
+                                bail!("device: detected time-out, closing and restarting");
                             }
                             ws_stream
                                 .send(Message::Ping("ping".as_bytes().to_owned()))
@@ -386,7 +388,7 @@ impl DeviceServer {
     ) -> LoopStatus {
         loop {
             match select(
-                delay_for(Duration::from_secs(15)),
+                delay_for(Duration::from_secs(5)),
                 Box::pin(mailbox_receiver.recv()),
             )
             .await
@@ -415,7 +417,7 @@ impl DeviceServer {
     }
 
     async fn join(self) -> Fallible<()> {
-        self.task.await??;
+        self.task.await?;
         Ok(())
     }
 

@@ -94,6 +94,26 @@ palette
             default   <- "rgb(254, 0, 254)"
             off       <- "bhs(254, 0, 254)"
 
+    glow-button
+        global-on
+            on        <- "none"
+            low       <- "rgb(0, 128, 128)"
+            moonlight <- "rgb(46, 0, 103)"
+            default   <- "bhs(128, 34495, 254)"
+            off       <- "rgb(0, 0, 1)"
+        global-off
+            on        <- "none"
+            low       <- "none"
+            moonlight <- "none"
+            default   <- "none"
+            off       <- "none"
+        emergency
+            on        <- "bhs(254, 0, 254)"
+            low       <- "bhs(254, 0, 254)"
+            moonlight <- "bhs(254, 0, 254)"
+            default   <- "rgb(254, 0, 254)"
+            off       <- "bhs(254, 0, 254)"
+
     hue-stream
         on        <- "bhs(254, 34495, 254)"
         low       <- "bhs(64, 34495, 254)"
@@ -119,7 +139,7 @@ semantics
         down <- "global-off"
     glowswitch
         0 <- "on"
-        1 <- "default"
+        1 <- "moonlight"
         2 <- "low"
         3 <- "off"
 ctrl <- /semantics/knifeswitch-control/{/rooms/livingroom/knifeswitch.eyrie/position}
@@ -152,7 +172,7 @@ rooms
 
         office-lightswitch.eyrie
             most_recent_button_press ^redstone
-            color $redstone <-/palette/hue/{/emer}/{../color}
+            color $redstone <-/palette/glow-button/{/emer}/{../color}
 
         color <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
@@ -198,12 +218,15 @@ rooms
             off       <- /palette/hue/{/ctrl}/off
 
     livingroom @0'x13' <>13'x19'9"
+        #knifeswitch.eyrie @3'x3'
+        #    position ^redstone
         knifeswitch.eyrie @3'x3'
-            position ^redstone
+            position <- "up"
+
         livingroom-lightswitch.eyrie @0'x0'
             ^legacy-mcu
             ip <- "10.0.5.42"
-            default <- "off"
+            default <- "on"
         color <- ./livingroom-lightswitch.eyrie
         livingroom-couch    $hue @1'x6'   <-/palette/hue/{/emer}/{./color}
         livingroom-torch    $hue @1'x10'  <-/palette/hue/{/ctrl}/{./color}
