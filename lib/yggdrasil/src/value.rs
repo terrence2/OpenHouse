@@ -22,6 +22,7 @@ pub enum ValueData {
 }
 
 fn latch<T>(lhs: &Value, rhs: &Value, a: T, b: T) -> T {
+    trace!("latch {} :: {}", lhs.generation, rhs.generation);
     if lhs.generation() >= rhs.generation() {
         a
     } else {
@@ -94,14 +95,14 @@ impl Value {
     }
 
     pub fn with_generation(mut self, generation: usize) -> Self {
-        self.generation = generation;
+        self.generation = self.generation.max(generation);
         self
     }
 
     pub(super) fn compute(&self, tree: &Tree) -> Fallible<Value> {
         if let ValueData::Path(ref p) = self.data {
-            let noderef = tree.lookup_dynamic_path(p)?;
-            return noderef.compute(tree);
+            let (noderef, path_gen) = tree.lookup_dynamic_path(self.generation, p)?;
+            return Ok(noderef.compute(tree)?.with_generation(path_gen));
         }
         Ok(self.to_owned())
     }

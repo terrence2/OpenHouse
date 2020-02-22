@@ -146,8 +146,9 @@ impl Tree {
         self.root.lookup_path(&path.components[0..])
     }
 
-    pub fn lookup_dynamic_path(&self, path: &ScriptPath) -> Fallible<NodeRef> {
-        self.root.lookup_dynamic_path(&path.components[0..], self)
+    pub fn lookup_dynamic_path(&self, gen: usize, path: &ScriptPath) -> Fallible<(NodeRef, usize)> {
+        self.root
+            .lookup_dynamic_path(gen, &path.components[0..], self)
     }
 
     // After the tree has been built, visit all nodes looking up references and
@@ -208,7 +209,12 @@ impl NodeRef {
         )
     }
 
-    pub fn lookup_dynamic_path(&self, parts: &[PathComponent], tree: &Tree) -> Fallible<NodeRef> {
+    pub fn lookup_dynamic_path(
+        &self,
+        gen: usize,
+        parts: &[PathComponent],
+        tree: &Tree,
+    ) -> Fallible<(NodeRef, usize)> {
         let span = trace_span!("lookup", "{}", self.path_str());
         let _ = span.enter();
 
@@ -217,18 +223,22 @@ impl NodeRef {
             self.path_str(),
             parts
         );
-        let child_name = match &parts[0] {
-            PathComponent::Name(n) => n.to_owned(),
-            PathComponent::Lookup(p) => tree
-                .lookup_dynamic_path(p)?
-                .compute(tree)?
-                .as_path_component()?,
+        let (child_name, child_gen) = match &parts[0] {
+            PathComponent::Name(n) => (n.to_owned(), 0),
+            PathComponent::Lookup(p) => {
+                let (node, sub_gen) = tree.lookup_dynamic_path(gen, p)?;
+                let value = node.compute(tree)?;
+                (
+                    value.as_path_component()?,
+                    value.generation().max(sub_gen.max(gen)),
+                )
+            }
         };
         if let Some(child) = self.child_at(&child_name) {
             if parts.len() == 1 {
-                return Ok(child);
+                return Ok((child, child_gen.max(gen)));
             }
-            return Ok(child.lookup_dynamic_path(&parts[1..], tree)?);
+            return Ok(child.lookup_dynamic_path(child_gen.max(gen), &parts[1..], tree)?);
         }
         bail!(format!(
             "invalid path: did not find path component '{}' @ {}",
