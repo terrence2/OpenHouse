@@ -174,7 +174,13 @@ rooms
             most_recent_button_press ^redstone
             color $redstone <-/palette/glow-button/{/emer}/{../color}
 
-        color <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
+        bedroom-lightswitch-1.eyrie
+            most_recent_button_press ^redstone
+            color $redstone <-/palette/glow-button/{/emer}/{../color}
+
+        color1 <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
+        color2 <- /semantics/glowswitch/{./bedroom-lightswitch-1.eyrie/most_recent_button_press}
+        color <- ./color2 :: ./color1
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
