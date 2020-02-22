@@ -325,6 +325,12 @@ impl NodeRef {
             } else {
                 unreachable!();
             };
+            if self.0.read().unwrap().sink.is_some() {
+                trace!("input map for ${}", path);
+                for inp in data.keys() {
+                    trace!("    {}", inp.to_string());
+                }
+            }
 
             // Re-borrow read-write to install the input map we built above.
             if let Some(NodeInput::Script(ref mut script)) = self.0.write().unwrap().input {
