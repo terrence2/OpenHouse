@@ -78,7 +78,7 @@ palette
         global-on
             on        <- "bhs(254, 34495, 254)"
             low       <- "bhs(64, 34495, 254)"
-            moonlight <- "bhs(128, 34495, 254)"
+            moonlight <- "none"
             default   <- "bhs(128, 34495, 254)"
             off       <- "none"
         global-off
@@ -97,8 +97,8 @@ palette
     glow-button
         global-on
             on        <- "none"
-            low       <- "rgb(0, 128, 128)"
-            moonlight <- "rgb(46, 0, 103)"
+            low       <- "rgb(0, 0, 128)"
+            moonlight <- "rgb(206, 92, 0)"
             default   <- "bhs(128, 34495, 254)"
             off       <- "rgb(0, 0, 1)"
         global-off
@@ -111,8 +111,15 @@ palette
             on        <- "bhs(254, 0, 254)"
             low       <- "bhs(254, 0, 254)"
             moonlight <- "bhs(254, 0, 254)"
-            default   <- "rgb(254, 0, 254)"
+            default   <- "bhs(254, 0, 254)"
             off       <- "bhs(254, 0, 254)"
+
+    glow-effect
+        on        <- "solid"
+        low       <- "wave"
+        moonlight <- "flame"
+        default   <- "solid"
+        off       <- "solid"
 
     hue-stream
         on        <- "bhs(254, 34495, 254)"
@@ -139,8 +146,8 @@ semantics
         down <- "global-off"
     glowswitch
         0 <- "on"
-        1 <- "moonlight"
-        2 <- "low"
+        1 <- "low"
+        2 <- "moonlight"
         3 <- "off"
 ctrl <- /semantics/knifeswitch-control/{/rooms/livingroom/knifeswitch.eyrie/position}
 emer <- /semantics/knifeswitch-emergency/{/rooms/livingroom/knifeswitch.eyrie/position}
@@ -148,12 +155,28 @@ emer <- /semantics/knifeswitch-emergency/{/rooms/livingroom/knifeswitch.eyrie/po
 rooms
     bedroom @12'x0' <>12'x10'
         closet @-2'x0' <>2'x5'
+
         bedroom-lightswitch.eyrie
             ^legacy-mcu
             ip <-"10.0.5.40"
             default <- "off"
+        color0 <- ./bedroom-lightswitch.eyrie
 
-        color <- ./bedroom-lightswitch.eyrie
+        bedroom-lightswitch-1.eyrie
+            most_recent_button_press ^redstone
+                default <- 3
+            color $redstone <-/palette/glow-button/{/emer}/{../color}
+            effect $redstone <-/palette/glow-effect/{../color}
+        color1 <- /semantics/glowswitch/{./bedroom-lightswitch-1.eyrie/most_recent_button_press}
+
+        bedroom-lightswitch-2.eyrie
+            most_recent_button_press ^redstone
+                default <- 3
+            color $redstone <-/palette/glow-button/{/emer}/{../color}
+            effect $redstone <-/palette/glow-effect/{../color}
+        color2 <- /semantics/glowswitch/{./bedroom-lightswitch-2.eyrie/most_recent_button_press}
+
+        color <- ./color0 :: ./color1 :: ./color2
         bedroom-bookshelf0 $hue @10'x1' <-/palette/hue/{/emer}/{./color}
         bedroom-bookshelf1 $hue @4'x8'  <-/palette/hue/{/ctrl}/{./color}
         bedroom-dresser    $hue @10'x2' <-/palette/hue/{/emer}/{./color}
@@ -172,15 +195,11 @@ rooms
 
         office-lightswitch.eyrie
             most_recent_button_press ^redstone
+                default <- 3
             color $redstone <-/palette/glow-button/{/emer}/{../color}
 
-        bedroom-lightswitch-1.eyrie
-            most_recent_button_press ^redstone
-            color $redstone <-/palette/glow-button/{/emer}/{../color}
+        color <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
 
-        color1 <- /semantics/glowswitch/{./office-lightswitch.eyrie/most_recent_button_press}
-        color2 <- /semantics/glowswitch/{./bedroom-lightswitch-1.eyrie/most_recent_button_press}
-        color <- ./color2 :: ./color1
         office-ceiling1 $hue @5'x6'  <-/palette/hue/{/emer}/{./color}
         office-ceiling2 $hue @4'x7'  <-/palette/hue/{/emer}/{./color}
         office-desk0    $hue @11'x0' <-/palette/hue-highlight/{./color}
@@ -236,7 +255,11 @@ rooms
         color <- ./livingroom-lightswitch.eyrie
         livingroom-couch    $hue @1'x6'   <-/palette/hue/{/emer}/{./color}
         livingroom-torch    $hue @1'x10'  <-/palette/hue/{/ctrl}/{./color}
-        livingroom-tower0   $hue @10'x3'  <-/palette/hue/{/emer}/{./color}
+        livingroom-tower0   $hue @10'x3'  <-\
+            if ./color == "off" && ../bedroom/color == "moonlight":
+                /palette/hue/{/emer}/low
+            else:
+                /palette/hue/{/emer}/{./color}
         livingroom-tower1   $hue @10'x2'  <-/palette/hue/{/ctrl}/{./color}
         livingroom-tower2   $hue @10'x1'  <-/palette/hue/{/ctrl}/{./color}
         livingroom-curtain1 $hue @10'x15' <-/palette/hue/{/emer}/{./color}
