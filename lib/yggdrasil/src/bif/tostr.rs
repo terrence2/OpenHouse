@@ -20,7 +20,7 @@ impl NativeFunc for ToStr {
             ValueData::Float(f) => format!("{}", f),
             ValueData::Boolean(b) => format!("{}", b),
             ValueData::Path(p) => {
-                let noderef = tree.lookup_dynamic_path(&p)?;
+                let (noderef, _gen) = tree.lookup_dynamic_path(0, &p)?;
                 self.compute(noderef.compute(tree)?, tree)?.as_string()?
             }
             ValueData::InputFlag => bail!("runtime error: InputFlag in ToStr"),

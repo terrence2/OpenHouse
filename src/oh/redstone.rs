@@ -282,7 +282,7 @@ impl DeviceServer {
                     trace!("device: received mailbox messages");
                     match maybe_message {
                         Some(DeviceProtocol::SetProperty(prop, val)) => {
-                            trace!("device: handling set_property");
+                            info!("device: set_property {}: {} -> {:?}", device.url, prop, val);
                             let mut message = object!(
                                 "messageType" => "setProperty",
                                 "data" => object!()
